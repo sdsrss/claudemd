@@ -143,28 +143,40 @@ test('163: overwriting an edited installed spec reports where the previous files
 // 0.115.0 pre-tag review M2: the chmod advice cannot work on a directory that
 // belongs to another user (a ~/.claude created by `sudo claude` is root's), and
 // a chown command is not offered either: the directory named is the nearest
-// existing ancestor, which can be a system directory. `/` stands in for one.
-const rootOwned = (() => {
+// existing ancestor, which can be a system directory. HOME is pointed at a
+// root-owned directory this user cannot write: /var/empty where it exists
+// (macOS), else /. macOS's / is a read-only system volume where mkdir fails
+// with ENOENT, not EACCES (PR CI run 39562053656, macos-latest node 22), so the
+// case asserts only once the refusal is a permission one.
+const foreignDir = ['/var/empty', '/'].find(d => {
   try {
-    return fs.statSync('/').uid !== process.getuid();
-  } catch {
+    if (fs.statSync(d).uid === process.getuid()) return false;
+    fs.accessSync(d, fs.constants.W_OK);
     return false;
+  } catch (e) {
+    return e.code === 'EACCES' || e.code === 'EPERM';
   }
-})();
+});
 test(
   '160b: a directory owned by another user — the failure says chmod by this user cannot fix it, and offers no command',
-  { skip: asRoot || !rootOwned },
-  () => {
+  { skip: asRoot || !foreignDir },
+  t => {
     const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/install.js')], {
       encoding: 'utf8',
-      env: box.env({ HOME: '/', CLAUDE_PLUGIN_ROOT: REPO, CLAUDEMD_NO_STATUSLINE: '1' }),
+      env: box.env({ HOME: foreignDir, CLAUDE_PLUGIN_ROOT: REPO, CLAUDEMD_NO_STATUSLINE: '1' }),
     });
     assert.equal(r.status, 1, r.stderr);
     const failed = r.stderr.split('\n').filter(l => l.startsWith('install failed: '));
     assert.equal(failed.length, 1, r.stderr);
-    assert.ok(failed[0].includes('/ is not writable by this user and belongs to another user'), failed[0]);
+    if (!/(EACCES|EPERM)/.test(failed[0])) {
+      t.skip(`${foreignDir} refused with something other than a permission error: ${failed[0]}`);
+      return;
+    }
+    assert.ok(
+      failed[0].includes(`${foreignDir} is not writable by this user and belongs to another user`),
+      failed[0]
+    );
     assert.doesNotMatch(failed[0], /chmod u\+rwx|chown/);
-    assert.match(failed[0], /EACCES: permission denied/);
   }
 );
 
