@@ -496,7 +496,11 @@ hook_record_failopen() {
     local last
     last=$(cat "$marker" 2>/dev/null) || last=0
     [[ -z "$last" ]] && last=0
-    if (( now - last < 60 )); then
+    # A marker dated after now (written while the clock ran ahead) is stale,
+    # not fresh: `now - last` is negative there, and reading it as "recorded
+    # under a minute ago" dropped every row until the clock caught up — after
+    # `doctor --ack-fail-open`, a cause still broken stayed hidden that long.
+    if (( now >= last && now - last < 60 )); then
       return 0
     fi
   fi

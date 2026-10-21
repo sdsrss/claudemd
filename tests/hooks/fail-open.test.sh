@@ -586,6 +586,26 @@ else
   ng "T23 unwritable state dir: stderr=[$T23_ERR] row=$(has_failopen banned-vocab bad-event && echo yes || echo no)"
 fi
 
+# T24: a marker dated in the future (written while the clock ran ahead, then
+# the clock was corrected) is stale, not fresh. `now - last` is negative there,
+# so the 60 s test read it as "just recorded" and dropped every row until the
+# clock passed the marker: after `doctor --ack-fail-open`, a cause still broken
+# stayed green that long (0.114.0 pre-tag review M1). The marker is rewritten
+# to now, so the next call inside a minute is throttled again (control).
+fresh_home
+mkdir -p "$HOME/.claude/.claudemd-state"
+printf '%s' "$(( $(date +%s) + 86400 ))" > "$HOME/.claude/.claudemd-state/failopen-banned-vocab-jq-missing.ts"
+bash -c "source '$HOOKS_DIR/lib/hook-common.sh'; hook_record_failopen banned-vocab jq-missing"
+T24_N1=$(jq -s '[.[]|select(.event=="fail-open" and .extra.reason=="jq-missing")]|length' "$CASE_LOG" 2>/dev/null); T24_N1=${T24_N1:-0}
+bash -c "source '$HOOKS_DIR/lib/hook-common.sh'; hook_record_failopen banned-vocab jq-missing"
+T24_N2=$(jq -s '[.[]|select(.event=="fail-open" and .extra.reason=="jq-missing")]|length' "$CASE_LOG" 2>/dev/null); T24_N2=${T24_N2:-0}
+T24_MARK=$(cat "$HOME/.claude/.claudemd-state/failopen-banned-vocab-jq-missing.ts" 2>/dev/null)
+if [[ "$T24_N1" == 1 && "$T24_N2" == 1 ]] && (( T24_MARK <= $(date +%s) )); then
+  ok "T24 a future-dated rate-limit marker is stale: one row, marker reset to now, next call throttled"
+else
+  ng "T24 future-dated marker: rows after first call=$T24_N1 (want 1), after second=$T24_N2 (want 1), marker=$T24_MARK"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
