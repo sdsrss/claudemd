@@ -120,12 +120,20 @@
   - 评审深度已到 2 轮（发版手册：到 2 轮后问用户）。是否再派第 3 轮，由用户决定。
 - 2026-10-21 用户："把剩下的做完了一起发版"。读法：做完遗留项后发版；打 tag 前按推荐再派第 3 轮评审（新代码在会执行 `-D` 的路径上，没人独立看过；多一轮的代价约 20 分钟，少一轮的风险在删除路径上）。做完的遗留项：
   - L4 钩子文字：两处"byte for byte (`git patch-id --verbatim`)"去掉括注，依据由每个分支的说明给出（7c51d7e）；用例 11、12 改为整句匹配，旧文字下 36/38。离线对比 B4（7c51d7e）通过。
-  - 补查发现 `refs/replace` 漏洞：替换引用把分支末端换成 main 上那个副本的内容、父提交换成分叉点，前一个提交就从 `rev-list main..topic` 里消失，判为 per-commit 已落地（`git branch -d` 拒绝）。修复：判定的 git 调用一律加 `--no-replace-objects`（1da7aa0，先写失败用例）。patch-id 仍按替换后的内容算，只用来挑候选；merge-tree 在没有引用的临时仓库里比真实对象。`.git/info/grafts` 只改父提交、不改快照，被藏的提交的改动会出现在嫁接后提交的 diff 里，实测判为保留。
+  - 补查发现 `refs/replace` 漏洞：替换引用把分支末端换成 main 上那个副本的内容、父提交换成分叉点，前一个提交就从 `rev-list main..topic` 里消失，判为 per-commit 已落地（`git branch -d` 拒绝）。修复：判定的 git 调用一律加 `--no-replace-objects`（1da7aa0，先写失败用例）。当时 patch-id 仍按替换后的内容算（第 3 轮 L1 证明这会让"identical copy"不成立，d04c3b2 一并关掉）。当时对 `.git/info/grafts` 的结论"实测判为保留"以偏概全：那次的例子里两处改动上下文不同；第 3 轮 H1 用两个相同的块做出了误判（见下）。
   - 真实 git 2.39.5（Debian bookworm 容器）：与模拟一致；macOS 自带 git 只能在 CI 上查，加了只在 macOS 运行的用例（1c369da），按版本断言结果并打印版本。
   - 浅克隆：深度 1、2、4 和已落地分支的 1、2、3、5，分叉点在浅克隆边界之外时判为 unrelated 保留，深度 5 判为 landed。
   - 耗时：本仓库克隆、20 个分支各 10 个提交全部 cherry-pick，push 一次 1.29–1.69 s（10 次），0.115.0 为 0.16–0.20 s；另一批 5 次 1.52–5.06 s。超过预算（8 s，同时有 `-d` 时各 4 s）会被中止、不输出。
   - 新发现、未改（遗留）：`origin/HEAD` 指向一个本地不存在的分支时，所有候选都判为 `unrelated`，保留理由写成"it shares no history with it"，理由不对，方向安全。
   - squash 取舍保持不变（CHANGELOG "Not changed"）。
+- 2026-10-21 打 tag 前评审第 3 轮（9008c6d..d453478）→ 0 Critical / 1 High / 1 Medium / 5 Low，结论"不要打 tag"。逐条核对后：
+  - H1：grafts 让一个提交挂到分叉点上，它带着被藏起来的提交的改动；这个改动按 patch-id 对上了 main 上另一个相同块里的改动，而临时仓库没有 grafts，`${c}^` 解析成真实父提交，只核对了它自己那一小部分改动 → 判为 per-commit 已落地。这是第 2 轮把 merge-tree 挪进临时仓库时带进来的（9008c6d 上判为保留）。根因：遍历历史用的视图和核对改动用的视图不一致。修复：核对时用 `rev-list --parents` 给出的父提交（d04c3b2，先写失败用例，info/grafts 和 GIT_GRAFT_FILE 两种都测）。
+  - L1：patch-id 按替换后的内容算，"identical copy"可能不成立 → verbatimPatchIds 也加 `--no-replace-objects`（d04c3b2，先写失败用例）。
+  - M1：代码不丢 tip 的内容；CHANGELOG "Not changed" 那句写得过宽（`+A`、`+B`、`-A` 这种，最后的提交撤销了更早的提交，但 tip 没回到更早的 tree，会按 squash 判为已落地）→ 改为准确描述。hook 里的"a squash"字样不改（改 hook 文字要重做离线对比；依据"its whole change equals commit X"本身属实）。
+  - L2（1da7aa0 提交说明写"Every git call"，当时 patch-id 那处没加）：d04c3b2 之后成立；不改写已推送的提交。
+  - L5：README 的 clean-residue 行补上 `claudemd-landed.*`。
+  - L3（剥掉 `GIT_*` 这一步没有测试）、L4（`TMPDIR` 不可用时 `refused` 崩溃、hook 不出声，方向安全，9008c6d 上也一样）：按评审修复规则 Low 默认不修，写进遗留项。
+  - 评审深度：第 3 轮超过手册的 2 轮上限，又出了 High → 按规则交给用户决定（再评审一轮 / 直接发 / 暂缓）。
 
 ## 验证记录
 
