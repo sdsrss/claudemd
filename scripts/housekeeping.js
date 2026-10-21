@@ -40,8 +40,10 @@ branches  REPORT (never delete) the local branches that are safe to delete:
           under \`landed\` when every one of its commits has a commit on the
           default branch, after the fork point, with the same \`git patch-id
           --verbatim\` (whitespace kept, binary files compared by blob id), or
-          its whole change equals one such commit; \`git branch -d\` refuses
-          these, so deleting them takes \`git branch -D\`. Judges at most 20
+          its whole change equals one such commit, and that commit is the
+          same change at the same place (the branch's change applied to its
+          parent gives it); \`git branch -d\` refuses these, so deleting
+          them takes \`git branch -D\`. Judges at most 20
           such candidates, counting the rest in \`unjudged\`, and none whose
           fork point is more than 500 commits behind. A gone one that is not
           landed is listed under \`goneUnmerged\`.
@@ -377,6 +379,52 @@ function verbatimPatchIds(top, args) {
   return map;
 }
 
+// patch-id ignores line numbers, so the same hunk with the same context at
+// another place in a file has the same id. A match counts only when the
+// branch's change, applied to the parent of the matching commit on the default
+// branch, gives exactly that commit's tree: then it is the same change at the
+// same place. Run in a throwaway index and object directory, so the repository
+// gets nothing written; `--whitespace=nowarn` and plumbing keep a user's
+// apply.whitespace or diff settings out of it.
+function makeInPlace(top) {
+  const objects = gitIn(top)('rev-parse', '--path-format=absolute', '--git-path', 'objects');
+  let tmp = null;
+  const env = () => {
+    if (tmp === null) {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed-'));
+      // git refuses a GIT_OBJECT_DIRECTORY that does not exist ("not a git repository").
+      fs.mkdirSync(path.join(tmp, 'objects'));
+    }
+    return {
+      ...process.env,
+      GIT_INDEX_FILE: path.join(tmp, 'index'),
+      GIT_OBJECT_DIRECTORY: path.join(tmp, 'objects'),
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: objects,
+    };
+  };
+  const run = (args, input) =>
+    spawnSync('git', ['-C', top, ...args], {
+      encoding: 'utf8',
+      env: env(),
+      input,
+      maxBuffer: PATCH_MAX_BUFFER,
+    });
+  // [from, to] is the branch's change; onto the matching commit.
+  const inPlace = (from, to, onto) => {
+    if (!objects) return false;
+    const patch = run(['diff', ...DIFF_OPTS, '--binary', '--src-prefix=a/', '--dst-prefix=b/', from, to]);
+    if (patch.status !== 0) return false;
+    if (run(['read-tree', `${onto}^`]).status !== 0) return false;
+    if (patch.stdout && run(['apply', '--cached', '--whitespace=nowarn', '-p1'], patch.stdout).status !== 0)
+      return false;
+    return run(['diff-index', '--cached', '--quiet', onto, '--']).status === 0;
+  };
+  const done = () => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  };
+  return { inPlace, done };
+}
+
 // Each sha → { how: 'on-main' | 'per-commit' | 'squash' } when its work is on
 // defaultRef (with `commits`, how many were matched, or `via`, the commit equal
 // to the whole change), else { reason, missing } (the commits with no copy).
@@ -419,26 +467,38 @@ function judgeLanded(git, top, defaultRef, shas) {
   const main =
     oldest &&
     verbatimPatchIds(top, ['log', ...LOG_OPTS, `--max-count=${MAIN_WINDOW}`, `${oldest}..${defaultRef}`]);
+  const { inPlace, done } = makeInPlace(top);
+  try {
+    judgeOpen(open, main, top, defaultRef, inPlace, verdicts);
+  } finally {
+    done();
+  }
+  return verdicts;
+}
+
+function judgeOpen(open, main, top, defaultRef, inPlace, verdicts) {
   for (const o of open) {
     const mine = main && verbatimPatchIds(top, ['log', ...LOG_OPTS, `${defaultRef}..${o.sha}`]);
     if (!mine) {
       verdicts.set(o.sha, { reason: 'patch-id-failed', missing: [] });
       continue;
     }
-    const onMain = new Set([...main].filter(([c]) => o.after.has(c)).map(([, id]) => id));
-    // An empty commit has no patch id, so it counts as missing.
-    const missing = o.commits.filter(c => !onMain.has(mine.get(c)));
+    // patch id → the commits after the fork point that carry it.
+    const byId = new Map();
+    for (const [c, id] of main) if (o.after.has(c)) byId.set(id, [...(byId.get(id) || []), c]);
+    // An empty commit has no patch id, so it counts as missing; so does a
+    // match whose change sits at another place.
+    const missing = o.commits.filter(c => !(byId.get(mine.get(c)) || []).some(m => inPlace(`${c}^`, c, m)));
     if (missing.length === 0) {
       verdicts.set(o.sha, { how: 'per-commit', commits: o.commits.length });
       continue;
     }
     const whole = verbatimPatchIds(top, ['diff', ...DIFF_OPTS, o.base, o.sha]);
     const wholeId = whole && [...whole.values()][0];
-    const via = wholeId && [...main].find(([c, id]) => id === wholeId && o.after.has(c))?.[0];
+    const via = wholeId && (byId.get(wholeId) || []).find(m => inPlace(o.base, o.sha, m));
     if (via) verdicts.set(o.sha, { how: 'squash', via });
     else verdicts.set(o.sha, { reason: 'not-on-default', missing });
   }
-  return verdicts;
 }
 
 export function classifyBranches({ cwd = process.cwd() } = {}) {

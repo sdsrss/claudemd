@@ -693,6 +693,51 @@ test('branches: a main commit from before the fork point does not count (re-addi
   assert.deepEqual(names(c.landed), []);
 });
 
+// patch-id ignores line numbers: the same hunk, with the same context, at
+// another place in the file has the same id. A file with two identical blocks
+// where the branch edits the first and main the second must not read as
+// landed: the branch's change is not on main.
+test('branches: the same edit applied to another identical block is not landed', () => {
+  const r = clone();
+  const block = 'a1\na2\na3\nVALUE=1\na4\na5\na6\n';
+  commit(r, 'f.txt', `${block}mid\n${block}`);
+  const wa = 'worktree-agent-c1123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'f.txt', `${block.replace('VALUE=1', 'VALUE=2')}mid\n${block}`);
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  commit(r, 'f.txt', `${block}mid\n${block.replace('VALUE=1', 'VALUE=2')}`);
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+  // Control: the same edit at the same place, after main moved, is landed.
+  git(r, 'cherry-pick', '-X', 'theirs', wa);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), [wa]);
+});
+
+// A user's git config must not change a verdict: apply.whitespace=fix would
+// strip the trailing spaces this commit carries, diff.noprefix drops the a/ b/
+// that apply -p1 expects, diff.external replaces the diff, diff.relative cuts
+// it to the cwd's subtree, color.ui=always colours it.
+test('branches: a landed branch stays landed under a hostile git config, judged from a subdirectory', () => {
+  const r = clone();
+  const wa = 'worktree-agent-d1123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'ws.txt', 'trailing spaces   \n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', wa);
+  for (const [k, v] of [
+    ['apply.whitespace', 'fix'],
+    ['diff.noprefix', 'true'],
+    ['diff.external', 'false'],
+    ['diff.relative', 'true'],
+    ['color.ui', 'always'],
+  ])
+    git(r, 'config', k, v);
+  fs.mkdirSync(path.join(r, 'sub'));
+  assert.deepEqual(names(classifyBranches({ cwd: path.join(r, 'sub') }).landed), [wa]);
+});
+
 test('branches: landed, then reverted on main → still landed (user decision 2026-10-21)', () => {
   const r = clone();
   landAndDeleteRemote(r, 'rv', 'pick');
