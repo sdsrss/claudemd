@@ -249,7 +249,7 @@ EVN=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName // ""' 2>/de
 D11=$(dcmd "$CTX")
 if has_branch fix/pick && has_branch fix/edit && [[ "$EVN" == PostToolUseFailure &&
   "$CTX" == *'`git branch -d` left 2 branch(es) in place.'* &&
-  "$CTX" == *"1 of them have their work on main byte for byte"*": fix/pick (each of its 2 commit(s) has an identical copy there)."* &&
+  "$CTX" == *"1 of them have their work on main byte for byte: fix/pick (each of its 2 commit(s) has an identical copy there)."* &&
   "$D11" == *"branch -D -- 'fix/pick'"* && "$D11" != *fix/edit* &&
   "$CTX" == *'Not on main: fix/edit (commits with no identical copy there: '*' "add e1")'* &&
   "$CTX" == *"Keep these and name them under open items; do not force-delete them."* &&
@@ -405,7 +405,7 @@ fresh_repo
 OUT=$(evt 'git pull' bp-12 | bash "$HOOK" 2>/dev/null)
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
 D12=$(dcmd "$CTX")
-if [[ "$CTX" == *"branch -d -- 'feat'"* && "$CTX" == *"1 local branch(es) have their work on main byte for byte"*": feat2 (each of its 1 commit(s) has an identical copy there)."* &&
+if [[ "$CTX" == *"branch -d -- 'feat'"* && "$CTX" == *"1 local branch(es) have their work on main byte for byte and their remote branch was deleted, or are worktree-agent-*: feat2 (each of its 1 commit(s) has an identical copy there)."* &&
   "$D12" == *"branch -D -- 'feat2'"* && "$CTX" != *local-only* ]] &&
   (cd "$SANDBOX" && eval "$D12") >/dev/null 2>&1 && ! has_branch feat2 && has_branch wip && has_branch local-only; then
   ok "12 a rebase-merged [gone] branch is listed as landed and its command deletes it"

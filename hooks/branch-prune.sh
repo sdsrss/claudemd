@@ -137,7 +137,7 @@ if ((REFUSED)); then
       LCMD=$(printf '%s' "$RES" | jq -r --arg cwd "$CWD" --argjson c "$CAP" "$DCMD_JQ")
       MORE=""
       ((L > CAP)) && MORE=" (+$((L - CAP)) more; the command covers the $CAP listed)"
-      MSG+=" $L of them have their work on $ONTO byte for byte (\`git patch-id --verbatim\`): $NAMES$MORE. Delete them with \`$LCMD\` — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
+      MSG+=" $L of them have their work on $ONTO byte for byte: $NAMES$MORE. Delete them with \`$LCMD\` — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
     fi
     if ((K > 0)); then
       KEPT=$(printf '%s' "$RES" | jq -r --argjson c "$CAP" '[.kept[:$c][] | .name + " (" + (
@@ -204,7 +204,7 @@ if ((LIST)); then
         MORE=""
         ((L > CAP)) && MORE=" (+$((L - CAP)) more; the command covers the $CAP listed)"
         [[ -n "$LISTMSG" ]] && LISTMSG+=" "
-        LISTMSG+="$L local branch(es) have their work on $DEF byte for byte (\`git patch-id --verbatim\`) and their remote branch was deleted, or are worktree-agent-*: $NAMES$MORE. \`git branch -d\` refuses these. Delete them with \`$LCMD\` (leave out any the project keeps) — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
+        LISTMSG+="$L local branch(es) have their work on $DEF byte for byte and their remote branch was deleted, or are worktree-agent-*: $NAMES$MORE. \`git branch -d\` refuses these. Delete them with \`$LCMD\` (leave out any the project keeps) — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
       fi
       [[ -n "$MSG" ]] && MSG+=" "
       MSG+="$LISTMSG"
