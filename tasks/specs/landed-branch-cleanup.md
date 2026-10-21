@@ -1,5 +1,5 @@
 # `-d` 被拒但已落地的分支：判定后用带校验的 `-D` 删除
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -100,7 +100,7 @@
 - [x] S2：branch-prune.sh + hooks.json + hook 测试 — 覆盖 AC2 — 依赖：S1 — 执行：主会话
 - [x] S3：核心句子、钉、规范版本、changelog、Sizing、文档 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
 - [x] S4：离线对比 — 覆盖 AC4 — 依赖：S3 — 执行：主会话
-- [ ] S5：按发版手册发布 0.116.0 — 覆盖 AC5 — 依赖：S1–S4 — 执行：主会话 + release-reviewer
+- [x] S5：按发版手册发布 0.116.0（2026-10-21，tag v0.116.0 → be71eb6） — 覆盖 AC5 — 依赖：S1–S4 — 执行：主会话 + release-reviewer
 
 ## 决策与进展
 
@@ -144,6 +144,8 @@
   - 计时伪影（gsd-lite docs/prompt-audit-shipped）：reflog 时间解析正确（毫秒和 Z 都对，与 TZ 无关，解析到 b52dadb）；两次会话的运行脚本相同；两次运行之间的代码只差一行注释；本会话之前保存的两次运行（7c51d7e、d04c3b2）都判为 landed per-commit。更早那次运行的逐行输出没有保存，原因无法再追。这一行不计入 29 个，不影响发版里的数字。
   - hook 文字只改了"没有比较"的几种理由；TC、TS 两个任务的结束状态（用脚本重建）上，7c51d7e、3fa16c8 和 066b64b 的 hook 输出逐字节相同，所以不重做离线对比。
   - 不在本次做：`session-summary` Case 15 在非 UTC 时区失败（0.115.0 就有，与本次改动无关），留作遗留项。
+- 2026-10-21 打 tag 前评审第 4 轮（d453478..2cb1da2）→ 0 Critical / 0 High / 0 Medium / 5 Low，结论"没有阻塞"。逐条核对后：F1（默认分支一侧的 graft 把分支提交接成 main 的祖先，分支判为 landed）复现属实，代码不改，写进 CHANGELOG "Not changed"（理由见方案"历史视图"）；F2–F5 是文字，已修（3156bb9），claim-drift 又找到 ARCHITECTURE、RULE-HITS-SCHEMA 两处同样的说法（494852d）；占位符已填（be71eb6）。文字修复不再派新一轮评审（发版手册：文字类 Low 只做 claim-drift）。
+- 2026-10-21 发版：main 快进到 be71eb6，annotated tag v0.116.0，GitHub Release 已建，PR #16 显示已合并；本地 `release/v0.116.0` 用 -d 删除，`next-release` 指到 main。第 4 轮评审员的 worktree（干净）用 `git worktree remove` 删除，分支 `worktree-agent-ae9ec2de2902c127c` 用 -d 删除。
 
 ## 验证记录
 
@@ -177,3 +179,5 @@
 - 真实数据（066b64b）→ 29 个里 27 个已落地、2 个保留，35 行判定都与 d04c3b2 相同，每个分支 85–642 ms（负载 4）
 - TC、TS 结束状态（脚本重建）上的 hook 输出：3fa16c8 对 066b64b 逐字节相同（943、823 字节），7c51d7e 对 066b64b 逐字节相同（945、825 字节）。两次重建放在不同的目录（`abw`、`abw2`），输出里含两次仓库路径，所以第二次每个多 2 字节；每次比较的两边用的是同一个重建
 - 066b64b 上：`TZ=UTC npm run check` → 通过（node 1684/1686，2 个跳过；全部 shell 套件）；忽略 SIGPIPE → 通过（同上）；`TZ=UTC` bash 3.2.57 → 通过（44/44）；`npm run smoke` → 通过（2/2）；跑完后工作树干净
+- be71eb6 上：`TZ=UTC npm run check` → 通过（node 1684/1686，2 个跳过；全部 shell 套件）；PR CI run 39683406086 → 通过（7/7）
+- 发版后：main 推送的 ci（run 39685622762）→ 通过；tag 的 ci（run 39685626225）→ 通过（7/7）；npm-publish（run 39685626307）→ 通过（publish 成功）；`npm view claudemd-cli dist-tags.latest` → 0.116.0（22:49:57Z），gitHead be71eb6
