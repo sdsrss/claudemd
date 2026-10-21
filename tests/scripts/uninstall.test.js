@@ -860,6 +860,10 @@ test('Task 4: CLAUDEMD_PURGE=1 removes the hook-root record on BOTH purge paths'
     // The same idiom's other temp (R22): `hook_install_sentinel_write` fills
     // bootstrap-failed.json.$$ and renames it. Same STATE_IGNORE standing.
     'bootstrap-failed.json.4242': '{"ts":"","from":"","to":""}\n',
+    // doctor --ack-fail-open (0.114.0) and its temp, stranded by a process
+    // killed between the write and the rename.
+    'fail-open-ack.json': '{"acknowledged":[]}\n',
+    'fail-open-ack.json.4242': '{"acknowledged":[]}\n',
   };
   // The anchor control the Round-14 audit (SCR-M6) paid for: the temp suffix is
   // a pid, so the arm takes DIGITS only. A user's own backup of the record must
@@ -868,6 +872,7 @@ test('Task 4: CLAUDEMD_PURGE=1 removes the hook-root record on BOTH purge paths'
     'hook-root.json.bak': 'my backup\n',
     'hook-root.json.orig': 'mine\n',
     'bootstrap-failed.json.bak': 'mine\n',
+    'fail-open-ack.json.bak': 'mine\n',
   };
   for (const [n, c] of Object.entries({ ...ours, ...theirs })) fs.writeFileSync(path.join(alien, n), c);
 

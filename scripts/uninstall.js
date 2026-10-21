@@ -53,7 +53,9 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // `hook-root.json(?:\.[0-9]+)?` carries a DIGIT suffix, not the `*` the
 // interpolated stems admit: the temp is `hook-root.json.$$`, and `$$` is a pid,
 // so the only names that reach a real state dir are digits. The
-// `bootstrap-failed.json` arm's `\.[0-9]+` is the same temp for the same reason.
+// `bootstrap-failed.json` arm's `\.[0-9]+` is the same temp for the same reason,
+// and so is `fail-open-ack.json`'s (doctor's acknowledgement flag writes
+// `<path>.<pid>` and renames it).
 //
 // The drift join CANNOT reach this arm, and not because of a choice made
 // elsewhere: `norm()` in architecture-drift.test.js collapses `${VAR}` and
@@ -68,7 +70,7 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 // whose name has a variable segment after the dot reads as unmatched and
 // a CLAUDEMD_PURGE=1 run would appear to leave it behind (v0.90.0).
 export const CLAUDEMD_STATE_FILE_RE =
-  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework|xrepo|branch-prune|modinj|notice)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9*-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|sandbox-pending(?:-[A-Za-z0-9_*-]+)?\.list|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown|\.[0-9]+)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|fail-open-ack\.json|mem-audit\.lastrun|tmp-sweep\.(?:stamp|last\.json|lock)|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
+  /^(?:(?:ext-read|failopen|mem-coverage|vocab-scan|rework|xrepo|branch-prune|modinj|notice)-[A-Za-z0-9_*-]*(?:\.[A-Za-z0-9*-]+)?|session-start(?:-[A-Za-z0-9_*-]+)?\.ref|sandbox-pending(?:-[A-Za-z0-9_*-]+)?\.list|session-summary(?:-[A-Za-z0-9_*-]+)?\.lastrun|tmp-baseline(?:-[A-Za-z0-9_*-]+)?\.txt|last-session-summary\.json(?:\.last-shown)?|upstream-check\.lastrun|bootstrap-failed\.json(?:\.last-shown|\.[0-9]+)?|hook-root\.json(?:\.[0-9]+)?|user-content-backup\.json|statusline-prev\.json|fail-open-ack\.json(?:\.[0-9]+)?|mem-audit\.lastrun|tmp-sweep\.(?:stamp|last\.json|lock)|l2-task-counter|ship-baseline-recent|installed\.json|install\.lock)$/;
 
 const UNINSTALL_USAGE = `Usage: node scripts/uninstall.js
 

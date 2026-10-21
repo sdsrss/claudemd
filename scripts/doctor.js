@@ -69,11 +69,11 @@ Options:
                       backups, delete
                       ${backupGlobs()}
                       manually — this flag cannot do that.
-  --ack-fail-open     The cause of the hook-fail-open row is fixed: write the
-                      moment to ~/.claude/.claudemd-state/fail-open-ack.json;
-                      fail-open events at or before it no longer turn the row
-                      red, a new one does. Writes nothing when there is
-                      nothing unacknowledged.
+  --ack-fail-open     The cause of the hook-fail-open row is fixed: record the
+                      fail-open events the row counts, by ts, hook and reason,
+                      in ~/.claude/.claudemd-state/fail-open-ack.json; those no
+                      longer turn the row red, any other one does.
+                      Writes nothing when there is nothing unacknowledged.
   --help, -h          Print this message and exit.
 
 Wrapped by /claudemd-doctor.
@@ -198,19 +198,52 @@ export const isAdvisoryCheck = name => ADVISORY.test(name);
 // The acknowledgement `--ack-fail-open` writes (tasks/specs/doctor-fail-open-ack.md).
 const failOpenAckPath = () => path.join(stateDir(), 'fail-open-ack.json');
 
-// Its moment in ms, or null. Only a regular file whose string ackedAt parses
-// to a moment no later than now counts. A damaged file, anything that is not a
-// regular file (a FIFO would block the read), and a moment in the future (a
-// clock that was ahead, a hand edit) all leave the row red, and the flag can
-// then write a new acknowledgement (0.114.0 pre-tag review M1, L6).
-function readFailOpenAckMs(now = Date.now()) {
+// What identifies a fail-open row to the acknowledgement: its ts, hook and
+// reason, compared as written. No clock is read, so a clock that was ahead or
+// was set back cannot widen what an acknowledgement covers (0.114.0 pre-tag
+// review M1, M2-1: a single acknowledged moment did both).
+const failOpenId = h => [h.ts, h.hook ?? null, h.extra?.reason ?? null];
+
+// The acknowledged rows as fingerprint -> count: a multiset, because a hook
+// that cannot write its throttle marker records every run, so two rows can
+// share all three parts and acknowledging one must not cover the other. Only a
+// regular file counts (a FIFO would block the read, a symlink points out of
+// the state directory). An entry that is not a [ts, hook, reason] array
+// stringifies to something no row's fingerprint equals, and a file that does
+// not parse or has no `acknowledged` array is none (review L6).
+function readFailOpenAck() {
+  const counts = new Map();
   try {
-    if (!fs.lstatSync(failOpenAckPath()).isFile()) return null;
+    if (!fs.lstatSync(failOpenAckPath()).isFile()) return counts;
     const j = JSON.parse(fs.readFileSync(failOpenAckPath(), 'utf8'));
-    const ms = j && typeof j.ackedAt === 'string' ? Date.parse(j.ackedAt) : NaN;
-    return Number.isFinite(ms) && ms <= now ? ms : null;
+    for (const e of j.acknowledged) {
+      const k = JSON.stringify(e);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
   } catch {
-    return null;
+    return new Map();
+  }
+  return counts;
+}
+
+// Write to a temp file beside it, then rename(2) over the path: a symlink or a
+// FIFO there is replaced rather than written through or blocked on, and a
+// directory there makes rename fail (review M2-2). The temp is removed on any
+// failure; uninstall's purge pattern names it for the crash between the two.
+function writeFailOpenAck(entries) {
+  const p = failOpenAckPath();
+  const tmp = `${p}.${process.pid}`;
+  try {
+    fs.mkdirSync(stateDir(), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({ acknowledged: entries }) + '\n');
+    fs.renameSync(tmp, p);
+  } catch (e) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* not created */
+    }
+    throw new Error(`cannot write the fail-open acknowledgement ${p}: ${e.code || e.message}`, { cause: e });
   }
 }
 
@@ -894,55 +927,46 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // rather than being quietly downgraded to advisory.
   const UNEVALUABLE_REASONS = UNEVALUABLE_FAILOPEN_REASONS;
   const failOpenEvents = recentHits.filter(h => h.event === 'fail-open');
-  // --ack-fail-open: the user's statement that the cause is fixed. It hides
-  // only prerequisite rows at or before its moment. A prerequisite that is
-  // still missing writes a new row the next time its hook records one (at most
-  // once a minute per hook and reason, hook_record_failopen), and that row is
-  // red again, so no per-reason "recovered" test is needed. readHits drops a
-  // row whose ts does not parse; a numeric ts reaches here and is never
-  // acknowledged.
+  // --ack-fail-open: the user's statement that the cause is fixed. It covers
+  // the prerequisite rows it saw, by fingerprint. A prerequisite that is still
+  // missing writes a new row the next time its hook records one, which no
+  // acknowledgement covers, so no per-reason "recovered" test is needed.
   const isPrereq = h =>
     (h.extra?.reason || '') !== 'bad-event' && !UNEVALUABLE_REASONS.has(h.extra?.reason || '');
-  let ackedAtMs = readFailOpenAckMs();
-  const isAcked = h => ackedAtMs != null && Date.parse(h.ts) <= ackedAtMs;
+  const prereqEvents = failOpenEvents.filter(isPrereq);
+  const left = readFailOpenAck();
+  let acknowledged = [];
+  let prereqFailOpen = [];
+  for (const h of prereqEvents) {
+    const k = JSON.stringify(failOpenId(h));
+    const n = left.get(k) || 0;
+    if (n > 0) {
+      left.set(k, n - 1);
+      acknowledged.push(h);
+    } else {
+      prereqFailOpen.push(h);
+    }
+  }
   let failOpenAck;
   if (ackFailOpen) {
-    const pending = failOpenEvents.filter(h => isPrereq(h) && !isAcked(h));
-    // The moment is the newest acknowledged row's own ts, not the wall clock:
-    // rows carry whole seconds, and a row another session appends after this
-    // run read the log must not fall inside the acknowledgement. A row dated
-    // after now (a clock that was ahead) is not acknowledged (review L1, L3).
-    const nowMs = Date.now();
-    const covered = pending.filter(h => Date.parse(h.ts) <= nowMs);
-    if (covered.length === 0) {
+    if (prereqFailOpen.length === 0) {
       failOpenAck = {
         written: false,
-        reason: pending.length
-          ? 'every unacknowledged live-environment fail-open event is dated after the current time'
-          : `no unacknowledged live-environment fail-open event in ${RULE_USAGE_WINDOW_DAYS}d`,
+        reason: `no unacknowledged live-environment fail-open event in ${RULE_USAGE_WINDOW_DAYS}d`,
       };
     } else {
-      const ackedAt = new Date(covered.reduce((m, h) => Math.max(m, Date.parse(h.ts)), 0)).toISOString();
-      try {
-        fs.mkdirSync(stateDir(), { recursive: true });
-        fs.writeFileSync(failOpenAckPath(), JSON.stringify({ ackedAt, acknowledged: covered.length }) + '\n');
-      } catch (e) {
-        throw new Error(
-          `cannot write the fail-open acknowledgement ${failOpenAckPath()}: ${e.code || e.message}`,
-          { cause: e }
-        );
-      }
-      ackedAtMs = Date.parse(ackedAt);
-      failOpenAck = { written: true, ackedAt, acknowledged: covered.length };
+      // Every prerequisite row in the window, the ones acknowledged before
+      // included; entries whose rows have left the window are dropped.
+      writeFailOpenAck(prereqEvents.map(failOpenId));
+      failOpenAck = { written: true, acknowledged: prereqFailOpen.length };
+      acknowledged = prereqEvents;
+      prereqFailOpen = [];
     }
   }
   if (failOpenEvents.length > 0) {
     const liveFailOpen = failOpenEvents.filter(h => (h.extra?.reason || '') !== 'bad-event');
     const noiseCount = failOpenEvents.length - liveFailOpen.length;
     const unevaluable = liveFailOpen.filter(h => UNEVALUABLE_REASONS.has(h.extra?.reason || ''));
-    const acknowledged = liveFailOpen.filter(h => isPrereq(h) && isAcked(h));
-    const prereqFailOpen = liveFailOpen.filter(h => isPrereq(h) && !isAcked(h));
-    const ackedAtIso = ackedAtMs != null ? new Date(ackedAtMs).toISOString() : '';
     const summarize = rows => {
       const byReason = {};
       for (const h of rows) {
@@ -963,13 +987,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       checks.push({
         name: 'hook-fail-open',
         ok: false,
-        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and a fail-open after that turns this red again.${acknowledged.length ? ` ${acknowledged.length} earlier one(s) acknowledged (up to ${ackedAtIso}).` : ''}${unevaluableClause}`,
+        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and any fail-open it did not acknowledge turns this red again.${acknowledged.length ? ` ${acknowledged.length} acknowledged one(s) not counted.` : ''}${unevaluableClause}`,
       });
     } else if (acknowledged.length > 0) {
       checks.push({
         name: 'hook-fail-open',
         ok: true,
-        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged with --ack-fail-open (up to ${ackedAtIso}); none since. The next one recorded turns this red again.${unevaluableClause}`,
+        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged with --ack-fail-open. Any fail-open recorded after that turns this red again.${unevaluableClause}`,
       });
     } else if (unevaluable.length > 0) {
       checks.push({

@@ -1056,189 +1056,231 @@ test('ENG-03: transcript-missing is the encoding-drift alarm, not an advisory', 
 
 // --ack-fail-open (tasks/specs/doctor-fail-open-ack.md). A prerequisite
 // fail-open held this row red for the whole 30-day window, also after the
-// user fixed the cause. The acknowledgement hides only rows at or before its
-// moment; a prerequisite that is still broken writes a new row on the next
-// hook run, and that row turns the check red again.
+// user fixed the cause. The acknowledgement records which rows it covers, by
+// (ts, hook, reason), so a row it did not see is red whatever its ts says and
+// whatever the clock did; a prerequisite that is still broken writes such a row.
 const failOpenRow = (ts, reason = 'patterns-missing', hook = 'banned-vocab') =>
-  `{"ts":"${ts}","hook":"${hook}","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"${reason}"},"session_id":null}\n`;
+  `{"ts":${JSON.stringify(ts)},"hook":"${hook}","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"${reason}"},"session_id":null}\n`;
 const ackFile = () => path.join(box.stateDir, 'fail-open-ack.json');
-const minutesAgo = m => new Date(Date.now() - m * 60000).toISOString();
+const minutesAgo = m => new Date(Date.now() - m * 60000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+const failOpenCheck = r => r.checks.find(x => x.name === 'hook-fail-open');
+const writeLog = rows => fs.writeFileSync(box.claude('logs/claudemd.jsonl'), rows.join(''));
+const runDoctorCli = (args = []) =>
+  spawnSync(process.execPath, [DOCTOR_JS, ...args], { env: box.env(), encoding: 'utf8', timeout: 60000 });
 
-test('ack-fail-open: acknowledging turns the row green in the same run and records how many', async () => {
-  fs.writeFileSync(
-    box.claude('logs/claudemd.jsonl'),
-    failOpenRow(minutesAgo(60)) + failOpenRow(minutesAgo(30), 'jq-missing')
-  );
+test('ack-fail-open: acknowledging turns the row green in the same run and records each row it covers', async () => {
+  const a = minutesAgo(60);
+  const b = minutesAgo(30);
+  writeLog([failOpenRow(a), failOpenRow(b, 'jq-missing')]);
   const r = await doctor({ ackFailOpen: true });
-  assert.equal(r.failOpenAck.written, true, JSON.stringify(r.failOpenAck));
-  assert.equal(r.failOpenAck.acknowledged, 2);
-  const saved = JSON.parse(fs.readFileSync(ackFile(), 'utf8'));
-  assert.equal(saved.ackedAt, r.failOpenAck.ackedAt);
-  assert.equal(saved.acknowledged, 2);
-  const c = r.checks.find(x => x.name === 'hook-fail-open');
+  assert.deepEqual(r.failOpenAck, { written: true, acknowledged: 2 });
+  assert.deepEqual(JSON.parse(fs.readFileSync(ackFile(), 'utf8')), {
+    acknowledged: [
+      [a, 'banned-vocab', 'patterns-missing'],
+      [b, 'banned-vocab', 'jq-missing'],
+    ],
+  });
+  const c = failOpenCheck(r);
   assert.equal(c.ok, true, c.detail);
-  assert.match(c.detail, /2 live-environment fail-open event\(s\)/);
-  assert.match(c.detail, /acknowledged/);
+  assert.match(c.detail, /^2 live-environment fail-open event\(s\) in 30d \(/);
   assert.match(c.detail, /banned-vocab:patterns-missing=1/);
+  assert.match(c.detail, /all acknowledged with --ack-fail-open/);
 });
 
-test('ack-fail-open: a fail-open after the acknowledgement turns the row red again and still counts the acknowledged ones', async () => {
-  fs.writeFileSync(ackFile(), JSON.stringify({ ackedAt: minutesAgo(30), acknowledged: 1 }));
-  fs.writeFileSync(
-    box.claude('logs/claudemd.jsonl'),
-    failOpenRow(minutesAgo(60)) + failOpenRow(minutesAgo(5), 'jq-missing')
+test('ack-fail-open: a row the acknowledgement did not cover is red, whatever its ts, and the detail counts the acknowledged ones', async () => {
+  const t = minutesAgo(30);
+  writeLog([failOpenRow(t)]);
+  await doctor({ ackFailOpen: true });
+  // Each differs from the acknowledged row in one part of what identifies it:
+  // an EARLIER ts (a clock set back), the same ts on another hook or reason,
+  // and an exact duplicate (a hook that could not write its throttle marker
+  // records every run, so two rows can share all three).
+  for (const extra of [
+    failOpenRow(minutesAgo(90)),
+    failOpenRow(t, 'patterns-missing', 'reply-language'),
+    failOpenRow(t, 'jq-missing'),
+    failOpenRow(t),
+  ]) {
+    writeLog([failOpenRow(t), extra]);
+    const r = await doctor({});
+    const c = failOpenCheck(r);
+    assert.equal(c.ok, false, `${extra}: ${c.detail}`);
+    assert.match(c.detail, /^1 live-environment fail-open event\(s\)/, extra);
+    assert.match(c.detail, / 1 acknowledged one\(s\) not counted\./, extra);
+    assert.equal(r.failOpenAck, undefined, 'no ack field without the flag');
+  }
+});
+
+test('ack-fail-open: no clock reading decides it — rows dated ahead of the clock are acknowledged, and the row recorded after the clock is put back is red', async () => {
+  // A clock that ran a day ahead dated these rows; it has since been corrected.
+  const ahead = [new Date(Date.now() + 86400000), new Date(Date.now() + 86460000)].map(d =>
+    d.toISOString().replace(/\.\d{3}Z$/, 'Z')
   );
-  const r = await doctor({});
-  const c = r.checks.find(x => x.name === 'hook-fail-open');
-  assert.equal(c.ok, false, c.detail);
-  assert.match(c.detail, /^1 live-environment fail-open event\(s\)/);
-  assert.match(c.detail, /banned-vocab:jq-missing=1/);
-  assert.match(c.detail, /1 earlier one\(s\) acknowledged/);
-  assert.equal(r.failOpenAck, undefined, 'no ack field without the flag');
+  writeLog(ahead.map(ts => failOpenRow(ts)));
+  const r = await doctor({ ackFailOpen: true });
+  assert.deepEqual(r.failOpenAck, { written: true, acknowledged: 2 });
+  assert.equal(failOpenCheck(r).ok, true, failOpenCheck(r).detail);
+  // Still acknowledged once the clock passes them, and a later run's own clock
+  // does not matter either.
+  const realNow = Date.now;
+  Date.now = () => realNow() + 2 * 86400000;
+  try {
+    assert.equal(failOpenCheck(await doctor({})).ok, true);
+  } finally {
+    Date.now = realNow;
+  }
+  writeLog([...ahead.map(ts => failOpenRow(ts)), failOpenRow(minutesAgo(1))]);
+  assert.equal(failOpenCheck(await doctor({})).ok, false);
 });
 
 test('ack-fail-open: with nothing unacknowledged it writes nothing and says why', async () => {
-  // Only advisory rows: nothing red to acknowledge.
-  fs.writeFileSync(
-    box.claude('logs/claudemd.jsonl'),
-    failOpenRow(minutesAgo(10), 'mem-index-missing', 'memory-read-check')
-  );
+  // Only could-not-evaluate rows: nothing red to acknowledge.
+  writeLog([failOpenRow(minutesAgo(10), 'mem-index-missing', 'memory-read-check')]);
   const r = await doctor({ ackFailOpen: true });
   assert.deepEqual(r.failOpenAck, {
     written: false,
     reason: 'no unacknowledged live-environment fail-open event in 30d',
   });
   assert.equal(fs.existsSync(ackFile()), false);
-  // Everything red already acknowledged: the earlier moment stays.
-  const earlier = minutesAgo(5);
-  fs.writeFileSync(ackFile(), JSON.stringify({ ackedAt: earlier, acknowledged: 1 }));
-  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(10)));
+  // Everything red already acknowledged: the file is left as it was.
+  writeLog([failOpenRow(minutesAgo(10))]);
+  await doctor({ ackFailOpen: true });
+  const before = fs.readFileSync(ackFile(), 'utf8');
   const r2 = await doctor({ ackFailOpen: true });
   assert.equal(r2.failOpenAck.written, false);
-  assert.equal(JSON.parse(fs.readFileSync(ackFile(), 'utf8')).ackedAt, earlier);
+  assert.equal(fs.readFileSync(ackFile(), 'utf8'), before);
 });
 
-test('ack-fail-open: an acknowledgement file that does not parse counts as none, so the row stays red', async () => {
-  for (const body of ['{"ackedAt":', '{"ackedAt":"not a date"}', '[]', 'null']) {
-    fs.writeFileSync(ackFile(), body);
-    fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(60)));
-    const c = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
-    assert.equal(c.ok, false, `ack file ${body}: ${c.detail}`);
-    assert.doesNotMatch(c.detail, /acknowledged/, body);
-  }
-});
-
-test('ack-fail-open: the moment recorded is the newest acknowledged row, so a row written after it is red (review L1)', async () => {
-  const seen = new Date(Date.now() - 120000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(30)) + failOpenRow(seen));
+test('ack-fail-open: a second acknowledgement keeps the rows still in the window, adds the new ones, drops the rest, and counts only the new', async () => {
+  const kept = minutesAgo(60);
+  const fresh = minutesAgo(5);
+  fs.writeFileSync(
+    ackFile(),
+    JSON.stringify({
+      acknowledged: [
+        [kept, 'banned-vocab', 'patterns-missing'],
+        ['2026-01-01T00:00:00Z', 'banned-vocab', 'patterns-missing'],
+      ],
+    })
+  );
+  writeLog([failOpenRow(kept), failOpenRow(fresh, 'jq-missing')]);
   const r = await doctor({ ackFailOpen: true });
-  assert.equal(r.failOpenAck.ackedAt, new Date(seen).toISOString());
-  assert.equal(r.failOpenAck.acknowledged, 2);
-  // Another session appends a row after this run read the log.
-  fs.appendFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(1)));
-  const c = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
-  assert.equal(c.ok, false, c.detail);
+  assert.deepEqual(r.failOpenAck, { written: true, acknowledged: 1 });
+  assert.deepEqual(JSON.parse(fs.readFileSync(ackFile(), 'utf8')).acknowledged, [
+    [kept, 'banned-vocab', 'patterns-missing'],
+    [fresh, 'banned-vocab', 'jq-missing'],
+  ]);
+  assert.match(failOpenCheck(r).detail, /^2 live-environment fail-open event\(s\)/);
 });
 
-test('ack-fail-open: a row dated exactly at the acknowledgement is acknowledged; one a second later is not', async () => {
-  const at = '2026-10-20T10:00:00Z';
-  fs.writeFileSync(ackFile(), JSON.stringify({ ackedAt: '2026-10-20T10:00:00.000Z', acknowledged: 1 }));
-  const realNow = Date.now;
-  Date.now = () => Date.parse('2026-10-21T00:00:00Z');
-  try {
-    fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(at));
-    assert.equal((await doctor({})).checks.find(x => x.name === 'hook-fail-open').ok, true);
-    fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow('2026-10-20T10:00:01Z'));
-    assert.equal((await doctor({})).checks.find(x => x.name === 'hook-fail-open').ok, false);
-  } finally {
-    Date.now = realNow;
-  }
-});
-
-test('ack-fail-open: a future-dated or non-string ackedAt counts as none, and the flag can then write a new one (review M1)', async () => {
-  for (const ackedAt of [
-    new Date(Date.now() + 3600000).toISOString(),
-    '2099-01-01T00:00:00Z',
-    '99999',
-    Date.now() - 1000,
+test('ack-fail-open: an acknowledgement file that does not parse or has another shape counts as none, and the flag replaces it', async () => {
+  const t = minutesAgo(60);
+  for (const body of [
+    '{"acknowledged":',
+    'null',
+    '[]',
+    '{"acknowledged":"x"}',
+    `{"acknowledged":[["${t}","banned-vocab"]]}`,
+    `{"acknowledged":[{"ts":"${t}","hook":"banned-vocab","reason":"patterns-missing"}]}`,
+    // The draft before the pre-tag review: one moment instead of rows.
+    `{"ackedAt":"${new Date().toISOString()}","acknowledged":1}`,
   ]) {
-    fs.writeFileSync(ackFile(), JSON.stringify({ ackedAt, acknowledged: 1 }));
-    fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(1)));
-    const c = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
-    assert.equal(c.ok, false, `ackedAt ${ackedAt}: ${c.detail}`);
+    fs.writeFileSync(ackFile(), body);
+    writeLog([failOpenRow(t)]);
+    const c = failOpenCheck(await doctor({}));
+    assert.equal(c.ok, false, `ack file ${body}: ${c.detail}`);
+    assert.doesNotMatch(c.detail, /acknowledged one/, body);
     const r = await doctor({ ackFailOpen: true });
-    assert.equal(r.failOpenAck.written, true, `ackedAt ${ackedAt}: ${JSON.stringify(r.failOpenAck)}`);
-    assert.ok(Date.parse(r.failOpenAck.ackedAt) <= Date.now());
+    assert.deepEqual(r.failOpenAck, { written: true, acknowledged: 1 }, body);
+    assert.equal(failOpenCheck(r).ok, true, body);
   }
 });
 
-test('ack-fail-open: a row dated after the current time is not acknowledged and nothing is written (review L3)', async () => {
-  fs.writeFileSync(
-    box.claude('logs/claudemd.jsonl'),
-    failOpenRow(new Date(Date.now() + 600000).toISOString())
-  );
-  const r = await doctor({ ackFailOpen: true });
-  assert.deepEqual(r.failOpenAck, {
-    written: false,
-    reason: 'every unacknowledged live-environment fail-open event is dated after the current time',
-  });
-  assert.equal(fs.existsSync(ackFile()), false);
-  assert.equal(r.checks.find(x => x.name === 'hook-fail-open').ok, false);
-});
-
-test('ack-fail-open: a row whose ts is a number is never acknowledged', async () => {
-  fs.writeFileSync(ackFile(), JSON.stringify({ ackedAt: minutesAgo(1), acknowledged: 1 }));
-  fs.writeFileSync(
-    box.claude('logs/claudemd.jsonl'),
-    `{"ts":${Date.now() - 600000},"hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"jq-missing"},"session_id":null}\n`
-  );
-  assert.equal((await doctor({})).checks.find(x => x.name === 'hook-fail-open').ok, false);
+test('ack-fail-open: a row whose ts is a number is acknowledged like any other, and another number is not', async () => {
+  const t = Date.now() - 600000;
+  writeLog([failOpenRow(t, 'jq-missing')]);
+  assert.deepEqual((await doctor({ ackFailOpen: true })).failOpenAck, { written: true, acknowledged: 1 });
+  writeLog([failOpenRow(t, 'jq-missing'), failOpenRow(t + 1000, 'jq-missing')]);
+  assert.equal(failOpenCheck(await doctor({})).ok, false);
 });
 
 test('ack-fail-open: the red row says how to clear it, and the acknowledged green row still names the could-not-evaluate rows', async () => {
-  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(5)));
-  const red = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
-  assert.match(red.detail, /once restored, `\/claudemd-doctor --ack-fail-open` acknowledges these/);
+  writeLog([failOpenRow(minutesAgo(5))]);
+  const red = failOpenCheck(await doctor({}));
+  assert.match(
+    red.detail,
+    /once restored, `\/claudemd-doctor --ack-fail-open` acknowledges these, and any fail-open it did not acknowledge turns this red again\./
+  );
   fs.appendFileSync(
     box.claude('logs/claudemd.jsonl'),
     failOpenRow(minutesAgo(4), 'mem-index-missing', 'memory-read-check')
   );
   await doctor({ ackFailOpen: true });
-  const green = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
+  const green = failOpenCheck(await doctor({}));
   assert.equal(green.ok, true, green.detail);
   assert.match(green.detail, /could not evaluate \(memory-read-check:mem-index-missing=1\)/);
 });
 
-test('ack-fail-open: an acknowledgement path that is not a regular file is no acknowledgement and does not block doctor (review L6)', () => {
-  if (spawnSync('sh', ['-c', 'command -v mkfifo']).status !== 0) return;
-  assert.equal(spawnSync('mkfifo', [ackFile()]).status, 0);
-  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(5)));
-  const r = spawnSync(process.execPath, [DOCTOR_JS], { env: box.env(), encoding: 'utf8', timeout: 60000 });
-  assert.equal(r.signal, null, 'doctor was killed: it blocked on the FIFO');
-  assert.equal(JSON.parse(r.stdout).checks.find(x => x.name === 'hook-fail-open').ok, false);
+test('ack-fail-open: a symlink at the path is no acknowledgement, and the flag replaces the link without writing through it (review M2-2)', async () => {
+  const t = minutesAgo(5);
+  const target = path.join(box.home, 'elsewhere.json');
+  const valid = JSON.stringify({ acknowledged: [[t, 'banned-vocab', 'patterns-missing']] });
+  fs.writeFileSync(target, valid);
+  fs.symlinkSync(target, ackFile());
+  writeLog([failOpenRow(t)]);
+  assert.equal(failOpenCheck(await doctor({})).ok, false);
+  fs.writeFileSync(target, '{}');
+  const r = await doctor({ ackFailOpen: true });
+  assert.equal(r.failOpenAck.written, true);
+  assert.equal(fs.lstatSync(ackFile()).isFile(), true);
+  assert.equal(fs.readFileSync(target, 'utf8'), '{}');
 });
 
-test('ack-fail-open: the CLI writes the acknowledgement; one it cannot write exits 1 naming the file', () => {
-  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), failOpenRow(minutesAgo(60)));
-  const ok = spawnSync(process.execPath, [DOCTOR_JS, '--ack-fail-open'], {
-    env: box.env(),
-    encoding: 'utf8',
-  });
+test('ack-fail-open: a FIFO at the path blocks neither doctor nor the flag, and the flag replaces it (review L6, M2-2)', () => {
+  if (spawnSync('sh', ['-c', 'command -v mkfifo']).status !== 0) return;
+  assert.equal(spawnSync('mkfifo', [ackFile()]).status, 0);
+  writeLog([failOpenRow(minutesAgo(5))]);
+  const plain = runDoctorCli();
+  assert.equal(plain.signal, null, 'doctor was killed: it blocked on the FIFO');
+  assert.equal(failOpenCheck(JSON.parse(plain.stdout)).ok, false);
+  const ack = runDoctorCli(['--ack-fail-open']);
+  assert.equal(ack.signal, null, '--ack-fail-open was killed: it blocked on the FIFO');
+  assert.equal(JSON.parse(ack.stdout).failOpenAck.written, true, ack.stderr);
+  assert.equal(fs.lstatSync(ackFile()).isFile(), true);
+});
+
+test('ack-fail-open: a state directory that does not exist yet is created', async () => {
+  writeLog([failOpenRow(minutesAgo(5))]);
+  fs.rmSync(box.stateDir, { recursive: true });
+  assert.equal((await doctor({ ackFailOpen: true })).failOpenAck.written, true);
+  assert.equal(fs.lstatSync(ackFile()).isFile(), true);
+});
+
+test('ack-fail-open: the CLI writes the acknowledgement; one it cannot write exits 1 naming the file and the error, and leaves no temp file', () => {
+  writeLog([failOpenRow(minutesAgo(60))]);
+  const ok = runDoctorCli(['--ack-fail-open']);
   assert.equal(JSON.parse(ok.stdout).failOpenAck.written, true, ok.stderr);
   assert.ok(fs.existsSync(ackFile()));
-  if (process.getuid && process.getuid() === 0) return; // root writes a mode-555 dir
+  const leftovers = () => fs.readdirSync(box.stateDir).filter(f => f.startsWith('fail-open-ack.json.'));
+  // A directory at the path: rename(2) refuses to replace it.
   fs.rmSync(ackFile());
+  fs.mkdirSync(ackFile());
+  const dir = runDoctorCli(['--ack-fail-open']);
+  assert.equal(dir.status, 1, dir.stderr);
+  assert.match(dir.stderr, /cannot write the fail-open acknowledgement .*fail-open-ack\.json: EISDIR/);
+  assert.equal(dir.stdout, '');
+  assert.deepEqual(leftovers(), []);
+  fs.rmdirSync(ackFile());
+  if (process.getuid && process.getuid() === 0) return; // root writes a mode-555 dir
   fs.chmodSync(box.stateDir, 0o555);
   try {
-    const bad = spawnSync(process.execPath, [DOCTOR_JS, '--ack-fail-open'], {
-      env: box.env(),
-      encoding: 'utf8',
-    });
+    const bad = runDoctorCli(['--ack-fail-open']);
     assert.equal(bad.status, 1, bad.stderr);
-    assert.match(bad.stderr, /fail-open-ack\.json/);
+    assert.match(bad.stderr, /cannot write the fail-open acknowledgement .*fail-open-ack\.json: EACCES/);
   } finally {
     fs.chmodSync(box.stateDir, 0o755);
   }
+  assert.deepEqual(leftovers(), []);
 });
 
 test('ENG-03: an UNKNOWN fail-open reason defaults to red, not to advisory', async () => {
