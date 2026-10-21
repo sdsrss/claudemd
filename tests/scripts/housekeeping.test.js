@@ -205,6 +205,41 @@ test('vitest tmp: CLI dry-run prints JSON and exits 0', () => {
   assert.ok(fs.existsSync(d));
 });
 
+// A failed delete only went into `errors`, and the run exited 0: a caller that
+// branches on the exit code read "reclaimed" (131c, reproduced 2026-10-20).
+test(
+  'vitest tmp: CLI --apply exits 3 when a target cannot be deleted, 0 once it can',
+  { skip: process.getuid() === 0 && 'root ignores the mode bits' },
+  () => {
+    const d = vitestDir();
+    age(d, 2);
+    const ssr = path.join(d, 'ssr');
+    const apply = () =>
+      spawnSync('node', [SCRIPT, 'tmp', '--apply', `--root=${root}`, '--min-age-minutes=1'], {
+        encoding: 'utf8',
+      });
+    fs.chmodSync(ssr, 0o555);
+    let r;
+    try {
+      r = apply();
+    } finally {
+      fs.chmodSync(ssr, 0o755);
+    }
+    assert.equal(r.status, 3, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.deleted, 0);
+    assert.deepEqual(
+      out.errors.map(e => e.path),
+      [d]
+    );
+    assert.ok(['EACCES', 'EPERM'].includes(out.errors[0].code), out.errors[0].code);
+    const again = apply();
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(JSON.parse(again.stdout).deleted, 1);
+    assert.ok(!fs.existsSync(d));
+  }
+);
+
 test('vitest tmp: CLI --root that is missing, not a directory or empty is a usage error naming it', () => {
   const file = path.join(root, 'f');
   fs.writeFileSync(file, '');

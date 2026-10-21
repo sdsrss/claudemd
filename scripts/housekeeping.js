@@ -41,7 +41,8 @@ Options:
 Output: JSON on stdout.
 
 Exit codes: 0 success | 2 argv-shape error, a bad --min-age-minutes, or a
---root that is not a directory.`;
+--root that is not a directory | 3 tmp --apply recorded an error for a
+target (each one is listed in \`errors\`, with its errno).`;
 
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
@@ -358,7 +359,11 @@ if (invokedAsMain(import.meta.url)) {
       }
       opts.minAgeMs = n * MINUTE;
     }
-    process.stdout.write(JSON.stringify(sweepVitestTmp(opts)) + '\n');
+    const result = sweepVitestTmp(opts);
+    process.stdout.write(JSON.stringify(result) + '\n');
+    // A target --apply could not delete is only an entry in `errors`; exit 0
+    // read as "reclaimed" (131c). exitCode, not exit(): stdout drains first.
+    if (result.errors.length > 0) process.exitCode = 3;
   } else if (sub === 'branches') {
     const p = parseStrictOrExit(rest, { values: ['--cwd'] });
     process.stdout.write(
