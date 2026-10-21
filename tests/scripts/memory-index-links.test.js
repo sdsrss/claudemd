@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
-import { parseMemoryIndex } from '../../scripts/lib/memory-tags.js';
+import { indexEntryFile, parseMemoryIndex } from '../../scripts/lib/memory-tags.js';
 import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -64,4 +64,21 @@ test('item 169: spec-coherence-audit indexes the first `](….md)` of each line'
     'every line names an existing file, and every file is named by one line'
   );
   assert.equal(check.stats.indexedCount, new Set(FIXTURE.lines.map(l => l.file)).size);
+});
+
+// 0.115.0 pre-tag review M1: a line with no `](….md)` link keeps the reading it
+// had before item 169, the rightmost `(….md)`, as memtags_file does — the §11
+// gate matches tags on such lines.
+test('item 169 fallback: a line with no ](….md) link names its rightmost (….md), as before', () => {
+  assert.equal(
+    indexEntryFile('- Ship notes (feedback_fb_ship.md) [fbship] — the title is not a link'),
+    'feedback_fb_ship.md'
+  );
+  assert.equal(
+    indexEntryFile('- [Deploy] (feedback_fb_deploy.md) [fbdeploy] — a space before the paren'),
+    'feedback_fb_deploy.md'
+  );
+  assert.equal(indexEntryFile('- [Docs](https://example.com/x) [t] — see (a.md) and (b.md)'), 'b.md');
+  assert.equal(indexEntryFile('- [A](feedback_a.md) — supersedes [old](feedback_old.md)'), 'feedback_a.md');
+  assert.equal(indexEntryFile('- no file here'), null);
 });

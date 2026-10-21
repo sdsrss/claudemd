@@ -62,10 +62,20 @@ function memtags_esc(s,   out, i, c) {
 # indexEntryFile in scripts/lib/memory-tags.js and the link scan in
 # hooks/mem-audit.sh; tests/fixtures/memory-index-links.json runs all of them.
 # awk'\''s match() is leftmost, and `[^)]+` cannot cross a `)`, so the match is
-# the leftmost `](` whose target ends in `.md`.
-function memtags_file(line) {
-  if (match(line, /\]\([^)]+\.md\)/) == 0) return ""
-  return substr(line, RSTART + 2, RLENGTH - 3)
+# the leftmost `](` whose target ends in `.md`. A line with no such link keeps
+# the old reading, the rightmost `(….md)`: dropping it dropped its tags, and the
+# §11 gate stopped denying on them (0.115.0 pre-tag review M1). So the set of
+# lines that match, and their tags, is what it was; only the file named for a
+# line with a `](….md)` link can differ.
+function memtags_file(line,   best, rest) {
+  if (match(line, /\]\([^)]+\.md\)/) > 0) return substr(line, RSTART + 2, RLENGTH - 3)
+  best = ""
+  rest = line
+  while (match(rest, /\([^)]*\.md\)/) > 0) {
+    best = substr(rest, RSTART + 1, RLENGTH - 2)
+    rest = substr(rest, RSTART + RLENGTH)
+  }
+  return best
 }
 {
   file = memtags_file($0)

@@ -214,9 +214,15 @@ export function classifyTag(tag) {
 // imports this function, and the shell side spells the same regex in
 // hooks/lib/memory-tags.sh (memtags_file) and hooks/mem-audit.sh. The lines in
 // tests/fixtures/memory-index-links.json are run through each of them.
+//
+// A line with no `](….md)` link keeps the old reading, the rightmost `(….md)`,
+// as memtags_file does: the §11 gate matches tags on such lines, and dropping
+// them was a deny it no longer made (0.115.0 pre-tag review M1).
 export function indexEntryFile(line) {
   const m = /\]\(([^)]+\.md)\)/.exec(line);
-  return m ? m[1] : null;
+  if (m) return m[1];
+  const all = [...line.matchAll(/\(([^)]*\.md)\)/g)];
+  return all.length ? all[all.length - 1][1] : null;
 }
 
 // parseMemoryIndex(content) — parses MEMORY.md text into entries with tags.

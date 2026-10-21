@@ -123,6 +123,8 @@ oracle_match() {
   while IFS= read -r line; do
     FILE=""
     [[ "$line" =~ $ORACLE_FILE_RE ]] && FILE="${BASH_REMATCH[1]}"
+    # No `](….md)` link: the old reading (169 fallback, below).
+    [[ -z "$FILE" ]] && FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
     [[ -z "$FILE" ]] && continue
     TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
     if [[ -z "$TAG_BLOCK" ]]; then
@@ -536,6 +538,53 @@ for c in ${CONSUMERS[@]+"${CONSUMERS[@]}"}; do
     fail "$base must source hook-common.sh before memory-tags.sh (hook-common=${HC_LINE:-none}, memory-tags=${MT_LINE:-none}) — otherwise memtags fail-open goes unlogged"
   fi
 done
+
+# ---------------------------------------------- 169 fallback: deny-only ---
+# A line with no `](….md)` link kept matching before item 169, through the
+# rightmost `(….md)`. Taking only `](….md)` dropped such lines, and their tags
+# with them, which is a deny the §11 gate no longer made (0.115.0 pre-tag review
+# M1). memtags_match must give, on those shapes, exactly what the 0.114.0 rule
+# gave: the oracle here is that rule whole, file and tags.
+FALLBACK_INDEX="$SANDBOX/fallback-index.md"
+cat > "$FALLBACK_INDEX" <<'IDX'
+- Ship notes (feedback_fb_ship.md) [fbship, fbrelease] — the title is not a link
+- [Deploy] (feedback_fb_deploy.md) [fbdeploy] — a space before the paren
+- [Docs](https://example.com/x) [fbtagx] — see (feedback_fb_web.md)
+IDX
+old_rule_match() {
+  local index="$1" hay="$2" line FILE TAG_BLOCK t ESC_TAG MATCHED_TAGS
+  local -a TAGS
+  while IFS= read -r line; do
+    FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
+    [[ -z "$FILE" ]] && continue
+    TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
+    if [[ -z "$TAG_BLOCK" ]]; then
+      TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*\[\([^]]*\)\][[:space:]]*[—-].*/\1/p')
+    fi
+    [[ -z "$TAG_BLOCK" ]] && continue
+    IFS=',' read -ra TAGS <<<"$TAG_BLOCK"
+    MATCHED_TAGS=""
+    for t in "${TAGS[@]}"; do
+      t=$(echo "$t" | tr -d ' ')
+      [[ -z "$t" ]] && continue
+      ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
+      if echo "$hay" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
+        if [[ -z "$MATCHED_TAGS" ]]; then MATCHED_TAGS="$t"; else MATCHED_TAGS="$MATCHED_TAGS,$t"; fi
+      fi
+    done
+    [[ -n "$MATCHED_TAGS" ]] && printf '%s\t%s\n' "$FILE" "$MATCHED_TAGS"
+  done < "$index"
+}
+FB_HAY="please fbship the fbrelease, fbdeploy it; fbtagx"
+FB_EXPECT=$(old_rule_match "$FALLBACK_INDEX" "$FB_HAY")
+FB_ACTUAL=$(memtags_match "$FALLBACK_INDEX" "$FB_HAY")
+# The third line's tag block sits before its `(….md)`, so the 0.114.0 rule gave
+# it no row either: two rows, and the third line must stay absent.
+if [[ $(printf '%s\n' "$FB_EXPECT" | grep -c .) -eq 2 && "$FB_ACTUAL" == "$FB_EXPECT" ]]; then
+  pass "169 fallback: lines with no ](….md) link match as in 0.114.0 (2 rows, files and tags)"
+else
+  fail "169 fallback: 0.114.0 rule=[${FB_EXPECT}] matcher=[${FB_ACTUAL}]"
+fi
 
 if (( FAIL > 0 )); then
   echo "FAILED: $FAIL case(s)"

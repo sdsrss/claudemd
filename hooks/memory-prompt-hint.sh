@@ -106,7 +106,8 @@ TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 # tag; at 336 tags it cost 1.8-3.9s against this hook's 3s hooks.json budget and
 # the hint started disappearing under session load. The parse/match SEMANTICS
 # are the old loop's, except that the entry's file is the first `](….md)` on
-# the line rather than the last `(….md)` (backlog item 169) —
+# a line that has one, rather than the last `(….md)` (backlog item 169); a line
+# without one is read as before —
 # memory-tags-parity.test.sh runs the old loop, so amended, as an oracle.
 MATCHES=()
 MATCH_TAGS=()
