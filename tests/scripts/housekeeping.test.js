@@ -232,7 +232,10 @@ test(
       out.errors.map(e => e.path),
       [d]
     );
-    assert.ok(['EACCES', 'EPERM'].includes(out.errors[0].code), out.errors[0].code);
+    // The errno is the OS's: Linux reports the refused unlink (EACCES), macOS
+    // the directory that could not be emptied (ENOTEMPTY; PR CI run 39557203873,
+    // macos-latest node 24).
+    assert.ok(['EACCES', 'EPERM', 'ENOTEMPTY'].includes(out.errors[0].code), out.errors[0].code);
     const again = apply();
     assert.equal(again.status, 0, again.stderr);
     assert.equal(JSON.parse(again.stdout).deleted, 1);
