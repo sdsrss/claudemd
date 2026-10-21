@@ -19,9 +19,10 @@
 #    checked `git branch -D` command; and after any `git branch -d` command
 #    (both events: one that exits 0 can still have left a branch), every
 #    branch it named that is still there gets a verdict: landed, with that
-#    command, or kept, with the commits that have no copy, for the session to
-#    name under open items. Core §7 lets a session use -D only through this
-#    command.
+#    command, or kept, with the commits that have no copy or the reason it was
+#    not compared (a shallow or partial clone, no local default branch, merge
+#    commits, …), for the session to name under open items. Core §7 lets a
+#    session use -D only through this command.
 #
 # Why: nothing ever reminded anyone. On 2026-09-22 two repos held 15 local
 # branches besides main: 8 were `worktree-agent-*` names left by Claude Code's

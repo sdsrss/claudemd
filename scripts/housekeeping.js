@@ -64,8 +64,10 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
           that have no copy on the default branch (\`missingCount\` counts
           them all), or a reason such as \`compare-failed\` when the
           comparison could not be made, \`shallow\` when a shallow clone
-          stops before the fork point, or \`no-default-branch\` when the
-          default branch has no local copy. Never deletes.
+          holds no commit it shares with the default branch (it stops
+          before the fork point, or the branch is unrelated), or
+          \`no-default-branch\` when the default branch has no local copy.
+          Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).

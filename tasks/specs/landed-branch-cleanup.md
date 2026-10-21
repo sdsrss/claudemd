@@ -74,6 +74,8 @@
   - 二进制按 blob id 比；权限变化计入 patch-id（沙箱已验证）；子模块指针始终显示（`--ignore-submodules=none --submodule=short`）。
   - 位置确认（评审第 1 轮 H1 之后）：patch-id 不看行号，所以每个匹配都要再做一次三方合并：`git merge-tree --write-tree --merge-base=<改动的基础> <main 上对应的提交> <分支提交>`，要求无冲突，并且结果 tree 等于那个对应提交的 tree。最初用的 `git apply` 会把补丁挪到上下文能对上的别处，已弃用。合并在临时裸仓库 `claudemd-landed.XXXXXX/repo.git` 里运行：通过 alternates 借用原仓库的对象，去掉所有 `GIT_*` 环境变量，不读全局、系统和仓库配置，`-c core.attributesFile=/dev/null`，所以不读任何属性文件、不运行 merge driver（第 2 轮 M1、M2）。merge-tree 退出码大于 1 时判为 `compare-failed`，而不是“缺提交”（第 2 轮 M3）。临时目录运行后删除；超时被杀留下的，下次运行清理 10 分钟以前的，`clean-residue` 也会清理。
   - git < 2.39 没有 `--verbatim`，< 2.40 没有 `merge-tree --merge-base` → 不判。部分克隆不判（会从远端拉对象）；`remote.*.promisor` 按布尔值读，`yes`/`1` 也算（git 2.53 的部分克隆只写这一项）。
+  - 历史视图（第 3 轮之后）：遍历历史、读 patch-id 都加 `--no-replace-objects`；位置确认用 `rev-list --parents` 给出的父提交（含 grafts），不用临时仓库里解析出的 `${c}^`。grafts 不能关掉：默认分支一侧的 graft 把分支提交接成 main 的祖先时，这个提交按 git 的看法就在 main 的历史里（`git log`、`git branch -d` 都这么算），即使 main 的哪棵 tree 里都没有它的改动（第 4 轮 F1，留作已知情况，写进 CHANGELOG "Not changed"）。
+  - 保留时只给理由、不列提交的情况：`merge-commits`、`too-far`、`partial-clone`、`unrelated`、`shallow`（浅克隆里找不到和默认分支共同的提交：分叉点在边界外，或本来就无关）、`no-default-branch`（origin/HEAD 指向本地不存在的分支，什么都不判）、`compare-failed`（merge-tree 失败，或临时仓库建不起来；其余照常）、`patch-id-failed`。
 - 只认 `base..D`：分叉点之前的 main 提交不算（分支重新加回 main 早先删掉的内容，不是"已落地"）。
 - 成本控制：
   - main 一侧一次 `git log -p` 覆盖所有候选的 base 中最早的那个（`merge-base --octopus`），最多 500 个提交；
@@ -173,5 +175,5 @@
 - 第 4 轮前的修复（4569fc2、066b64b）：`node --test tests/scripts/housekeeping.test.js` → 修复前新用例失败 2 个（mkdtemp `ENOENT`；`unrelated` 不等于 `shallow`），修复后通过（83/84，1 个跳过为 macOS 用例）；`bash tests/hooks/branch-prune.test.sh` → 修复前 37/41（11l、11m、11n、12b 失败），修复后 41/41；对 0.115.0 的代码 27/41（新增 21 项里 14 项失败，12b 通过）
 - 变异：去掉默认分支检查、去掉浅克隆检查，各自让 housekeeping 用例失败；去掉 `GIT_*` 剥离，`GIT_ATTR_SOURCE` 用例失败（判为 landed）
 - 真实数据（066b64b）→ 29 个里 27 个已落地、2 个保留，35 行判定都与 d04c3b2 相同，每个分支 85–642 ms（负载 4）
-- TC、TS 结束状态（脚本重建）上的 hook 输出：3fa16c8 对 066b64b 逐字节相同（943、823 字节），7c51d7e 对 066b64b 逐字节相同（945、825 字节）
+- TC、TS 结束状态（脚本重建）上的 hook 输出：3fa16c8 对 066b64b 逐字节相同（943、823 字节），7c51d7e 对 066b64b 逐字节相同（945、825 字节）。两次重建放在不同的目录（`abw`、`abw2`），输出里含两次仓库路径，所以第二次每个多 2 字节；每次比较的两边用的是同一个重建
 - 066b64b 上：`TZ=UTC npm run check` → 通过（node 1684/1686，2 个跳过；全部 shell 套件）；忽略 SIGPIPE → 通过（同上）；`TZ=UTC` bash 3.2.57 → 通过（44/44）；`npm run smoke` → 通过（2/2）；跑完后工作树干净
