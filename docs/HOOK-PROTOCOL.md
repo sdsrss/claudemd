@@ -180,8 +180,9 @@ Emitters, derived from source and gated by
   branches that are merged (at most 10) and telling the session to delete them
   with the `git branch -d` command it gives, leaving out any the project keeps;
   from 0.116.0 the same line lists `landed` branches (a gone or
-  `worktree-agent-*` branch whose every commit has a byte-identical copy on the
-  default branch, which `-d` refuses) with a checked `git branch -D` command.
+  `worktree-agent-*` branch whose work is on the default branch byte for byte:
+  a copy of each commit, or one squash commit, at the same place; `-d`
+  refuses it) with a checked `git branch -D` command.
   After a `git branch -d` command (either event; a refused one exits 1), one
   line judging each branch it named that is still there: landed, with that
   command, or kept, with the commits that have no copy. The hook deletes

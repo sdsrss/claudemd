@@ -41,21 +41,25 @@ branches  REPORT (never delete) the local branches that are safe to delete:
           default branch, after the fork point, with the same \`git patch-id
           --verbatim\` (whitespace kept, binary files compared by blob id), or
           its whole change equals one such commit, and that commit is the
-          same change at the same place (the branch's change applied to its
-          parent gives it); \`git branch -d\` refuses these, so deleting
-          them takes \`git branch -D\`. Judges at most 20
-          such candidates, counting the rest in \`unjudged\`, and none whose
-          fork point is more than 500 commits behind. A gone one that is not
-          landed is listed under \`goneUnmerged\`.
+          same change at the same place (a three-way merge of the change onto
+          it, git 2.40+, leaves it as it is); a partial clone is not judged.
+          \`git branch -d\` refuses these, so deleting them takes \`git
+          branch -D\`. Judges at most 20 such candidates, counting the rest
+          in \`unjudged\`, and none whose fork point is more than 500 commits
+          behind. A gone one that is not landed is listed under
+          \`goneUnmerged\`.
 refused   Judge the branches a \`git branch -d\` command left in place: the
           names in its \`git [-C DIR] branch -d|--delete\` segments (read from
           stdin) that still exist, are not the default branch, a worktree
-          checkout or a symbolic ref. Each is \`landed\` (as above, with
-          \`how\`: \`per-commit\` and the number of \`commits\`, \`squash\` and
-          the commit it equals, \`via\`, or \`on-main\` when its tip is on the
-          default branch and -d compared it with something else) or
-          \`kept\`, with up to 3 of the commits that have no copy on the
-          default branch (\`missingCount\` counts them all). Never deletes.
+          checkout or a symbolic ref, at most 20 (\`unjudged\` counts the
+          rest). Comments, redirections, a segment with a GIT_* assignment,
+          and one after a \`cd\` without an absolute -C, name nothing. Each
+          is \`landed\` (as above, with \`how\`: \`per-commit\` and the number
+          of \`commits\`, \`squash\` and the commit it equals, \`via\`, or
+          \`on-main\` when its tip is on the default branch and -d compared
+          it with something else) or \`kept\`, with up to 3 of the commits
+          that have no copy on the default branch (\`missingCount\` counts
+          them all). Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -270,8 +274,8 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 //     by the user's decision (2026-10-21), since the commit is still in the
 //     default branch's history. A match from BEFORE the fork point is not
 //     counted: re-adding what the default branch once removed is new work.
-// Measured on the 29 branches users force-deleted in one week after -d
-// refused them: 27 landed, the other 2 had a commit edited on the way in.
+// Measured on 29 branches -d refuses that were deleted with -D in one week:
+// 27 landed, the other 2 each had one commit whose content on main differs.
 //
 // "On the default branch" means the LOCAL one, and a listed branch must also
 // be merged into what `git branch -d` compares it with: its upstream when that
@@ -373,7 +377,8 @@ function checkedOutBranches(git) {
 }
 
 // `git <args> | git patch-id --verbatim` as a Map commit → patch id, null when
-// either fails (git before 2.39 has no --verbatim). Run at the top level, so
+// either fails (git before 2.39 has no --verbatim; the same-place check
+// below needs 2.40). Run at the top level, so
 // a `diff.relative` setting cannot cut the diff down to the cwd's subtree.
 function verbatimPatchIds(top, args) {
   const opts = { encoding: 'utf8', maxBuffer: PATCH_MAX_BUFFER };

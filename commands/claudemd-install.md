@@ -16,7 +16,7 @@ Surface the JSON output as a one-line human summary:
 - `backupDir`: path to the backup directory when applicable.
 - `specBackupDir`: on `overwrite-spec`, the `spec-backup-<ISO>/` directory the replaced spec files were copied to because they differed from the shipped ones (an older version, or edits made to the installed spec); `null` otherwise. When it is set, name it: anything the user had added to `~/.claude/CLAUDE.md` by hand is in that copy, not in the new file.
 - `userContentDetected: true` — flag this loudly: the existing `~/.claude/CLAUDE.md` did not look like a claudemd spec; the user's hand-written content is in `backupDir/CLAUDE.md`. To bring it back, the user runs `/claudemd-uninstall restore` and then `/plugin uninstall claudemd@claudemd` (while the plugin stays installed, the next session start installs the spec again), or merges the two files by hand.
-- `entries.length`: number of registered hooks.
+- `entries.length`: number of hook registrations (a hook registered on two events counts twice, so it is one more than the number of hooks from 0.116.0).
 - `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless).
 
 **When to use**: right after `/plugin install claudemd@claudemd`, to get the SPEC into `~/.claude/` without waiting for a restart. Claude Code does not honor `postInstall`, so without this command `install.js` first runs on the next `SessionStart`, and until then `/claudemd-status` reports `plugin.hint == "cache-present-bootstrap-pending"`.

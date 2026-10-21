@@ -25,7 +25,6 @@ claudemd_hook_alternation() {
   ' "$repo/scripts/lib/hook-registry.js"
 }
 
-# Prints one basename per line (with .sh).
 # claudemd_hook_registration_count REPO — the hooks.json registrations the
 # registry declares (a hook on two events counts twice), which is what the
 # install manifest holds.
@@ -37,6 +36,7 @@ claudemd_hook_registration_count() {
   ' "$repo/scripts/lib/hook-registry.js"
 }
 
+# Prints one basename per line (with .sh).
 claudemd_hook_basenames() {
   local repo="$1"
   node -e '

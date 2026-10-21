@@ -14,15 +14,18 @@ import {
   HOOK_BASENAMES,
   HOOK_ENV_SUFFIXES,
   HOOK_NAME_TO_ENV,
+  HOOK_REGISTRATION_COUNT,
 } from '../../scripts/lib/hook-registry.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('registry has 27 entries (matches integration MCOUNT)', () => {
-  // Pinned to the same number as tests/integration/full-lifecycle.test.sh
-  // MCOUNT and tests/scripts/install.test.js manifest.entries.length so the
-  // three counts move together when a hook is added or removed.
+test('registry has 27 entries and 28 hooks.json registrations', () => {
+  // The install manifest holds one entry per registration (MCOUNT in
+  // tests/integration/full-lifecycle.test.sh, manifest.entries.length in
+  // tests/scripts/install.test.js), which is HOOK_REGISTRATION_COUNT: one per
+  // hook plus its `alsoOn` events (branch-prune: PostToolUseFailure, 0.116.0).
   assert.equal(HOOK_REGISTRY.length, 27);
+  assert.equal(HOOK_REGISTRATION_COUNT, 28);
 });
 
 test('R15: optIn names exactly the hooks whose source exits at an opt-in variable', () => {
