@@ -172,6 +172,38 @@ npx claudemd-cli lint "$1" || exit 1
 >
 > This is scoped to git-authored template text, not to `#` in general. Under `git commit -m` / `-F` / `--cleanup=whitespace|verbatim` git **keeps** column-0 `#` lines in the stored message, and so does `lint` — a `#` heading in a `-F release-notes.md` body stays in scope. Indented `# …` always stays in scope (git strips at column 0 only). Non-default `core.commentChar` → pass `--comment-char <c>`; `core.commentChar=auto` is not detected, so set it explicitly there.
 
+**GitHub Actions example (`.github/workflows/commit-msg-lint.yml`)** — lints the message of every commit in a pull request and fails the check if any has a hit. These are stored messages, already cleaned by git, so they go through `--stdin` without `--commit-msg`: a `#` line git kept is part of the message and stays in scope. The package version is pinned, unlike the one-off commands above: a workflow runs unattended on every push, so it should run the version you chose, and you bump it when you choose to (the plugin's `pre-bash-safety-check` blocks unpinned `npx <pkg>` for the same reason). `0.113.4` was the latest published version when this example was written and run; put the version you want there.
+
+```yaml
+name: commit-msg lint
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - name: Lint every commit message in the pull request
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # An assignment, so a bad range fails the step instead of linting nothing.
+          commits=$(git rev-list "$BASE_SHA..$HEAD_SHA")
+          status=0
+          for c in $commits; do
+            echo "commit $c"
+            git log -1 --format=%B "$c" | npx --yes claudemd-cli@0.113.4 lint --stdin || status=1
+          done
+          exit "$status"
+```
+
 The CLI does NOT depend on `~/.claude/` state — pure stateless input → stdout/stderr + exit code. Same enforcement, anywhere Node 20+ runs.
 
 ---
