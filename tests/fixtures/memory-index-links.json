@@ -1,0 +1,37 @@
+{
+  "_doc": "MEMORY.md index lines on which every parser of index lines must name the same entry file (backlog item 169). The index format is `- [Title](file.md) [tags] — hook`, so the entry's own file is the target of the FIRST `](….md)` on the line; a link or a `(name.md)` in the hook text is not the entry. Before the fix, the awk matcher in hooks/lib/memory-tags.sh (behind the §11 deny and the memory hint), parseMemoryIndex in scripts/lib/memory-tags.js (the doctor's tag scan) and scripts/spec-coherence-audit.js took the LAST `(….md)` on the line: on lines[0] the coherence audit reported feedback_old.md dangling and feedback_a.md not indexed, and on lines[1] and lines[3] the other two named feedback_old.md. hooks/mem-audit.sh read the first `](`, but its sed could not reach one that follows a `]`, so it found no link on lines[4]. Fields per line — line: written verbatim into a sandbox MEMORY.md; file: the entry file every parser must report; tags: what the two tag parsers must report for it ([] = untagged, which both skip). onDisk: the memory files the drift parsers run against. neverAnEntry: must not appear in any parser's output. Read by tests/scripts/memory-index-links.test.js, tests/hooks/memory-tags-parity.test.sh, tests/hooks/mem-audit.test.sh, tests/hooks/memory-read-check.test.sh and tests/hooks/memory-prompt-hint.test.sh.",
+  "lines": [
+    {
+      "_why": "the reproduced line: a hook text linking the memory it supersedes",
+      "line": "- [A](feedback_a.md) — supersedes [old](feedback_old.md)",
+      "file": "feedback_a.md",
+      "tags": []
+    },
+    {
+      "_why": "the same shape with a tag block, so the tag parsers report it at all",
+      "line": "- [B](feedback_b.md) [linkfix-beta] — supersedes [old](feedback_old.md)",
+      "file": "feedback_b.md",
+      "tags": ["linkfix-beta"]
+    },
+    {
+      "_why": "control: an ordinary line whose only link is the entry's own",
+      "line": "- [C](feedback_c.md) [linkfix-gamma] — control, the only link on the line is the entry",
+      "file": "feedback_c.md",
+      "tags": ["linkfix-gamma"]
+    },
+    {
+      "_why": "a hook text with no link, only a parenthesised memory name",
+      "line": "- [D](feedback_d.md) [linkfix-delta] — hook text names (feedback_old.md) and links nothing",
+      "file": "feedback_d.md",
+      "tags": ["linkfix-delta"]
+    },
+    {
+      "_why": "a title that ends in a bracket: the first `](` follows `]]`",
+      "line": "- [E [v2]](feedback_e.md) [linkfix-epsilon] — title ends in a bracket",
+      "file": "feedback_e.md",
+      "tags": ["linkfix-epsilon"]
+    }
+  ],
+  "onDisk": ["feedback_a.md", "feedback_b.md", "feedback_c.md", "feedback_d.md", "feedback_e.md"],
+  "neverAnEntry": "feedback_old.md"
+}

@@ -177,11 +177,12 @@ test('parseMemoryIndex: plain form (no backticks) — matches code-graph-mcp tem
   assert.deepEqual(entries[0].tags, ['callgraph', 'impact', 'refs']);
 });
 
-test('v0.23.11: parser-parity — title embedding a (foo.md) token resolves the LAST (link-target) group', () => {
-  // memory-read-check.sh resolves the file with a greedy `s/.*(\(...\.md\)).*/`
-  // (last match = the markdown link target). Pre-fix this used `.match()` (first
-  // match) and returned `bar.md` for a title containing it, while the hook
-  // enforced against `real_file.md` — a silent parser divergence.
+test('v0.23.11: parser-parity — title embedding a (foo.md) token resolves the link target', () => {
+  // Pre-fix this took the first `(….md)` and returned `bar.md` for a title
+  // containing it, while the hook enforced against `real_file.md` — a silent
+  // parser divergence. The fix then took the LAST `(….md)`, which a link in the
+  // hook text broke the other way (backlog item 169); the file is now the first
+  // `](….md)` in every parser (tests/scripts/memory-index-links.test.js).
   const md = '- [See foo (bar.md)](real_file.md) `[tag1, tag2]` — desc\n';
   const entries = parseMemoryIndex(md);
   assert.equal(entries.length, 1);

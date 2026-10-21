@@ -481,8 +481,31 @@ else
   ng "28 (out1: ${OUT1:0:80}; out2: ${OUT2:0:80}; out3: ${OUT3:0:80}; out4: ${OUT4:0:80})"
 fi
 
+# Case 29: backlog item 169 — the hint names the entry's OWN file, the first
+# `](….md)` on its index line, not a memory its hook text links or names. The
+# matcher took the last `(….md)`, so `[linkfix-beta]` and `[linkfix-delta]`
+# below both suggested feedback_old.md. Lines shared with every index parser's
+# suite (tests/fixtures/memory-index-links.json); own project dir, so the dedupe
+# rows of the cases above cannot hide anything.
+S29_CWD="/work/s29proj"
+S29_PROJ="$HOME/.claude/projects/$(echo "$S29_CWD" | tr '/._' '-')"
+S29_FIXTURE="$HERE/../fixtures/memory-index-links.json"
+mkdir -p "$S29_PROJ/memory"
+jq -r '.lines[].line' "$S29_FIXTURE" > "$S29_PROJ/memory/MEMORY.md"
+while IFS= read -r f; do
+  [[ -n "$f" ]] && touch "$S29_PROJ/memory/$f"
+done < <(jq -r '.onDisk[]' "$S29_FIXTURE")
+OUT=$(jq -cn --arg p "rename the linkfix-beta and linkfix-delta flags" --arg c "$S29_CWD" \
+  '{hook_event_name:"UserPromptSubmit", session_id:"sess29", prompt:$p, cwd:$c}' | bash "$HOOK" 2>/dev/null)
+CTX=$(echo "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+if [[ "$CTX" == *feedback_b.md* && "$CTX" == *feedback_d.md* && "$CTX" != *feedback_old.md* ]]; then
+  ok "29 the hint names each entry's own link, not a memory its hook text mentions"
+else
+  ng "29 (out: $OUT)"
+fi
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((28 - FAIL))/28 passed"
+  echo "Tests: $((29 - FAIL))/29 passed"
   exit 1
 fi
-echo "Tests: 28/28 passed"
+echo "Tests: 29/29 passed"

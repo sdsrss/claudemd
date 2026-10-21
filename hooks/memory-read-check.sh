@@ -292,7 +292,9 @@ fi
 # Unlike the hint hook's copy, a timeout here is not a missing suggestion — the
 # process is killed before it can emit, so the §11 DENY never reaches Claude
 # Code and the gate fails open at exactly the ship moment, with no telemetry row
-# to say so. Matching semantics are unchanged; the parity test holds them.
+# to say so. Matching semantics are the old loop's, except that the entry's
+# file is the first `](….md)` on the line, not the last `(….md)` (backlog item
+# 169); the parity test holds them.
 #
 # Only the file column is read: this hook denies per FILE, and the old loop
 # `break`ed on the first matching tag. memtags_match reports every matched tag,

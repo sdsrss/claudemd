@@ -202,6 +202,23 @@ export function classifyTag(tag) {
   return reasons;
 }
 
+// indexEntryFile(line) — the file a MEMORY.md index line is the entry for, or
+// null. The format is `- [Title](file.md) [tags] — hook`, so it is the target
+// of the FIRST `](….md)` on the line. Not the first `(….md)`: a title may hold
+// one (`- [Fix for (legacy.md) parsing](file.md)`). Not the last: the hook text
+// may link or name another memory (`— supersedes [old](feedback_old.md)`), and
+// taking the last sent the doctor's tag findings, the coherence audit's
+// dangling/orphan rows and the §11 deny to that other file (backlog item 169).
+//
+// Every parser of index lines uses this definition: spec-coherence-audit.js
+// imports this function, and the shell side spells the same regex in
+// hooks/lib/memory-tags.sh (memtags_file) and hooks/mem-audit.sh. The lines in
+// tests/fixtures/memory-index-links.json are run through each of them.
+export function indexEntryFile(line) {
+  const m = /\]\(([^)]+\.md)\)/.exec(line);
+  return m ? m[1] : null;
+}
+
 // parseMemoryIndex(content) — parses MEMORY.md text into entries with tags.
 // Supports both backtick-wrapped (``[tag, tag]``) and plain (`[tag, tag]`)
 // tag-block syntax, mirroring memory-read-check.sh:81-86. Returns array of
@@ -212,14 +229,8 @@ export function parseMemoryIndex(content) {
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trimEnd();
     // Match: `- [Title](file.md) [tag1, tag2] — desc` OR with backticks.
-    // Take the LAST `(...md)` group — the markdown link target sits after the
-    // title, and a title may itself embed a `(foo.md)` token. memory-read-check.sh
-    // resolves the file with a greedy `s/.*(\(...\.md\)).*/` (last match); using
-    // `.match()` (first match) here diverged — doctor/scan would report tag
-    // findings against a different file than the hook enforces against.
-    const fileMatches = [...line.matchAll(/\(([^)]+\.md)\)/g)];
-    if (fileMatches.length === 0) continue;
-    const fileMatch = fileMatches[fileMatches.length - 1];
+    const file = indexEntryFile(line);
+    if (file === null) continue;
     // Both tag-block forms anchor on `.md)` (greedy prefix = LAST occurrence),
     // mirroring memory-read-check.sh. An unanchored backtick match diverged:
     // a prose line quoting a decorative `[label]` token plus any `(….md)`
@@ -249,7 +260,7 @@ export function parseMemoryIndex(content) {
       // in doctor's output instead of hidden behind a prettier copy of it.
       .map(t => t.replace(/ /g, ''))
       .filter(Boolean);
-    entries.push({ line, file: fileMatch[1], tags });
+    entries.push({ line, file, tags });
   }
   return entries;
 }

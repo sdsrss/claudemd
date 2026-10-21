@@ -68,7 +68,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `spec-hash.js` / `spec-diff.js` / `install-drift.js` | Installed-vs-shipped comparison: hash, unified diff, hook-entry drift; the one spec-copy path (verify + rollback) | `sha256File` `compareSpecs` `copySpecFiles` / `diffSpec` / `compareHooks` |
 | `lint.js` | §10-V banned-vocab engine + transcript parser (shared with `bin/`) | `readPatterns` `scan` `parseTranscript` `stripIdentifiers` `stripGitCommitComments` `formatHumanReadable` `formatJSON` `DEFAULT_PATTERNS_FILE` … |
 | `rule-hits-parse.js` | JSONL reader + every aggregation the audit scripts use | `readHits` `groupBySection` `groupByHook` `topPatterns` `byBypass` `byFailOpen` `byTrend` `blockingDenyCount` … |
-| `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget | `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `MEMORY_INDEX_BUDGET_BYTES` |
+| `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget | `indexEntryFile` `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `MEMORY_INDEX_BUDGET_BYTES` |
 | `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
 | `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
 | `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |

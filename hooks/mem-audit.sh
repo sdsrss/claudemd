@@ -179,11 +179,18 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   done < <(find "$mem_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
   # Extract the linked file from each MEMORY.md index line. Markdown link
-  # syntax `[Title](file.md) ...` — the FIRST `](` on the line, one per line.
-  # Every `(….md)` token on the line used to count, so a title holding
+  # syntax `[Title](file.md) ...` — the FIRST `](….md)` on the line, one per
+  # line. Every `(….md)` token on the line used to count, so a title holding
   # `(legacy.md)` or a description mentioning `(other.md)` was reported as an
   # index_orphan; the last `](….md)` picked a description's own link instead.
-  in_index_list=$(sed -nE 's/^([^]]|][^(])*]\(([^)]+\.md)\).*/\2/p' "$index_file" 2>/dev/null)
+  # awk's leftmost match(), not the sed `^([^]]|][^(])*]\(` it replaces: that
+  # prefix consumed a `]` together with the character after it, so the `](` of
+  # a title ending in a bracket, `[E [v2]](feedback_e.md)`, was never reached and
+  # the entry's file read as a file_orphan (backlog item 169). Same regex as
+  # memtags_file (lib/memory-tags.sh) and indexEntryFile
+  # (scripts/lib/memory-tags.js); tests/fixtures/memory-index-links.json runs
+  # all three.
+  in_index_list=$(awk 'match($0, /\]\([^)]+\.md\)/) { print substr($0, RSTART + 2, RLENGTH - 3) }' "$index_file" 2>/dev/null)
   [[ -n "$in_index_list" ]] && in_index_list="$in_index_list"$'\n'
 
   # Set difference in awk, both directions, instead of a `printf | grep -qFx`

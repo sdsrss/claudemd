@@ -389,9 +389,38 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Case 15: backlog item 169 — the index lines every parser of MEMORY.md must
+# read alike (tests/fixtures/memory-index-links.json). The sed this hook used
+# took the first `](` but could not reach one that follows a `]`, so a title
+# ending in a bracket — `[E [v2]](feedback_e.md)` — linked nothing and its
+# file read as a file_orphan, while the other parsers named it. One fixture
+# file is left off disk on purpose, so the expected output is exactly one
+# drift entry: that proves the index was parsed rather than skipped.
+# --------------------------------------------------------------------------
+reset_sentinel
+rm -rf "$HOME/.claude/projects"
+LINKS_FIXTURE="$HERE/../fixtures/memory-index-links.json"
+seed "-proj-" "MEMORY.md" "$(jq -r '.lines[].line' "$LINKS_FIXTURE")"
+LINKS_N=0
+while IFS= read -r f; do
+  [[ -n "$f" && "$f" != "feedback_c.md" ]] || continue
+  seed "-proj-" "$f" "$COMPLIANT_NO_LINK"
+  LINKS_N=$((LINKS_N + 1))
+done < <(jq -r '.onDisk[]' "$LINKS_FIXTURE")
+OUT=$(bash "$HOOK" </dev/null 2>"$ERRF"); RC=$?
+ERR=$(cat "$ERRF"); rm -f "$ERRF"
+if [[ "$RC" -eq 0 && -z "$OUT" && "$LINKS_N" -ge 4 ]] && echo "$ERR" | grep -q 'mem-audit: 1 MEMORY.md drift entries:' &&
+  echo "$ERR" | grep -q 'index_orphan: .*MEMORY.md → feedback_c.md (link target missing)' &&
+  [[ "$ERR" != *feedback_old.md* ]]; then
+  echo "PASS: 15 the shared link fixture: each line indexes its first \`](….md)\`, nothing else"
+else
+  echo "FAIL: 15 (rc=$RC, on-disk=$LINKS_N, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
+
+# --------------------------------------------------------------------------
 # Result
 # --------------------------------------------------------------------------
 if (( FAIL > 0 )); then
-  echo "Tests: $((16 - FAIL))/16 passed"; exit 1
+  echo "Tests: $((17 - FAIL))/17 passed"; exit 1
 fi
-echo "Tests: 16/16 passed"
+echo "Tests: 17/17 passed"

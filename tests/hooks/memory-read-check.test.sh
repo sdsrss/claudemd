@@ -1132,6 +1132,32 @@ D71=$(s67dec "V=\$(gh release view v1.2.3 --json tagName)")
 [[ -z "$D71" ]] && echo "PASS: 71 a read-only gh query inside \$( ) does not trigger" \
   || { echo "FAIL: 71 (expected silence, got: '${D71}')"; FAIL=$((FAIL+1)); }
 
+# Case 72: backlog item 169 — the deny names the entry's OWN file, the first
+# `](….md)` on its index line. The matcher took the last `(….md)`, so an entry
+# whose hook text links the memory it supersedes, `- [B](feedback_b.md)
+# [linkfix-beta] — supersedes [old](feedback_old.md)`, demanded a Read of
+# feedback_old.md: a file the tag does not route to, and here one that does not
+# exist. Lines shared with every index parser's suite
+# (tests/fixtures/memory-index-links.json).
+S72_ROOT="/work/s72proj"
+S72_PROJ="$HOME/.claude/projects/$(echo "$S72_ROOT" | tr '/' '-')"
+S72_FIXTURE="$HERE/../fixtures/memory-index-links.json"
+mkdir -p "$S72_PROJ/memory"
+jq -r '.lines[].line' "$S72_FIXTURE" > "$S72_PROJ/memory/MEMORY.md"
+while IFS= read -r f; do
+  [[ -n "$f" ]] && touch "$S72_PROJ/memory/$f"
+done < <(jq -r '.onDisk[]' "$S72_FIXTURE")
+echo '{"tool":"Read","path":"/unrelated"}' > "$S72_PROJ/sess72.jsonl"
+OUT72=$(jq -cn --arg c "git push origin linkfix-beta" --arg cwd "$S72_ROOT" \
+  '{session_id:"sess72",tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' | bash "$HOOK" 2>/dev/null)
+D72=$(echo "$OUT72" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+R72=$(echo "$OUT72" | jq -r .hookSpecificOutput.permissionDecisionReason 2>/dev/null)
+if [[ "$D72" == deny && "$R72" == *"  - feedback_b.md"* && "$R72" != *feedback_old.md* ]]; then
+  echo "PASS: 72 the deny names the entry's own link, not a link in its hook text"
+else
+  echo "FAIL: 72 (decision: '${D72}', reason: ${R72:-<empty>})"; FAIL=$((FAIL+1))
+fi
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

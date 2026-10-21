@@ -110,12 +110,19 @@ HAYSTACKS=(
 # ------------------------------------------------------------------ oracle ---
 # The pre-extraction loop, verbatim from memory-prompt-hint.sh (which collected
 # every matching tag; memory-read-check.sh's copy differed only in stopping at
-# the first one, a strict subset of this output).
+# the first one, a strict subset of this output) — except the FILE line. The
+# loop took the last `(….md)` on the line (`sed -n 's/.*(\([^)]*\.md\)).*/\1/p'`);
+# backlog item 169 made the entry's file the FIRST `](….md)`, so the oracle
+# takes that, through bash's own regex engine rather than awk. Bracket
+# expressions instead of backslash escapes: POSIX leaves `\]` outside a bracket
+# undefined in an ERE, and macOS regcomp is the engine on the BSD CI leg.
+ORACLE_FILE_RE='[]][(]([^)]+[.]md)[)]'
 oracle_match() {
   local index="$1" hay="$2" line FILE TAG_BLOCK t ESC_TAG MATCHED_TAGS
   local -a TAGS
   while IFS= read -r line; do
-    FILE=$(echo "$line" | sed -n 's/.*(\([^)]*\.md\)).*/\1/p')
+    FILE=""
+    [[ "$line" =~ $ORACLE_FILE_RE ]] && FILE="${BASH_REMATCH[1]}"
     [[ -z "$FILE" ]] && continue
     TAG_BLOCK=$(echo "$line" | sed -n 's/.*\.md)[[:space:]]*`\[\([^]]*\)\]`.*/\1/p')
     if [[ -z "$TAG_BLOCK" ]]; then
@@ -340,6 +347,37 @@ else
   else
     fail "cross-language parse divergence between the hook matcher and the doctor's parser:"
     diff <(printf '%s\n' "$SH_PARSE") <(printf '%s\n' "$JS_PARSE") | sed 's/^/      /'
+  fi
+fi
+
+# ------------------------------------------- entry file = the first link -----
+# Backlog item 169. The entry's own file is the target of the FIRST `](….md)` on
+# the line (`- [Title](file.md) [tags] — hook`); this matcher took the LAST
+# `(….md)`, so a hook text linking the memory it supersedes sent the §11 deny
+# and the hint to that other file. The lines and their answers are shared with
+# every other index parser's suite (tests/fixtures/memory-index-links.json), and
+# the oracle above is run over them too, so it holds the same definition.
+LINKS_FIXTURE="$REPO/tests/fixtures/memory-index-links.json"
+LINKS_INDEX="$SANDBOX/links-MEMORY.md"
+jq -r '.lines[].line' "$LINKS_FIXTURE" > "$LINKS_INDEX" 2>/dev/null
+LINKS_HAY=$(jq -r '[.lines[].tags[]] | join(" ")' "$LINKS_FIXTURE" 2>/dev/null)
+LINKS_WANT=$(jq -r '.lines[] | select(.tags | length > 0) | "\(.file)\t\(.tags | join(","))"' "$LINKS_FIXTURE" 2>/dev/null)
+if (( $(printf '%s' "$LINKS_WANT" | grep -c . || true) < 3 )); then
+  fail "item 169: $LINKS_FIXTURE yielded fewer than 3 tagged lines — the cases below would compare nothing"
+else
+  LINKS_GOT=$(memtags_match "$LINKS_INDEX" "$LINKS_HAY")
+  if [[ "$LINKS_GOT" == "$LINKS_WANT" ]]; then
+    pass "item 169: memtags_match names the first \`](….md)\` as the entry file on every fixture line"
+  else
+    fail "item 169: memtags_match picked a different file than the entry's own link:"
+    diff <(printf '%s\n' "$LINKS_WANT") <(printf '%s\n' "$LINKS_GOT") | sed 's/^/      /'
+  fi
+  LINKS_ORACLE=$(oracle_match "$LINKS_INDEX" "$LINKS_HAY")
+  if [[ "$LINKS_ORACLE" == "$LINKS_GOT" ]]; then
+    pass "item 169: the oracle and memtags_match agree on the link fixture"
+  else
+    fail "item 169: oracle and memtags_match diverge on the link fixture:"
+    diff <(printf '%s\n' "$LINKS_ORACLE") <(printf '%s\n' "$LINKS_GOT") | sed 's/^/      /'
   fi
 fi
 

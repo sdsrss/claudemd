@@ -15,10 +15,13 @@
 # even logging that it did. One awk pass makes the cost independent of tag
 # count (same 750-tag fixture: 3.7s -> under 0.05s, tests/hooks/hook-budget.test.sh).
 #
-# Semantics are a byte-for-byte port of the loop it replaces, not a redesign.
-# tests/hooks/memory-tags-parity.test.sh keeps the two in step by running the
-# ORIGINAL shell loop as an oracle over a corpus, and carries a control that
-# breaks the awk deliberately to prove the comparison can fail.
+# Semantics are a byte-for-byte port of the loop it replaces, not a redesign,
+# with one deliberate change since: the entry's file is the FIRST `](….md)` on
+# the line, where the loop took the last `(….md)` (backlog item 169; see
+# memtags_file). tests/hooks/memory-tags-parity.test.sh keeps the two in step by
+# running that shell loop, with its file extraction updated to match, as an
+# oracle over a corpus, and carries a control that breaks the awk deliberately
+# to prove the comparison can fail.
 #
 # Two details of the old sed spellings that are load-bearing and easy to lose:
 #   * both `.*` prefixes were GREEDY, so the tag block anchors on the RIGHTMOST
@@ -51,17 +54,18 @@ function memtags_esc(s,   out, i, c) {
   }
   return out
 }
-# Rightmost `(<something>.md)` on the line — the greedy `.*` of
-# `sed -n '\''s/.*(\([^)]*\.md\)).*/\1/p'\''`.
-function memtags_file(line,   best, s, rest) {
-  best = ""
-  rest = line
-  while (match(rest, /\([^)]*\.md\)/) > 0) {
-    s = substr(rest, RSTART + 1, RLENGTH - 2)
-    best = s
-    rest = substr(rest, RSTART + RLENGTH)
-  }
-  return best
+# The entry'\''s own file: the target of the FIRST `](<something>.md)` on the line
+# (`- [Title](file.md) [tags] — hook`). This was the rightmost `(<something>.md)`
+# — the greedy `.*` of the old `sed -n '\''s/.*(\([^)]*\.md\)).*/\1/p'\''` — so a
+# hook text linking or naming another memory, `— supersedes [old](old.md)`,
+# sent the deny and the hint to old.md (backlog item 169). Same definition as
+# indexEntryFile in scripts/lib/memory-tags.js and the link scan in
+# hooks/mem-audit.sh; tests/fixtures/memory-index-links.json runs all of them.
+# awk'\''s match() is leftmost, and `[^)]+` cannot cross a `)`, so the match is
+# the leftmost `](` whose target ends in `.md`.
+function memtags_file(line) {
+  if (match(line, /\]\([^)]+\.md\)/) == 0) return ""
+  return substr(line, RSTART + 2, RLENGTH - 3)
 }
 {
   file = memtags_file($0)
@@ -84,11 +88,11 @@ function memtags_file(line,   best, s, rest) {
   # walk trying backtick-then-plain at each offset inverts that whenever a
   # plain block sits to the RIGHT of a backtick one:
   #   - [A](x.md) `[tag1]` and (y.md) [tag2] — desc
-  # the oracle yields `y.md tag1` (file = last link, tags = the backtick
-  # block); the one-pass form yielded `y.md tag2` — a LOST deny for tag1 and a
-  # GAINED deny for tag2. Caught by the pre-tag review: the corpus'\''s
-  # "second link in desc" line carries no bracketed token after the second
-  # link, so it could not see this.
+  # the oracle yields tags = `tag1` (the backtick block); the one-pass form
+  # yielded `tag2` — a LOST deny for tag1 and a GAINED deny for tag2. (The file
+  # was `y.md` then, the last `(….md)`; it is `x.md` since item 169.) Caught by
+  # the pre-tag review: the corpus'\''s "second link in desc" line carries no
+  # bracketed token after the second link, so it could not see this.
   #
   # Whitespace is `[ \t\r\v\f]` — the within-line members of the
   # `[[:space:]]` the sed spellings used. Plain `[ \t]` silently untagged an

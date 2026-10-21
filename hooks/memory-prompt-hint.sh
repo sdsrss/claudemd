@@ -105,7 +105,9 @@ TRANSCRIPT="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
 # (lib/memory-tags.sh). This was an inline loop that forked three processes per
 # tag; at 336 tags it cost 1.8-3.9s against this hook's 3s hooks.json budget and
 # the hint started disappearing under session load. The parse/match SEMANTICS
-# are unchanged — memory-tags-parity.test.sh runs the old loop as an oracle.
+# are the old loop's, except that the entry's file is the first `](….md)` on
+# the line rather than the last `(….md)` (backlog item 169) —
+# memory-tags-parity.test.sh runs the old loop, so amended, as an oracle.
 MATCHES=()
 MATCH_TAGS=()
 while IFS=$'\t' read -r _file _tags; do

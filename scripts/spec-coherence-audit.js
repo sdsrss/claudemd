@@ -44,6 +44,7 @@ import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.j
 import { SIZING_TOLERANCE_BYTES, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 import { readPatterns, scan } from './lib/lint.js';
 import { readRegistry } from './lib/spec-modules.js';
+import { indexEntryFile } from './lib/memory-tags.js';
 
 const USAGE = `Usage: node scripts/spec-coherence-audit.js [--json] [--strict] [--project=<cwd>]
 
@@ -348,17 +349,16 @@ function checkMemoryIndex(projectCwd) {
   }
 
   const indexText = fs.readFileSync(memIndex, 'utf8');
-  // One `.md` link per index line — the LAST match, matching memory-tags.js and
-  // the memory-read-check hook. This was a second copy of the regex that added
-  // EVERY match on the line, and memory-tags.js:121 documents exactly why that is
-  // wrong: a title may itself embed a `(foo.md)` token, e.g.
-  // `- [Some feature (see also legacy.md)](file.md) — desc`, which this counted
-  // as two indexed files and then reported one of them dangling (2026-07-25).
+  // One file per index line, through the shared indexEntryFile (memory-tags.js):
+  // the first `](….md)`. Every `(….md)` on the line used to count, so a title
+  // holding `(legacy.md)` read as a second indexed file (2026-07-25); the last
+  // one then picked a link in the hook text instead, and `- [A](feedback_a.md)
+  // — supersedes [old](feedback_old.md)` reported feedback_old.md dangling and
+  // feedback_a.md not indexed (backlog item 169).
   const indexedFiles = new Set();
   for (const line of indexText.split('\n')) {
-    const matches = [...line.matchAll(/\(([^)]+\.md)\)/g)];
-    if (matches.length === 0) continue;
-    indexedFiles.add(matches[matches.length - 1][1]);
+    const file = indexEntryFile(line);
+    if (file !== null) indexedFiles.add(file);
   }
 
   const onDisk = new Set(fs.readdirSync(memDir).filter(f => f.endsWith('.md') && f !== 'MEMORY.md'));
