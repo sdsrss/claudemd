@@ -73,4 +73,9 @@
   - L2："每个原因每分钟一行"应为"每个 hook×原因"。L3："不加参数时与 0.113.4 相同"只在没写过确认文件时成立。L4：确认写不进时同一次的 --prune-backups 也不执行。L5：状态目录位置是普通文件时报 EEXIST，页面没说。L6：文件跟随 CLAUDEMD_STATE_DIR，页面/--help/CHANGELOG 只写了默认路径。L7：页面的原因列表漏了 transcript-missing、event-fields-missing 等，后两者本地设置修不好。L8：AC1 仍要求写确认时间。全部按文字修。
   - 修复改了代码（hook-common.sh 一行、doctor.js 文案），按 runbook 第 4 轮新开评审只看修复范围；这是使用者同意的"两轮评审"里的第二轮。
 
+- 2026-10-21：第 4 轮评审（新开，只看修复范围 7a2b6c8..aac4226）：0C/0H/0M/6L。M1、M2 的修复核实成立（T24 在旧 hook-common 上 70/71；只在比对去掉 ts/hook 的变异只有新用例抓到）。
+  - L1：hook 不读 CLAUDEMD_STATE_DIR（hook-common.sh:487 写死 `$HOME/.claude/.claudemd-state`），页面把 doctor 的状态目录和 hook 的混为一个。L2：`CLAUDE_CONFIG_DIR`、不写会话记录的会话也会产生 transcript-missing，"本地设置修不好"不全对；原因持续时确认没有用，页面没说。L4：CHANGELOG 说页面解释"每个"错误码，说多了。L5：升级说明没提 hook 修复会让 0.113.4 吞掉的行出现；小节的提交列表漏了 c412116、6d6b0fa。L6：T24 只测了提前一天，`now + 3600 >= last` 的变异存活。全部只改文字与测试：页面、CHANGELOG 改写；加 T24b（提前 30 秒），它在旧条件和该变异下都失败。
+  - L3（范围之前就有）：docs/RULE-HITS-SCHEMA.md:69 把 transcript-missing、event-fields-missing 写成建议级，与代码相反；0.115.0 的 177 修复已改正，本版不动。
+  - 文字与测试修复不再开评审，按 runbook 做 claim-drift。评审到此结束（使用者同意的两轮）。
+
 ## 验证记录

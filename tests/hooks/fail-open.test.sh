@@ -606,6 +606,20 @@ else
   ng "T24 future-dated marker: rows after first call=$T24_N1 (want 1), after second=$T24_N2 (want 1), marker=$T24_MARK"
 fi
 
+# T24b: the same for an ordinary skew. T24's day-ahead marker leaves a check
+# that only stales markers far in the future green (review L6: `now + 3600 >=
+# last` passed 71/71). A marker 30 s ahead is stale too.
+fresh_home
+mkdir -p "$HOME/.claude/.claudemd-state"
+printf '%s' "$(( $(date +%s) + 30 ))" > "$HOME/.claude/.claudemd-state/failopen-banned-vocab-jq-missing.ts"
+bash -c "source '$HOOKS_DIR/lib/hook-common.sh'; hook_record_failopen banned-vocab jq-missing"
+T24B_N=$(jq -s '[.[]|select(.event=="fail-open" and .extra.reason=="jq-missing")]|length' "$CASE_LOG" 2>/dev/null); T24B_N=${T24B_N:-0}
+if [[ "$T24B_N" == 1 ]]; then
+  ok "T24b a rate-limit marker 30 s in the future is stale: the row is recorded"
+else
+  ng "T24b marker 30 s ahead: rows=$T24B_N (want 1)"
+fi
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"
