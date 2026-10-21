@@ -6,6 +6,14 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.3.0 (minor, 2026-10-21) — `-D` only through the branch-prune hook's checked command
+
+Design record `tasks/specs/landed-branch-cleanup.md`; data `tasks/landed-branch-cleanup/` (local). Minor, because what a session may do when `git branch -d` refuses changes. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: v8.1.0 told a session to keep any branch `-d` refuses and name it under open items. A rebase merge, a cherry-pick or a squash lands a branch's work as new commits, so `-d` refuses such a branch forever, and every one reached the user: in one week (2026-10-15 → 10-21, claudemd, daagu, gsd-lite) 29 branches were force-deleted after asking. 27 of them had every commit on `main` byte for byte (`git patch-id --verbatim`); the other 2 each had one commit edited on the way in. The user asked that such branches stop piling up. The two sessions that proposed `-D` judged with `git cherry`, whose patch-id strips whitespace: it calls a Python line moved into an `if` equal to a commit that only added trailing spaces.
+- **§7 Git**: "if `-d` refuses, run the `-D` command the branch-prune hook printed for that branch (its every commit is on the main line) exactly as printed; with no such command, keep the branch and name it under open items, never a `-D` of your own." Was: "if `-d` refuses, keep the branch and name it under open items, never `-D`."
+- **Hooks**: `branch-prune` judges a branch `landed` when every one of its commits has a commit on the default branch, after the fork point, with the same `git patch-id --verbatim` (binary files by blob id), or its whole change equals one such commit (squash); a reverted landing still counts (the user's call), a match from before the fork point does not. It gives each landed branch `[ "$(git rev-parse … refs/heads/B)" = SHA ] && git branch -D -- B`: `-D` keeps git's in-use checks, and a branch that moved since is left alone. Landed branches are listed after a merge, pull, fetch or push (gone or `worktree-agent-*` ones), and after any `git branch -d` (now also on PostToolUseFailure) each branch it named that is still there gets a verdict, the kept ones with the commits that have no copy. With the hook off there is no command, so the branch is kept as before.
+
 ## v8.2.0 (minor, 2026-10-17) — gstack no longer named, report channel by measurement, stale reasons repaired
 
 Analysis `docs/prompt-audit-2026-10-17.md`; design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. Minor, because a tool rule is removed and a subagent rule changes what it requires. No HARD rule added or removed; every rule keeps its ID.

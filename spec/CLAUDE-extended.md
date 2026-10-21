@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.2.0 — Extended
+# AI-CODING-SPEC v8.3.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.2.0 (minor, 2026-10-17)** — from the 2026-10-17 prompt audit: core §2.1 no longer routes UI checks to gstack's `browse` (the user is removing gstack; the case against the Chrome tools was gstack's own) and drops the module-overview hint; §7's push-onto-red rule gains its reason; §8's deep-traversal reason names where tool output is saved now; §11-O **Long reports** replaces Report by file: a named spawn's report is cut at 4000 chars, an unnamed one's arrives whole, so reviews and audits are spawned unnamed and report in their final message; §11-EXT-MEM gives the memory path by git root. Design record `tasks/specs/prompt-audit-fixes-2026-10-17.md`. No HARD rule added or removed.
+**v8.3.0 (minor, 2026-10-21)** — core §7 Git: when `git branch -d` refuses a branch you merged (a rebase merge, a cherry-pick, a squash), run the `-D` command the branch-prune hook printed for it exactly as printed: the hook gives one only when every commit of the branch has a byte-identical copy on the main line (`git patch-id --verbatim`, after the fork point) and the command first checks the tip is still the commit judged. With no such command the branch is kept and named under open items, never a `-D` of your own. In one week 29 branches `-d` refused were force-deleted after asking the user; 27 had landed byte for byte. Design record `tasks/specs/landed-branch-cleanup.md`. No HARD rule added or removed.
 
-**Sizing** (v8.2.0, 2026-10-17, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23351 → 23273 bytes (Δ -78); extended 36793 → 36993 bytes (Δ +200); OPERATOR.md 15335 → 15423 bytes (Δ +88). Size budget: core 23273/25000 (**1727 bytes headroom**); extended 36993/50000 (**13007 bytes headroom**).
+**Sizing** (v8.3.0, 2026-10-21, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23273 → 23435 bytes (Δ +162); extended 36993 → 37012 bytes (Δ +19); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23435/25000 (**1565 bytes headroom**); extended 37012/50000 (**12988 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

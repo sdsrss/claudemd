@@ -565,11 +565,11 @@ const PINS = [
     line: '**No user present** (a scheduled or looped run — cron, `/loop`, a remote trigger — with no one to answer): a §5 Hard op is never run; write it as its `[AUTH REQUIRED …]` line with your recommendation into the report or `tasks/pending-auth-<date>.md`, and finish the rest.',
   },
   {
-    what: 'core §7 Git — per-change commits, the current branch unless the project says otherwise, both stated as overriding the harness (v8.0.0); a branch you merged is deleted locally (v8.1.0)',
+    what: 'core §7 Git — per-change commits, the current branch unless the project says otherwise, both stated as overriding the harness (v8.0.0); a branch you merged is deleted locally (v8.1.0); -D only through the command branch-prune prints (v8.3.0)',
     file: CORE,
     anchor: '**Git** (git repo, any level)',
-    why: "Both the Opus 5.5 and the Fable 5.1 harness say commit only when asked and branch first. This user's repositories commit on main (517–955 commits on main in 60 days, no merges), and the release flow assumes one commit per change; drop the override clause and the harness default wins silently. The last sentence is the user's (2026-10-16): two repos kept merged local branches because nothing said to delete them. Its -d refusal clause is from the 0.110.0 pre-tag review: git also refuses some merged branches and its hint names -D, so without the clause the delete instruction plus the hint lead to a forced delete.",
-    line: "**Git** (git repo, any level): each verified change is its own local commit (one logical change). Branching follows the project's convention; none stated → commit on the current branch. Push, tag and release only when asked. Both override the harness's commit-only-when-asked and branch-first defaults; project `AUTO_COMMIT: off` opts out. After you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it; if `-d` refuses, keep the branch and name it under open items, never `-D`.",
+    why: "Both the Opus 5.5 and the Fable 5.1 harness say commit only when asked and branch first. This user's repositories commit on main (517–955 commits on main in 60 days, no merges), and the release flow assumes one commit per change; drop the override clause and the harness default wins silently. The last sentence is the user's (2026-10-16): two repos kept merged local branches because nothing said to delete them. Its -d refusal clause is from the 0.110.0 pre-tag review: git also refuses some merged branches and its hint names -D, so without the clause the delete instruction plus the hint lead to a forced delete. v8.3.0 (user, 2026-10-21): 29 such branches in one week were all force-deleted after asking, 27 of them landed byte for byte; the -D is allowed only through branch-prune's checked command, because both sessions that judged by hand used `git cherry`, which ignores whitespace.",
+    line: "**Git** (git repo, any level): each verified change is its own local commit (one logical change). Branching follows the project's convention; none stated → commit on the current branch. Push, tag and release only when asked. Both override the harness's commit-only-when-asked and branch-first defaults; project `AUTO_COMMIT: off` opts out. After you merge a branch into the main line, delete the local branch with `git branch -d`, unless the project keeps it; if `-d` refuses, run the `-D` command the branch-prune hook printed for that branch (its every commit is on the main line) exactly as printed; with no such command, keep the branch and name it under open items, never a `-D` of your own.",
   },
   {
     what: 'core §10 Report shape — when a report is owed, its heading and the three parts in order (v8.0.0; HARD ID §10-four-section-order)',
@@ -648,19 +648,19 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '8fecf04a7c610c79' },
+  { file: CORE, heading: '', sha256: '4d073ac24a7cc38c' },
   { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
   { file: CORE, heading: '## §2 LEVEL', sha256: '3f593e34baa198dd' },
   { file: CORE, heading: '## §3 TRUST', sha256: '4dbd6259a8286f62' },
   { file: CORE, heading: '## §5 AUTH', sha256: '4afe5c697db7a67b' },
-  { file: CORE, heading: '## §7 VALIDATE', sha256: 'f72dfd1044d79063' },
+  { file: CORE, heading: '## §7 VALIDATE', sha256: '780f6103bc53a606' },
   { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '28d607ccf56a5ac6' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '7db962169948ef25' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
-  { file: EXT, heading: '', sha256: 'e2f02697328e595d' },
+  { file: EXT, heading: '', sha256: '7c96dce7b18f3131' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7bf311f5bc8f6813' },
   {
@@ -681,7 +681,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '3766d4cc9ec8c454' },
+  { file: EXT, heading: '## Recent changes', sha256: 'ea8a02f25a5414ff' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
@@ -729,8 +729,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: '65f3b427a78314b9' },
-  { file: EXT, count: 53, sha256: 'e04879bcff9819b9' },
+  { file: CORE, count: 18, sha256: '27863f3ccf5bd77a' },
+  { file: EXT, count: 53, sha256: '090f9cd92e6b3192' },
 ];
 
 for (const inv of HEADING_INVENTORY) {
