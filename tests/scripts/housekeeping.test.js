@@ -726,6 +726,15 @@ test('branches: a landed branch stays landed under a hostile git config, judged 
   git(r, 'checkout', '-q', 'main');
   commit(r, 'other.txt', 'other\n');
   git(r, 'cherry-pick', wa);
+  // and a two-commit branch squash-merged: the squash probe runs `git diff`,
+  // which diff.external would replace.
+  const sq = 'worktree-agent-d2123456789abcdef';
+  git(r, 'checkout', '-q', '-b', sq);
+  commit(r, 'sq.txt', 'one\n');
+  commit(r, 'sq.txt', 'one\ntwo\n');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'merge', '-q', '--squash', sq);
+  git(r, 'commit', '-q', '-m', 'squash');
   for (const [k, v] of [
     ['apply.whitespace', 'fix'],
     ['diff.noprefix', 'true'],
@@ -735,7 +744,7 @@ test('branches: a landed branch stays landed under a hostile git config, judged 
   ])
     git(r, 'config', k, v);
   fs.mkdirSync(path.join(r, 'sub'));
-  assert.deepEqual(names(classifyBranches({ cwd: path.join(r, 'sub') }).landed), [wa]);
+  assert.deepEqual(names(classifyBranches({ cwd: path.join(r, 'sub') }).landed), [wa, sq]);
 });
 
 // The same-place check once applied the branch's diff to the matching
@@ -1027,6 +1036,16 @@ test('refused: a revision expression is not a branch name (review L3)', () => {
   const r = clone();
   landAndDeleteRemote(r, 'feat', 'pick');
   const out = refusedBranches({ cwd: r, command: 'git branch -d feat^0 feat~0' });
+  assert.deepEqual(out.landed, []);
+  assert.deepEqual(out.kept, []);
+});
+
+// The default branch is on itself: judged, it would read as landed and get a
+// -D. Left out even when another branch is checked out.
+test('refused: the default branch is left out when it is not checked out', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'elsewhere');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d main' });
   assert.deepEqual(out.landed, []);
   assert.deepEqual(out.kept, []);
 });
