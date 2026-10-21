@@ -65,8 +65,10 @@ Notes:
   works as expected in a commit-msg hook. Pass --stdin or quote literal
   text to opt out.
 
-  \`--\` ends the flags: every word after it is text (for audit, the path),
-  even one that starts with \`-\`: \`claudemd-cli lint -- "--json is wrong"\`.
+  \`--\` ends the flags: a word after it that starts with \`-\` is input,
+  not a flag: \`claudemd-cli lint -- "--json is wrong"\`. lint reads the
+  words as it would without \`--\` (one naming an existing file is that file);
+  audit takes the path.
 
   A commit-msg hook is handed the RAW message file, which still holds git's
   \`#\` template block and — under \`git commit -v\` — the staged diff below the

@@ -951,7 +951,7 @@ test('174a: what -- does not open — every refusal it could bypass still refuse
 test('174a: --help documents --, and the example it prints scans its text', () => {
   const h = run(['--help']);
   const m = h.stdout.match(
-    /^ {2}`--` ends the flags: every word after it is text \(for audit, the path\),\n {2}even one that starts with `-`: `claudemd-cli lint -- "([^"]+)"`\.$/m
+    /^ {2}`--` ends the flags: a word after it that starts with `-` is input,\n {2}not a flag: `claudemd-cli lint -- "([^"]+)"`\. lint reads the$/m
   );
   assert.ok(m, `no -- paragraph in --help:\n${h.stdout}`);
   const r = run(['lint', '--json', '--', m[1]]);
