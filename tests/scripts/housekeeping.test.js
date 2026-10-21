@@ -833,6 +833,7 @@ test('refused: a commit changed in the pick → kept, naming the commit with no 
   assert.equal(out.kept.length, 1);
   assert.equal(out.kept[0].name, 'fix/y');
   assert.equal(out.kept[0].reason, 'not-on-default');
+  assert.equal(out.kept[0].missingCount, 1);
   assert.deepEqual(out.kept[0].unmatched, [
     { sha: git(r, 'rev-parse', '--short', 'fix/y'), subject: 'add y2' },
   ]);

@@ -22,6 +22,9 @@
 // commands/claudemd-toggle.md list; tests/scripts/hook-registry.test.js fails
 // loudly if membership/event/matcher/timeout drift.
 //
+// `alsoOn` lists the other events a hook is registered on, with their matcher
+// and timeout; `hookEvent` is the one shown.
+//
 // `optIn` marks a default-OFF hook: it exits at its first line unless `env`
 // holds one of `values`, whatever its DISABLE_* kill switch says. toggle.js
 // reads it to say so; the drift test derives the set from the hook sources.
@@ -216,6 +219,8 @@ export const HOOK_REGISTRY = [
     hookEvent: 'PostToolUse',
     matcher: 'Bash',
     timeout: 10,
+    // A refused `git branch -d` exits 1, which fires PostToolUseFailure only.
+    alsoOn: [{ hookEvent: 'PostToolUseFailure', matcher: 'Bash', timeout: 10 }],
   },
   {
     basename: 'verify-log.sh',

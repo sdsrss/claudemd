@@ -218,4 +218,160 @@ else
   ng "10 (while behind: ${BEHIND:0:200}; after: ${CTX:0:200}; cmd: $CMD)"
 fi
 
+# ---- landed (spec v8.3.0): branches -d refuses whose commits are all on main ----
+
+# Two branches with no upstream, as a session that cherry-picks agent work
+# leaves them: fix/pick's commits land on main byte for byte, fix/edit's one
+# commit lands with other bytes. `git branch -d` refuses both.
+pick_repo() {
+  fresh_repo
+  (
+    cd "$REPO" || exit 1
+    git checkout -q -b fix/pick && echo p1 >p1 && git add p1 && git commit -q -m 'add p1' &&
+      echo p2 >p2 && git add p2 && git commit -q -m 'add p2'
+    git checkout -q main && git checkout -q -b fix/edit && echo e1 >e1 && git add e1 && git commit -q -m 'add e1'
+    git checkout -q main && echo m >m && git add m && git commit -q -m 'main moves on'
+    git cherry-pick main..fix/pick >/dev/null
+    echo 'e1 changed' >e1 && git add e1 && git commit -q -m 'add e1, changed'
+  )
+}
+fevt() { jq -cn --arg c "$1" --arg cwd "${3:-$REPO}" --arg s "${2:-branch-prune-test}" '{session_id:$s,hook_event_name:"PostToolUseFailure",tool_name:"Bash",tool_input:{command:$c},error:"Exit code 1",cwd:$cwd}'; }
+dcmd() { printf '%s' "$1" | sed -n 's/.*Delete them with `\([^`]*branch -D[^`]*\)`.*/\1/p'; }
+
+# Case 11: a refused `git branch -d` (PostToolUseFailure) gets a verdict per
+# branch: the landed one with a checked -D command, the other kept with the
+# commit that has no copy on main.
+pick_repo
+git -C "$REPO" branch -d fix/pick fix/edit >/dev/null 2>&1
+OUT=$(fevt 'git branch -d fix/pick fix/edit' bp-11 | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+EVN=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName // ""' 2>/dev/null)
+D11=$(dcmd "$CTX")
+if has_branch fix/pick && has_branch fix/edit && [[ "$EVN" == PostToolUseFailure &&
+  "$CTX" == *'`git branch -d` left 2 branch(es) in place.'* &&
+  "$CTX" == *"1 of them are on main as byte-identical copies"*": fix/pick."* &&
+  "$D11" == *"branch -D -- 'fix/pick'"* && "$D11" != *fix/edit* &&
+  "$CTX" == *'Not on main: fix/edit (commits with no identical copy there: '*' "add e1")'* &&
+  "$CTX" == *"Keep these and name them under open items; do not force-delete them."* &&
+  "$CTX" == *"DISABLE_BRANCH_PRUNE_HOOK=1"* ]]; then
+  ok "11 refused -d: landed one gets a -D command, the edited one is kept with its commit"
+else
+  ng "11 (event: $EVN; ctx: $CTX)"
+fi
+
+# Case 11b: the handed-over command deletes the landed branch and nothing else.
+if [[ -n "$D11" ]] && (cd "$SANDBOX" && eval "$D11") >/dev/null 2>&1 && ! has_branch fix/pick && has_branch fix/edit; then
+  ok "11b the -D command deletes exactly the landed branch"
+else
+  ng "11b (cmd: $D11)"
+fi
+
+# Case 11c: a branch that moved after the verdict is not deleted: the command
+# compares the tip with the commit it judged.
+pick_repo
+OUT=$(fevt 'git branch -d fix/pick' bp-11c | bash "$HOOK" 2>/dev/null)
+D11C=$(dcmd "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)")
+NEWTIP=$(git -C "$REPO" commit-tree -p fix/pick -m 'new work' "fix/pick^{tree}")
+git -C "$REPO" update-ref refs/heads/fix/pick "$NEWTIP"
+(cd "$SANDBOX" && eval "$D11C") >/dev/null 2>&1
+if [[ -n "$D11C" ]] && has_branch fix/pick && [[ "$(git -C "$REPO" rev-parse fix/pick)" == "$NEWTIP" ]]; then
+  ok "11c a branch with a new commit since the verdict is left alone"
+else
+  ng "11c (cmd: $D11C)"
+fi
+
+# Case 11d: the same verdict after a command that exits 0 (PostToolUse), and
+# nothing after a -d that deleted everything it named.
+pick_repo
+OUT=$(evt 'git branch -d fix/pick || true' bp-11d | bash "$HOOK" 2>/dev/null)
+[[ "$OUT" == *"branch -D -- 'fix/pick'"* ]] && ok "11d PostToolUse: -d || true still gets the verdict" || ng "11d (out: ${OUT:0:300})"
+git -C "$REPO" branch -q -d feat
+OUT=$(evt 'git branch -d feat' bp-11d2 | bash "$HOOK" 2>/dev/null)
+[[ -z "$OUT" ]] && ok "11d2 a -d that deleted its branch: silent" || ng "11d2 (out: ${OUT:0:300})"
+
+# Case 11e: kill switch; a failed pull or merge gets no listing; -D and other
+# git commands are not read as a refused -d.
+OUT=$(fevt 'git branch -d fix/pick' bp-11e | DISABLE_BRANCH_PRUNE_HOOK=1 bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && ok "11e kill switch silences the refused path" || ng "11e (out: ${OUT:0:200})"
+fresh_repo
+OUT=$(fevt 'git pull' bp-11f | bash "$HOOK" 2>&1)
+[[ -z "$OUT" ]] && has_branch feat && ok "11f a failed pull lists nothing" || ng "11f (out: ${OUT:0:200})"
+pick_repo
+N11=0
+for cmd in 'git branch -D fix/pick' 'git log fix/pick' 'git branch -d -r origin/fix/pick' 'echo git branch -d fix/pick'; do
+  N11=$((N11 + 1))
+  OUT=$(fevt "$cmd" "bp-11g-$N11" | bash "$HOOK" 2>&1)
+  [[ -z "$OUT" ]] && ok "11g not a refused -d: $cmd" || ng "11g ($cmd: ${OUT:0:200})"
+done
+
+# Case 11h: hostile landed names and repo path: the -D command runs nothing,
+# expands nothing and deletes only the landed branches.
+HOSTILE2="$SANDBOX/"'h$(touch${IFS}PWNED_CWD2)'
+rm -rf "${HOSTILE2:?}"
+git init -q -b main "$HOSTILE2"
+(
+  cd "$HOSTILE2" || exit 1
+  echo a >a && git add a && git commit -q -m a
+  for b in 'evil$(touch${IFS}PWNED_BR2)' '{-D,wip2}'; do
+    git checkout -q -b "$b" main && echo "$b" >"f${#b}" && git add . && git commit -q -m "$b"
+  done
+  git checkout -q -b wip2 main && echo w >w && git add w && git commit -q -m w
+  git checkout -q main && echo m >m && git add m && git commit -q -m m
+  for b in 'evil$(touch${IFS}PWNED_BR2)' '{-D,wip2}'; do git cherry-pick "main..$b" >/dev/null; done
+)
+CMD11H="git branch -d 'evil\$(touch\${IFS}PWNED_BR2)' '{-D,wip2}'"
+OUT=$(fevt "$CMD11H" bp-11h "$HOSTILE2" | bash "$HOOK" 2>/dev/null)
+D11H=$(dcmd "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)")
+(cd "$SANDBOX" && eval "$D11H") >/dev/null 2>&1
+LEFT=$(git -C "$HOSTILE2" branch --format='%(refname:short)' | sort | tr '\n' ' ')
+if [[ -n "$D11H" && "$LEFT" == "main wip2 " ]] && ! ls "$SANDBOX"/PWNED_* "$HOSTILE2"/PWNED_* >/dev/null 2>&1; then
+  ok "11h hostile landed names/path: nothing executed, only the landed branches deleted"
+else
+  ng "11h (cmd: $D11H; left: $LEFT)"
+fi
+
+# Case 11i: a kept branch with more than 3 commits missing shows 3 and the
+# count of the rest.
+pick_repo
+(
+  cd "$REPO" || exit 1
+  git checkout -q -b fix/many main~2
+  for i in 1 2 3 4; do echo "$i" >"many$i" && git add "many$i" && git commit -q -m "many $i"; done
+  git checkout -q main
+)
+OUT=$(fevt 'git branch -d fix/many' bp-11i | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+SHOWN=$(printf '%s' "$CTX" | grep -o '"many [0-9]"' | wc -l | tr -d ' ')
+[[ "$SHOWN" == 3 && "$CTX" == *'(+1 more))'* && "$CTX" != *"Delete them with"* ]] && ok "11i 3 missing commits shown, +1 more counted" || ng "11i (shown $SHOWN; ctx: $CTX)"
+
+# Case 12: after a pull, a [gone] branch that was rebase-merged on the remote
+# is listed as landed with the checked -D command, beside the merged one -d
+# deletes; the branch with no upstream stays unlisted.
+fresh_repo
+(
+  cd "$REPO" || exit 1
+  git checkout -q -b feat2 && echo f2 >f2 && git add f2 && git commit -q -m 'add f2' && git push -q -u origin feat2
+  git checkout -q main && echo m2 >m2 && git add m2 && git commit -q -m 'main moves on'
+  git cherry-pick main..feat2 >/dev/null && git push -q origin main
+  git push -q origin --delete feat2 && git fetch -q --prune
+)
+OUT=$(evt 'git pull' bp-12 | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+D12=$(dcmd "$CTX")
+if [[ "$CTX" == *"branch -d -- 'feat'"* && "$CTX" == *"1 local branch(es) have every commit on main as a byte-identical copy"*": feat2."* &&
+  "$D12" == *"branch -D -- 'feat2'"* && "$CTX" != *local-only* ]] &&
+  (cd "$SANDBOX" && eval "$D12") >/dev/null 2>&1 && ! has_branch feat2 && has_branch wip && has_branch local-only; then
+  ok "12 a rebase-merged [gone] branch is listed as landed and its command deletes it"
+else
+  ng "12 (cmd: $D12; ctx: $CTX)"
+fi
+
+# Case 13: the handed-over -D command passes this plugin's own Bash gate.
+pick_repo
+OUT=$(fevt 'git branch -d fix/pick' bp-13 | bash "$HOOK" 2>/dev/null)
+D13=$(dcmd "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)")
+GATE=$(jq -cn --arg c "$D13" --arg cwd "$REPO" '{session_id:"bp-13",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c},cwd:$cwd}' |
+  bash "$HERE/../../hooks/pre-bash-safety-check.sh" 2>/dev/null)
+[[ -n "$D13" && "$GATE" != *'"deny"'* ]] && ok "13 pre-bash-safety allows the -D command" || ng "13 (cmd: $D13; gate: ${GATE:0:300})"
+
 claudemd_assert_summary

@@ -53,13 +53,22 @@ test('registry → hooks.json: every entry registered with same event/matcher/ti
       }
     }
   }
+  // A hook registered on more than one event lists the others in `alsoOn`;
+  // hooks.json must hold exactly the declared registrations, each once.
   for (const r of HOOK_REGISTRY) {
-    const match = flat.find(f => f.command.includes(`/hooks/${r.basename}`));
-    assert.ok(match, `registry entry ${r.basename} not found in hooks/hooks.json`);
-    assert.equal(match.event, r.hookEvent, `${r.basename}: hookEvent drift`);
-    assert.equal(match.matcher, r.matcher, `${r.basename}: matcher drift`);
-    assert.equal(match.timeout, r.timeout, `${r.basename}: timeout drift`);
+    const declared = [r, ...(r.alsoOn || [])].map(e => `${e.hookEvent}|${e.matcher}|${e.timeout}`).sort();
+    const found = flat
+      .filter(f => f.command.includes(`/hooks/${r.basename}`))
+      .map(f => `${f.event}|${f.matcher}|${f.timeout}`)
+      .sort();
+    assert.ok(found.length > 0, `registry entry ${r.basename} not found in hooks/hooks.json`);
+    assert.deepEqual(found, declared, `${r.basename}: event/matcher/timeout drift`);
   }
+});
+
+test('branch-prune is registered on PostToolUseFailure too (a refused git branch -d exits 1)', () => {
+  const r = HOOK_REGISTRY.find(h => h.basename === 'branch-prune.sh');
+  assert.deepEqual(r.alsoOn, [{ hookEvent: 'PostToolUseFailure', matcher: 'Bash', timeout: 10 }]);
 });
 
 test('hooks.json → registry: every command points to a registry basename', () => {

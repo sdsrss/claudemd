@@ -175,12 +175,19 @@ Emitters, derived from source and gated by
   past `CLAUDEMD_TMP_PRESSURE_PCT` (default 80) full, naming the percentage
   and, on a tmpfs, that the bytes are RAM. Rate-limited with the sweep itself
   to one run per `CLAUDEMD_TMP_SWEEP_INTERVAL_MIN` (default 10).
-- `branch-prune.sh` — PostToolUse (`Bash`); one line listing the local
+- `branch-prune.sh` — PostToolUse and PostToolUseFailure (`Bash`). After a
+  merge, pull, fetch or push (PostToolUse only), one line listing the local
   branches that are merged (at most 10) and telling the session to delete them
-  with the `git branch -d` command it gives, leaving out any the project keeps.
-  The hook deletes nothing. Silent when there is nothing to list, or when this
-  session was already given the same set (when it cannot record that, it gives
-  the line on every call).
+  with the `git branch -d` command it gives, leaving out any the project keeps;
+  from 0.116.0 the same line lists `landed` branches (a gone or
+  `worktree-agent-*` branch whose every commit has a byte-identical copy on the
+  default branch, which `-d` refuses) with a checked `git branch -D` command.
+  After a `git branch -d` command (either event; a refused one exits 1), one
+  line judging each branch it named that is still there: landed, with that
+  command, or kept, with the commits that have no copy. The hook deletes
+  nothing. Silent when there is nothing to list, or when this session was
+  already given the same list (when it cannot record that, it gives the line on
+  every call); a verdict on a `-d` is given every time.
 
 **No Stop hook here emits `hookSpecificOutput`, and that is a choice, not the
 schema.** Claude Code 2.1.163 added `hookSpecificOutput.additionalContext` to

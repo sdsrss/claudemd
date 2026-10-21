@@ -51,7 +51,8 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
           checkout or a symbolic ref. Each is \`landed\` (as above, or
           \`on-main\` when its tip is on the default branch and -d compared it
           with something else) or \`kept\`, with up to 3 of the commits that
-          have no copy on the default branch. Never deletes.
+          have no copy on the default branch (\`missingCount\` counts them
+          all). Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -625,7 +626,7 @@ export function branchDeleteTargets(command) {
 
 // The branches a `git branch -d` command left in place (refused, not yet
 // run, or named twice), judged: `landed` on the default branch, or `kept`
-// with up to 3 of the commits that have no copy there.
+// with up to 3 of the commits that have no copy there (missingCount: all of them).
 export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
   const landed = [];
   const kept = [];
@@ -672,7 +673,15 @@ export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
             .filter(Boolean)
             .map(l => ({ sha: l.split('\t')[0], subject: l.slice(l.indexOf('\t') + 1) }))
         : [];
-      kept.push({ repo, name: b.name, sha: b.sha, onto: defaultBranch, reason: v.reason, unmatched });
+      kept.push({
+        repo,
+        name: b.name,
+        sha: b.sha,
+        onto: defaultBranch,
+        reason: v.reason,
+        unmatched,
+        missingCount: v.missing.length,
+      });
     }
   }
   return { landed, kept, skipped };
