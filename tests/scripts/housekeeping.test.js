@@ -895,6 +895,33 @@ test('branches: merge attributes and drivers do not decide the same-place check'
   assert.deepEqual(landed, Object.fromEntries(cases.map(([where]) => [where, []])));
 });
 
+// The throwaway repository gets none of the caller's GIT_* variables.
+// GIT_ATTR_SOURCE, for one, reads attributes from a tree: a merge=union there
+// decided the same-place check as a .gitattributes did (round 3 L3).
+test('branches: a GIT_* variable of the caller does not reach the same-place check', () => {
+  const r = clone();
+  const block = v => `p\nq\nr\nVALUE=${v}\na4\ns\nt\nu\n`;
+  const dropped = 'p\nq\nr\ns\nt\nu\n';
+  const wa = 'worktree-agent-b3123456789abcdef';
+  commit(r, 'f.txt', block(1) + block(1));
+  git(r, 'checkout', '-q', '-b', 'attrs');
+  commit(r, '.gitattributes', 'f.txt merge=union\n');
+  const source = git(r, 'rev-parse', 'HEAD');
+  git(r, 'checkout', '-q', '-b', wa, 'main');
+  commit(r, 'f.txt', dropped + block(1));
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'f.txt', block(2) + block(1));
+  commit(r, 'f.txt', block(2) + dropped);
+  const saved = process.env.GIT_ATTR_SOURCE;
+  process.env.GIT_ATTR_SOURCE = source;
+  try {
+    assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+  } finally {
+    if (saved === undefined) delete process.env.GIT_ATTR_SOURCE;
+    else process.env.GIT_ATTR_SOURCE = saved;
+  }
+});
+
 // Judging ran a merge driver from the repository's config (an npx-based one
 // would reach the network from the hook), and git put the driver's temp files
 // in the repository's top directory (pre-tag review round 2 M2).
