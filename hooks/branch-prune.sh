@@ -20,8 +20,10 @@
 #
 # What is listed is decided by scripts/housekeeping.js (see its USAGE): a
 # branch whose upstream the remote deleted (`[gone]`) and whose tip is on the
-# default branch or origin/<default>, plus worktree-agent-* branches on it.
-# Never the default branch, a worktree checkout or a symbolic ref;
+# local default branch, plus worktree-agent-* branches on it, each one a
+# branch `git branch -d` deletes in the cwd's checkout. One only on
+# origin/<default> is listed after the merge or pull that brings it onto the
+# local default branch (167). Never the default branch, a worktree checkout or a symbolic ref;
 # worktree-agent-* aside, never a branch whose upstream still exists or one
 # with no upstream; nothing while a rebase or bisect is in progress in a
 # worktree it can see. Silent when there is nothing to list.
@@ -112,7 +114,7 @@ if ((N > CAP)); then
   MORE=" (+$((N - CAP)) more)"
   REST=" The command covers the $CAP listed; once they are deleted, the next merge, pull, fetch or push lists the others."
 fi
-MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF (or origin/$DEF) and their remote branch was deleted, or are worktree-agent-* on it: $NAMES$MORE. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise.$REST The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
+MSG="[claudemd] branch-prune: $N local branch(es) are on $DEF and their remote branch was deleted, or are worktree-agent-* on it: $NAMES$MORE. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise.$REST The user can turn this hint off with DISABLE_BRANCH_PRUNE_HOOK=1."
 hook_record branch-prune branch-prune-advisory "{\"deletable\":$N}" '' "$SESSION_ID" "$TOOL_USE_ID"
 jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 exit 0

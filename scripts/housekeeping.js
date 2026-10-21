@@ -20,16 +20,22 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces the list).
 branches  REPORT (never delete) the local branches that are safe to delete:
           a branch whose upstream the remote deleted (\`[gone]\`) and whose
-          tip is already on the default branch (local or origin/<default>),
-          plus worktree-agent-* branches on the default branch. Never lists
-          the default branch or a branch checked out in any worktree; and,
+          tip is already on the local default branch, plus worktree-agent-*
+          branches on it; each one also on what \`git branch -d\` compares it
+          with in --cwd's checkout (its upstream when that exists, else
+          HEAD), so \`git branch -d\` deletes every branch listed. A gone
+          branch on origin/<default> but not on the local default branch
+          (pushed and merged, local default not yet fast-forwarded) is not
+          listed until the local default branch has it. Never lists the
+          default branch or a branch checked out in any worktree; and,
           worktree-agent-* aside, never a branch whose upstream still exists
           or one with no upstream. Reports nothing while a rebase or bisect is
-          in progress in a worktree it can see. A gone branch whose tip is NOT
-          on the default branch (squash merge) is listed under
-          \`goneUnmerged\`. Deleting is left to \`git branch -d\`, which runs
-          git's own merged and in-use checks at the moment of deletion.
-          Examines at most 200 candidates; \`truncated\` counts the rest.
+          in progress in a worktree it can see. A gone branch whose tip is on
+          neither the default branch nor origin/<default> (squash merge) is
+          listed under \`goneUnmerged\`. Deleting is left to \`git branch -d\`,
+          which runs git's own merged and in-use checks at the moment of
+          deletion. Examines at most 200 candidates; \`truncated\` counts the
+          rest.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -230,6 +236,16 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // A gone branch whose tip is NOT on the default branch (a squash merge, or
 // work the remote lost) is listed under goneUnmerged for a person to judge.
 //
+// "On the default branch" means the LOCAL one, and a listed branch must also
+// be merged into what `git branch -d` compares it with: its upstream when that
+// resolves, else HEAD of the --cwd checkout. origin/<default> counted as well
+// from 0.93.0, when this script deleted with update-ref and checked merged-ness
+// itself. Once the delete was left to `git branch -d` (report-only, below), a
+// branch on origin/main only (merged on GitHub and fetched, local main behind)
+// was listed, and `git branch -d` on main refused it "not fully merged" and
+// suggested -D (167). Such a branch is neither listed nor goneUnmerged: it is
+// listed after the merge or pull that brings it onto the local default branch.
+//
 // Report-only, by the maintainer's decision after the 0.93.0 pre-tag reviews:
 // git has no delete that both compares and checks use. `update-ref -d <sha>`
 // is a compare-and-delete but skips git's in-use checks (a branch mid-rebase,
@@ -282,9 +298,14 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   const defaultBranch = defaultBranchOf(git);
   if (!defaultBranch) return EMPTY();
   if (operationInProgress(git)) return { ...EMPTY(), defaultBranch, skipped: 'rebase-or-bisect-in-progress' };
-  const bases = [`refs/heads/${defaultBranch}`, `refs/remotes/origin/${defaultBranch}`].filter(
-    ref => git('show-ref', '--verify', '--quiet', ref) !== null
-  );
+  // A ref that does not exist makes merge-base fail, which reads as "not an ancestor".
+  const isAncestor = (sha, ref) => git('merge-base', '--is-ancestor', sha, ref) !== null;
+  const defaultRef = `refs/heads/${defaultBranch}`;
+  // With the default branch checked out, "on HEAD" is the question already
+  // answered; asking it again doubled the merge-base spawns (200 candidates on
+  // Linux, 2026-10-21: 1.5-1.7 s asked twice, 0.5-0.7 s with this).
+  const defaultSha = git('rev-parse', '--verify', '--quiet', defaultRef);
+  const headIsDefault = defaultSha !== null && git('rev-parse', '--verify', '--quiet', 'HEAD') === defaultSha;
   const checkedOut = new Set(
     (git('worktree', 'list', '--porcelain') || '')
       .split('\n')
@@ -294,19 +315,20 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   const candidates = (
     git(
       'for-each-ref',
-      '--format=%(refname)%09%(objectname)%09%(upstream:track)%09%(symref)',
+      '--format=%(refname)%09%(objectname)%09%(upstream:track)%09%(symref)%09%(upstream)',
       'refs/heads'
     ) || ''
   )
     .split('\n')
     .filter(Boolean)
     .map(l => {
-      const [ref, sha, track, symref] = l.split('\t');
+      const [ref, sha, track, symref, upstream] = l.split('\t');
       return {
         name: ref.slice('refs/heads/'.length),
         sha,
         gone: track === '[gone]',
         symref: Boolean(symref),
+        upstream,
       };
     })
     .filter(b => !b.symref)
@@ -319,9 +341,15 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   const deletable = [];
   const goneUnmerged = [];
   for (const b of refs) {
-    const onDefault = bases.some(base => git('merge-base', '--is-ancestor', b.sha, base) !== null);
-    if (onDefault) deletable.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
-    else if (b.gone) goneUnmerged.push({ name: b.name, sha: b.sha });
+    if (isAncestor(b.sha, defaultRef)) {
+      // What `git branch -d` compares with: the upstream when it resolves (a
+      // [gone] one does not), else HEAD of the checkout it runs in.
+      const reference = b.upstream && !b.gone ? b.upstream : 'HEAD';
+      if ((reference === 'HEAD' && headIsDefault) || isAncestor(b.sha, reference))
+        deletable.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent' });
+    } else if (b.gone && !isAncestor(b.sha, `refs/remotes/origin/${defaultBranch}`)) {
+      goneUnmerged.push({ name: b.name, sha: b.sha });
+    }
   }
   return {
     defaultBranch,

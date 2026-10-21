@@ -260,7 +260,8 @@ test('CLI: unknown subcommand exits 2', () => {
 //
 // A branch is listed as deletable only when (a) its upstream was deleted on the remote
 // (`[gone]`) or its name is worktree-agent-*, AND (b) its tip is an ancestor of
-// the default branch or origin/<default>. Every fixture below is built against
+// the local default branch and of what `git branch -d` compares it with (its
+// upstream when that resolves, else HEAD). Every fixture below is built against
 // a real bare remote so `[gone]` is the state git itself reports.
 
 const GIT_ENV = {
@@ -326,11 +327,51 @@ test('branches: upstream gone + tip on main → listed', () => {
   assert.equal(c.deletable[0].why, 'gone');
 });
 
-test('branches: upstream gone but tip only on origin/main (local main behind) → listed', () => {
+// What is listed is handed to `git branch -d`, which compares a branch with its
+// upstream when that resolves, else with HEAD; never with origin/<default>.
+// Each fixture below first shows -d refusing, so the case is the real one.
+const branchD = (cwd, name) =>
+  spawnSync('git', ['branch', '-d', name], { cwd, encoding: 'utf8', env: GIT_ENV });
+
+test('branches: upstream gone, tip only on origin/main (local main behind) → not listed until main has it (167)', () => {
   const r = clone();
   landAndDeleteRemote(r, 'feat', 'ff');
   git(r, 'reset', '-q', '--hard', 'HEAD~1'); // local main no longer contains feat
+  assert.notEqual(branchD(r, 'feat').status, 0, 'fixture: git branch -d refuses feat on main');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.deletable), []);
+  assert.deepEqual(names(c.goneUnmerged), [], 'on origin/main: merged, not a squash merge');
+  git(r, 'merge', '-q', '--ff-only', 'origin/main');
   assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), ['feat']);
+  assert.equal(branchD(r, 'feat').status, 0, 'listed → git branch -d deletes it');
+});
+
+test('branches: gone and on main, but not on the current checkout → not listed (167)', () => {
+  const r = clone();
+  const before = git(r, 'rev-parse', 'HEAD');
+  landAndDeleteRemote(r, 'feat', 'ff');
+  git(r, 'checkout', '-q', '-b', 'older', before);
+  assert.notEqual(branchD(r, 'feat').status, 0, 'fixture: git branch -d refuses feat from here');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.deletable), []);
+  assert.deepEqual(names(c.goneUnmerged), []);
+  git(r, 'checkout', '-q', 'main');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), ['feat']);
+});
+
+test('branches: worktree-agent-* on main whose live upstream lacks its tip → not listed (167)', () => {
+  const r = clone();
+  const wa = 'worktree-agent-c0123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  git(r, 'push', '-q', '-u', 'origin', wa);
+  commit(r, 'u.txt', 'u\n');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'merge', '-q', '--ff-only', wa);
+  assert.notEqual(branchD(r, wa).status, 0, 'fixture: git branch -d checks the upstream and refuses');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
+  git(r, 'push', '-q', 'origin', wa);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), [wa]);
+  assert.equal(branchD(r, wa).status, 0, 'listed → git branch -d deletes it');
 });
 
 test('branches: upstream gone, squash-merged (tip not an ancestor) → kept, listed as goneUnmerged', () => {

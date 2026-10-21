@@ -199,4 +199,23 @@ OUT=$(evt 'git push' bp-9e | bash "$HOOK" 2>/dev/null)
 chmod 755 "$HOME/.claude/.claudemd-state"
 [[ "$OUT" == *"140 local branch(es)"* ]] && ok "9e an unwritable state dir still gets the hint" || ng "9e (out: ${OUT:0:200})"
 
+# Case 10 (167): feat merged on the remote and fetched, local main one commit
+# behind. On main, `git branch -d feat` refuses ("not fully merged") and
+# suggests -D, so a hint naming it hands over a command that fails. Nothing is
+# hinted until main has it; then the line names it as on main and its command
+# deletes it.
+fresh_repo
+git -C "$REPO" reset -q --hard HEAD~1
+BEHIND=$(evt 'git fetch --prune' bp-10 | bash "$HOOK" 2>/dev/null)
+git -C "$REPO" merge -q --ff-only origin/main
+OUT=$(evt 'git pull' bp-10 | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+CMD=$(printf '%s' "$CTX" | sed -n 's/.*delete them with `\(git -C .* branch -d [^`]*\)`.*/\1/p')
+if [[ -z "$BEHIND" && "$CTX" == *"1 local branch(es) are on main and their remote branch was deleted, or are worktree-agent-* on it: feat."* ]] &&
+  eval "$CMD" >/dev/null 2>&1 && ! has_branch feat; then
+  ok "10 a branch only on origin/main is hinted once main has it, and the command deletes it"
+else
+  ng "10 (while behind: ${BEHIND:0:200}; after: ${CTX:0:200}; cmd: $CMD)"
+fi
+
 claudemd_assert_summary

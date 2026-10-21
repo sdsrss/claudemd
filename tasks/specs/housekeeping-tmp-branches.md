@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 4
+revision: 5
 ---
 
 # Housekeeping hooks: vitest tmp sweep + merged-branch prune
@@ -44,8 +44,10 @@ in the plugin reclaims them:
 - branch-prune is ADVISORY (r4): fires only on commands naming
   `git merge|pull|fetch|push` or `gh pr merge`; local git only; lists — never
   deletes — branches whose upstream is `[gone]` and whose tip is an ancestor
-  of the default branch or `origin/<default>`, plus `worktree-agent-*` on the
-  default branch, with the `git branch -d` command. Never lists the default
+  of the local default branch, plus `worktree-agent-*` on the default branch,
+  each also an ancestor of what `git branch -d` compares it with in the
+  checkout (its upstream when that resolves, else HEAD) (r5), with the
+  `git branch -d` command. Never lists the default
   branch, a worktree checkout or a symbolic ref; worktree-agent-* aside, never
   a branch whose upstream exists or one with no upstream; nothing while a
   rebase or bisect is in progress in a worktree it can see.
@@ -55,7 +57,9 @@ in the plugin reclaims them:
 - `tests/scripts/housekeeping.test.js`: signature positive + each negative
   (wrong name, symlink, extra child, non-hex file, too young, nested dir),
   watch-mode floor, recheck before rm; branch classes (gone+merged, gone via
-  origin only, gone+squash kept, whitespace-different kept, upstream-exists
+  origin only kept until the local default has it (r5), gone+merged but not on
+  the current checkout kept, worktree-agent-* behind its live upstream kept,
+  gone+squash kept, whitespace-different kept, upstream-exists
   kept, no-upstream kept, worktree-agent, worktree checkout, rebase in
   progress, symbolic ref, CLI never deletes).
 - Hook tests: fast path silent, kill switch, rate limit, trigger match.
@@ -72,3 +76,4 @@ in the plugin reclaims them:
 - r2 2026-09-22: implemented in 0.93.0 (scripts/housekeeping.js, hooks/tmp-sweep.sh, hooks/branch-prune.sh).
 - r3 2026-09-22: branch rule replaced after the pre-tag review (4 High / 6 Medium); tmp-sweep unset-TMPDIR abort and non-atomic rate limit fixed.
 - r4 2026-09-23: branch-prune made advisory-only by the maintainer after the second re-review found round 1's in-use defect again (update-ref skips git's in-use check) plus a symref-target delete; deletion code removed. The suggested command is built with jq @sh and `--`.
+- r5 2026-10-21: backlog 167. `origin/<default>` no longer counts as "on the default branch". It dated from r2, when the script deleted with update-ref and judged merged-ness itself; after r4 `git branch -d` judges it, against the branch's upstream or HEAD, and refused a listed branch that only origin/main had (local main behind), suggesting -D. A listed branch is now one `git branch -d` deletes from the checkout; one only on origin/<default> is listed after the merge or pull that brings it onto the local default branch.
