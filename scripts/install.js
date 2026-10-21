@@ -827,6 +827,33 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   };
 }
 
+// The failure line for a write the OS refused (160b). Node's own text —
+// `EACCES: permission denied, mkdir '…/.claude/.claudemd-state'` — names the
+// path being CREATED, not the directory that refused it, and says nothing about
+// what to do. The directory is the nearest existing ancestor of the target
+// (`dest` for a copy or rename, else `path`), and it is named only when an
+// access check agrees it is not writable; anything else — an unreadable file,
+// say — keeps Node's text, which names its path. No env seam is offered:
+// CLAUDEMD_STATE_DIR moves only the state dir, and the spec, the manifest, the
+// logs and settings.json are written under ~/.claude whatever it says.
+function writeDeniedMessage(e) {
+  if (!e || (e.code !== 'EACCES' && e.code !== 'EPERM')) return null;
+  const target = e.dest || e.path;
+  if (!target) return null;
+  let dir = path.dirname(target);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return null;
+  } catch {
+    /* not writable — the case this message is for */
+  }
+  return (
+    `${dir} is not writable by this user (${e.message}). Make it writable — for example ` +
+    `\`chmod u+rwx '${dir}'\` — then run the install again (/claudemd-install, or start a new session).`
+  );
+}
+
 if (invokedAsMain(import.meta.url)) {
   printHelpAndExit(process.argv.slice(2), INSTALL_USAGE);
   // No argv contract — install reads from plugin cache + env. Loud-fail on
@@ -867,7 +894,7 @@ if (invokedAsMain(import.meta.url)) {
       console.log(JSON.stringify(r, null, 2));
     })
     .catch(e => {
-      console.error(`install failed: ${e.message}`);
+      console.error(`install failed: ${writeDeniedMessage(e) || e.message}`);
       process.exit(1);
     });
 }
