@@ -125,21 +125,41 @@ ledger_banner() {
   local dir="$1"
   [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
 
-  # Newest by mtime. `ls -t` over the glob rather than find -printf: the latter
-  # is GNU-only and the macOS leg would silently pick nothing.
-  local newest
-  # shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
-  newest=$(ls -t "$dir"/tasks/*-ledger.md 2>/dev/null | head -n 1)
+  # Newest by mtime: the glob, plus one platform_stat_mtime per candidate. Not
+  # `ls -t … | head -n 1`: `ls` output is split on lines, so a newest ledger
+  # named `a<newline>b-ledger.md` became the nonexistent `tasks/a` and the whole
+  # banner vanished (item 141b; the paused banner below left `ls` for the same
+  # reason). Not find -printf either: GNU-only, the macOS leg would pick nothing.
+  # Directories are skipped (`ls` listed a directory's contents after the
+  # files, never the directory); anything else the glob matched competes, and an
+  # unreadable winner still means no banner rather than an older ledger
+  # presented as the newest. Without the wrapper there is no order to pick by
+  # and no age to bound, so no banner either.
+  # The mtime is whole seconds, so two ledgers saved within one second tie; a
+  # tie keeps the first in glob order (`>` below), i.e. name ascending in the
+  # shell's collation — the tie-break `ls -t` applied. One wrapper call per
+  # ledger is two `stat` execs (it probes the GNU form first); the age check
+  # below reuses the winner's value.
+  command -v platform_stat_mtime >/dev/null 2>&1 || return 0
+  local f mt newest="" newest_mt=-1
+  for f in "$dir"/tasks/*-ledger.md; do
+    [[ -e "$f" || -L "$f" ]] || continue
+    [[ -d "$f" ]] && continue
+    mt=$(platform_stat_mtime "$f" 2>/dev/null)
+    [[ "$mt" =~ ^[0-9]+$ ]] || mt=-1
+    if [[ -z "$newest" ]] || (( mt > newest_mt )); then
+      newest="$f"
+      newest_mt=$mt
+    fi
+  done
   [[ -n "$newest" && -r "$newest" ]] || return 0
 
-  if command -v platform_stat_mtime >/dev/null 2>&1; then
-    local mt now age
-    mt=$(platform_stat_mtime "$newest" 2>/dev/null) || return 0
-    now=$(date +%s 2>/dev/null) || return 0
-    [[ "$mt" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ ]] || return 0
-    age=$(((now - mt) / 86400))
-    (( age <= LEDGER_MAX_AGE_DAYS )) || return 0
-  fi
+  local now age
+  (( newest_mt >= 0 )) || return 0
+  now=$(date +%s 2>/dev/null) || return 0
+  [[ "$now" =~ ^[0-9]+$ ]] || return 0
+  age=$(((now - newest_mt) / 86400))
+  (( age <= LEDGER_MAX_AGE_DAYS )) || return 0
 
   # `## Decisions` and `## Next` only, each up to the next `## `. A ledger whose
   # headings were renamed yields nothing and the banner is skipped — silence
@@ -175,6 +195,10 @@ ledger_banner() {
         # would end the wrapper early and let the rest pass as the hook'"'"'s own
         # text (B2 review F6).
         | gsub("<[[:space:]]*/[[:space:]]*ledger[[:space:]]*>"; "<\\/ledger>"; "i")) as $b |
+    # The path is shown with each control character as `?`. The glob above
+    # reaches a name with a newline in it, which shown raw would add a line of
+    # the file name'"'"'s choosing to the hook'"'"'s own text (item 141b).
+    ($p | gsub("[\\x00-\\x1f\\x7f]"; "?")) as $p |
     {
     suppressOutput: true,
     hookSpecificOutput: {

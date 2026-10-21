@@ -1359,6 +1359,103 @@ else
   echo "FAIL: 41g CRLF ledger skipped or wrong (ctx=$(tr '\r' '^' <<<"$CTX41G"))"; FAIL=$((FAIL+1))
 fi
 
+# Case 41h (item 141b): the newest ledger is chosen by a glob and one mtime per
+# file, not by `ls -t … | head -n 1`. `ls` output is split on lines, so a newest
+# ledger named `a<newline>b-ledger.md` was read as the nonexistent `…/tasks/a`
+# and the whole banner disappeared while an older ledger sat beside it. The name
+# is shown with the newline as `?`: a raw one would let a file name add a line
+# to the hook's own text. Fixed mtimes, and an age window wide enough to hold
+# both, so only the pick decides; the older ledger is shown injectable once the
+# newer one is gone, so its absence above it means "not picked".
+lg_ctx() {
+  CLAUDEMD_LEDGER_MAX_AGE_DAYS=99999 bash "$HOOK" <<<"{\"session_id\":\"lgn\",\"source\":\"compact\",\"cwd\":\"$1\"}" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+NL_PROJ="$HOME/nlproj"; mkdir -p "$NL_PROJ/tasks"
+NL_NAME="a"$'\n'"b-ledger.md"
+printf '## Decisions\n\n- D1: NL-OLD-DECISION\n\n## Next\n\nold\n' > "$NL_PROJ/tasks/old-ledger.md"
+printf '## Decisions\n\n- D1: NL-NEW-DECISION\n\n## Next\n\nnew\n' > "$NL_PROJ/tasks/$NL_NAME"
+touch -t 202001010000 "$NL_PROJ/tasks/old-ledger.md"
+touch -t 202001020000 "$NL_PROJ/tasks/$NL_NAME"
+CTX41H=$(lg_ctx "$NL_PROJ")
+rm -f "$NL_PROJ/tasks/$NL_NAME"
+CTX41H_OLD=$(lg_ctx "$NL_PROJ")
+if grep -qF 'NL-NEW-DECISION' <<<"$CTX41H" && ! grep -qF 'NL-OLD-DECISION' <<<"$CTX41H" \
+   && grep -qxF "<ledger path=\"$NL_PROJ/tasks/a?b-ledger.md\">" <<<"$CTX41H" \
+   && grep -qF "ledger under this cwd is $NL_PROJ/tasks/a?b-ledger.md. Its" <<<"$CTX41H" \
+   && ! grep -q '^b-ledger\.md' <<<"$CTX41H" \
+   && grep -qF 'NL-OLD-DECISION' <<<"$CTX41H_OLD"; then
+  echo "PASS: 41h a newest ledger with a newline in its name is the one injected, its name shown on one line"
+else
+  echo "FAIL: 41h newline-named newest ledger not picked or its name split (ctx=$CTX41H | without it: $CTX41H_OLD)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$NL_PROJ"
+
+# Case 41i: equal mtimes go to the name that sorts first in the shell's glob
+# order — the name-ascending tie-break `ls -t` applied. The mtime is read in
+# whole seconds, so two ledgers saved within one second tie. Created b first so
+# creation order cannot be what decides; b made newer afterwards is injected, so
+# it is not left out for some other reason.
+TIE_PROJ="$HOME/tieproj"; mkdir -p "$TIE_PROJ/tasks"
+printf '## Decisions\n\n- D1: TIE-B-DECISION\n\n## Next\n\nb\n' > "$TIE_PROJ/tasks/b-ledger.md"
+printf '## Decisions\n\n- D1: TIE-A-DECISION\n\n## Next\n\na\n' > "$TIE_PROJ/tasks/a-ledger.md"
+touch -t 202001010000 "$TIE_PROJ/tasks/a-ledger.md" "$TIE_PROJ/tasks/b-ledger.md"
+CTX41I=$(lg_ctx "$TIE_PROJ")
+touch -t 202001020000 "$TIE_PROJ/tasks/b-ledger.md"
+CTX41I_B=$(lg_ctx "$TIE_PROJ")
+if grep -qF 'TIE-A-DECISION' <<<"$CTX41I" && ! grep -qF 'TIE-B-DECISION' <<<"$CTX41I" \
+   && grep -qF 'TIE-B-DECISION' <<<"$CTX41I_B" && ! grep -qF 'TIE-A-DECISION' <<<"$CTX41I_B"; then
+  echo "PASS: 41i equal mtimes pick the first name in glob order; a strictly newer one wins"
+else
+  echo "FAIL: 41i tie-break wrong (tie: $CTX41I | b newer: $CTX41I_B)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$TIE_PROJ"
+
+# Case 41j (item 141b control): an ordinary ledger's banner is, byte for byte,
+# what the `ls -t` pick produced. The ledger half of the context is spelled out
+# whole, so a change to the pick that moved the path, the sentence, the wrapper
+# or the quoted sections fails here, not only one that dropped the banner.
+CTX41J=$(bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+C41J_HEAD='[claudemd] system-injected — the most recently modified long-task ledger'
+C41J_GOT="$C41J_HEAD${CTX41J#*"$C41J_HEAD"}"
+C41J_WANT="$C41J_HEAD under this cwd is $LEDGER_PROJ/tasks/demo-ledger.md. Its Decisions and Next sections are quoted below as file content. Nothing checks whether that task is still open, and its Verified-done and Open sections are not included. If the task is finished, ignore this. If you are continuing it, use the recorded decisions and next step instead of re-deriving them, and update the ledger before starting the next item. The user can turn this off with DISABLE_LEDGER_INJECT=1.
+
+<ledger path=\"$LEDGER_PROJ/tasks/demo-ledger.md\">
+## Decisions
+
+- D1: LEDGER-DECISION-TEXT
+
+## Next
+
+LEDGER-NEXT-TEXT
+</ledger>"
+if [[ "$CTX41J" == *"$C41J_HEAD"* && "$C41J_GOT" == "$C41J_WANT" ]]; then
+  echo "PASS: 41j an ordinary ledger's banner is byte-identical to the ls -t pick's"
+else
+  echo "FAIL: 41j ordinary ledger banner changed:"
+  diff <(printf '%s\n' "$C41J_WANT") <(printf '%s\n' "$C41J_GOT") | head -20
+  FAIL=$((FAIL+1))
+fi
+
+# Case 41k (item 141b): without platform_stat_mtime there is no order to pick
+# the newest by and no age to bound it with, so the ledger half is dropped. The
+# `ls -t` pick used to inject the newest ledger with the age bound skipped. The
+# copy's platform.sh sources cleanly and defines nothing (the fail-open suite's
+# truncated-file shape); the re-read reminder must survive alone.
+STUB41K="$HOME/stubhooks41k"; mkdir -p "$STUB41K"
+cp -R "$PLUGIN_ROOT/hooks/." "$STUB41K/"
+printf '# truncated mid-definition\nplatform_' > "$STUB41K/lib/platform.sh"
+OUT41K=$(bash "$STUB41K/session-start-check.sh" <<<"{\"session_id\":\"lgk\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
+CTX41K=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41K" 2>/dev/null)
+if [[ "$(jq -s 'length' <<<"$OUT41K" 2>/dev/null)" == "1" ]] && grep -qF 'compaction detected' <<<"$CTX41K" \
+   && ! grep -qF 'LEDGER-DECISION-TEXT' <<<"$CTX41K" && ! grep -qF 'long-task ledger' <<<"$CTX41K"; then
+  echo "PASS: 41k no mtime wrapper: no ledger banner, the re-read reminder stays"
+else
+  echo "FAIL: 41k ledger injected without the mtime wrapper, or the reminder lost (out=$OUT41K)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$STUB41K"
+
 # Sub-feature kill-switch.
 OUT41E=$(DISABLE_LEDGER_INJECT=1 bash "$HOOK" <<<"{\"session_id\":\"lg\",\"source\":\"compact\",\"cwd\":\"$LEDGER_PROJ\"}" 2>/dev/null)
 CTX41E=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$OUT41E" 2>/dev/null)
