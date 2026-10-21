@@ -1198,7 +1198,7 @@ if :; then
       HITS+=("$S8_RM_VERB ~ with no literal subpath (bare home directory)")
       HIT_SECTIONS+=('§8-rm-rf-var')
       if (( S8_RM_IS_FIND == 0 )) && [[ "$rm_target" == *'*'* ]]; then
-        REASONS+=$'\n  - '"$S8_RM_VERB $rm_target"$': a subpath of only * and / matches everything under ~ (and under / when HOME is empty). Write the subpath literally.'
+        REASONS+=$'\n  - '"$S8_RM_VERB $rm_target"$': ~ followed by only * and / names no subpath of ~, and the whitelist permits ~/sub only (a directory literally named ~ is ./~). Write the subpath literally.'
       elif (( S8_RM_IS_FIND == 0 )); then
         REASONS+=$'\n  - '"$S8_RM_VERB"$' ~ with no subpath: ~ is $HOME, and the whitelist permits ~/sub, not bare ~ (a directory literally named ~ is ./~)'
       else
@@ -1216,7 +1216,8 @@ if :; then
     # `/` if HOME is somehow empty (Steam-disaster class, ValveSoftware/
     # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
     # The whitelist only certifies the var is shell-typed, not that the
-    # target is bounded. Require ≥1 non-`/` character in the residue.
+    # target is bounded. Require ≥1 character other than `/` and `*` in the
+# residue: a glob-only residue names no subpath (S8-GLOB, 0.115.0).
     # `$1`..`$9` are expansions here too, so a whitelisted var whose only subpath
     # is `$1` reads as bare (`"$HOME/$1"`, S8-POS3). Deleting more text from the
     # residue can only make the checks below deny more, never less.
@@ -1390,7 +1391,7 @@ if :; then
             # The verb the user typed, as every other rm line does (0.94.0
             # pre-tag review: this one line was still hard-coded as `rm -rf`).
             if [[ "$residue" == *'*'* ]]; then
-              REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' followed by a subpath of only * and /: it matches everything under $'"$varname"$' (and under / when $'"$varname"$' is empty). Write the subpath literally.'
+              REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' followed by only * and /: that names no subpath of $'"$varname"$', and the whitelist permits $'"$varname"$'/sub only. Write the subpath literally.'
             elif [[ -n "$s8_subvar" ]]; then
               REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' whose only subpath is $'"$s8_subvar"$': the gate reads $'"$s8_subvar"$' as empty, which is bare $'"$varname"$', and a guard on $'"$s8_subvar"$' does not change that. Write the subpath literally.'
             else

@@ -684,7 +684,11 @@ rm -rf "$HOME"|rm -rf $HOME with no subpath|
 rm -f "$HOME"|rm -f $HOME with no subpath|rm -rf
 rm -f "${TMPDIR:?}"|rm -f $TMPDIR with no subpath|rm -rf
 find "$X" -delete|find … -delete/-exec rm with unvalidated $X|
-find "$HOME" -delete|find … -delete/-exec rm on bare $HOME with no selection primary|'
+find "$HOME" -delete|find … -delete/-exec rm on bare $HOME with no selection primary|
+rm -rf "$HOME"/*|rm -rf $HOME followed by only * and /: that names no subpath of $HOME, and the whitelist permits $HOME/sub only. Write the subpath literally.|
+rm -rf "$TMPDIR"*|rm -rf $TMPDIR followed by only * and /: that names no subpath of $TMPDIR|
+rm -rf ~/*|rm -rf ~/*: ~ followed by only * and / names no subpath of ~, and the whitelist permits ~/sub only (a directory literally named ~ is ./~). Write the subpath literally.|
+find ~/* -delete|find … -delete/-exec rm on bare ~ with no selection primary|'
 while IFS='|' read -r vc_cmd vc_want vc_absent; do
   [[ -n "$vc_cmd" ]] || continue
   vc_reason=$(reason_of "$vc_cmd")

@@ -1776,3 +1776,13 @@ pass	S8-GLOB3-fp control: a bounded find from a home glob	find ~/* -name '*.tmp'
 pass	S8-GLOB4-fp control: ~* is not the home directory	rm -rf ~*
 pass	S8-GLOB5-fp control: a literal subpath, then a glob	rm -rf "$HOME/cache/"*
 pass	S8-GLOB6-fp control: a glob with a literal suffix	rm -rf $HOME/*.log
+# Registered residuals, from the 0.115.0 pre-tag review (reviewer-constructed; docs/S8-RESIDUALS.md):
+# F24 GLOBEQ, `?` and bracket globs that match what `*` does; F20, a quoted star or `~/*` is literal but
+# read after quote removal; F22, `~+` is $PWD and carries no `$`.
+xfn	S8-GLOBEQ1 F24 a ? glob before * matches what ~/* matches	rm -rf ~/?*
+xfn	S8-GLOBEQ2 F24 the same after $HOME	rm -rf $HOME/?*
+xfn	S8-GLOBEQ3 F24 a bracket glob	rm -rf ~/[!.]*
+xfn	S8-GLOBEQ4 F24 an unbounded find from a ? glob	find ~/? -delete
+xfp	S8-TILDEQ2 F20 a quoted ~/* is a literal path, read after quote removal	rm -rf '~/*'
+xfp	S8-GLOBLIT1 F20 a quoted star is a file literally named *, read after quote removal	rm -rf "$HOME/*"
+xfn	S8-TILDEPWD3 F22 ~+ (PWD) then a glob	rm -rf ~+/*
