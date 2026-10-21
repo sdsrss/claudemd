@@ -793,6 +793,7 @@ test('refused: branchDeleteTargets reads names from git branch -d / --delete seg
     'echo git branch -d feat',
     'git log --oneline main..feat',
     'git --git-dir=/x branch -d feat',
+    'git -C "$R" branch -d feat',
   ]) {
     assert.deepEqual(branchDeleteTargets(notOne), [], notOne);
   }
