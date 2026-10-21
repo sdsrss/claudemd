@@ -11,6 +11,8 @@ import {
   vitestWatchAlive,
   ageFloorMs,
   classifyBranches,
+  refusedBranches,
+  branchDeleteTargets,
   removeVitestTargets,
 } from '../../scripts/housekeeping.js';
 
@@ -314,6 +316,12 @@ function landAndDeleteRemote(r, name, mode) {
     git(r, 'merge', '-q', '--squash', name);
     git(r, 'commit', '-q', '-m', `squash ${name}`);
   }
+  // What a rebase merge or a cherry-pick does: main moves first, so the
+  // branch's commits land as new commits and its tip is not an ancestor.
+  if (mode === 'pick') {
+    commit(r, `main-${name}.txt`, 'unrelated\n');
+    git(r, 'cherry-pick', `main..${name}`);
+  }
   if (mode !== 'none') git(r, 'push', '-q', 'origin', 'main');
   git(r, 'push', '-q', 'origin', '--delete', name);
   git(r, 'fetch', '-q', '--prune');
@@ -377,11 +385,24 @@ test('branches: worktree-agent-* on main whose live upstream lacks its tip → n
   assert.equal(branchD(r, wa).status, 0, 'listed → git branch -d deletes it');
 });
 
-test('branches: upstream gone, squash-merged (tip not an ancestor) → kept, listed as goneUnmerged', () => {
+// A squash commit equal to the branch's whole change lands it (landed, below);
+// one that also carries something else does not.
+test('branches: upstream gone, squash commit that adds more than the branch → kept, listed as goneUnmerged', () => {
   const r = clone();
-  landAndDeleteRemote(r, 'sq', 'squash');
+  git(r, 'checkout', '-q', '-b', 'sq');
+  commit(r, 'sq.txt', 'sq\n');
+  git(r, 'push', '-q', '-u', 'origin', 'sq');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'merge', '-q', '--squash', 'sq');
+  fs.writeFileSync(path.join(r, 'extra.txt'), 'extra\n');
+  git(r, 'add', 'extra.txt');
+  git(r, 'commit', '-q', '-m', 'squash sq plus extra');
+  git(r, 'push', '-q', 'origin', 'main');
+  git(r, 'push', '-q', 'origin', '--delete', 'sq');
+  git(r, 'fetch', '-q', '--prune');
   const c = classifyBranches({ cwd: r });
   assert.deepEqual(names(c.deletable), []);
+  assert.deepEqual(names(c.landed), []);
   assert.deepEqual(names(c.goneUnmerged), ['sq']);
 });
 
@@ -395,7 +416,11 @@ test('branches: whitespace-only difference is never judged equivalent (review H3
   git(r, 'push', '-q', 'origin', 'main');
   git(r, 'push', '-q', 'origin', '--delete', 'ws');
   git(r, 'fetch', '-q', '--prune');
-  assert.deepEqual(names(classifyBranches({ cwd: r }).deletable), []);
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.deletable), []);
+  // `git cherry`'s patch-id strips whitespace and calls these two equal.
+  assert.deepEqual(names(c.landed), []);
+  assert.deepEqual(names(c.goneUnmerged), ['ws']);
 });
 
 test('branches: upstream still on the remote → kept even when an ancestor (git-flow main/develop, review H2/M1)', () => {
@@ -554,4 +579,314 @@ test('branches: a bisect in progress skips the whole run (re-review F7)', () => 
   const out = classifyBranches({ cwd: r });
   assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
   assert.deepEqual(out.deletable, []);
+});
+
+// ---- landed: `git branch -d` refuses, every commit is on main byte for byte ----
+//
+// A rebase merge, a cherry-pick or a squash lands a branch's work as NEW
+// commits, so its tip is not an ancestor and `git branch -d` refuses it. Such
+// a branch is `landed` when each of its commits has a commit on main, after
+// the fork point, with the same `git patch-id --verbatim` (whitespace kept,
+// binary files by blob id), or its whole change equals one such commit
+// (squash). tasks/specs/landed-branch-cleanup.md.
+
+test('branches: upstream gone, rebase-merged (each commit re-applied on main) → landed per-commit', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  assert.notEqual(branchD(r, 'feat').status, 0, 'fixture: git branch -d refuses feat');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.deletable), []);
+  assert.deepEqual(names(c.goneUnmerged), []);
+  assert.deepEqual(c.landed, [
+    { name: 'feat', sha: git(r, 'rev-parse', 'feat'), why: 'gone', how: 'per-commit' },
+  ]);
+});
+
+test('branches: upstream gone, squash-merged (two commits, one squash) → landed squash', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'sq');
+  commit(r, 'sq.txt', 'one\n');
+  commit(r, 'sq.txt', 'one\ntwo\n');
+  git(r, 'push', '-q', '-u', 'origin', 'sq');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'merge', '-q', '--squash', 'sq');
+  git(r, 'commit', '-q', '-m', 'squash sq');
+  git(r, 'push', '-q', 'origin', 'main');
+  git(r, 'push', '-q', 'origin', '--delete', 'sq');
+  git(r, 'fetch', '-q', '--prune');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.goneUnmerged), []);
+  assert.deepEqual(names(c.landed), ['sq']);
+  assert.equal(c.landed[0].how, 'squash');
+});
+
+test('branches: a commit whose content changed in the pick → not landed (goneUnmerged)', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'edit');
+  commit(r, 'e.txt', 'e1\n');
+  commit(r, 'f.txt', 'f1\n');
+  git(r, 'push', '-q', '-u', 'origin', 'edit');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', 'edit~1');
+  commit(r, 'f.txt', 'f2\n'); // the second commit lands with different bytes
+  git(r, 'push', '-q', 'origin', 'main');
+  git(r, 'push', '-q', 'origin', '--delete', 'edit');
+  git(r, 'fetch', '-q', '--prune');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+  assert.deepEqual(names(c.goneUnmerged), ['edit']);
+});
+
+test('branches: worktree-agent-* with no upstream, cherry-picked onto main → landed (why worktree-agent)', () => {
+  const r = clone();
+  const wa = 'worktree-agent-d0123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'w1.txt', 'w1\n');
+  commit(r, 'w2.txt', 'w2\n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', `main..${wa}`);
+  assert.notEqual(branchD(r, wa).status, 0, 'fixture: git branch -d refuses it');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.deletable), []);
+  assert.deepEqual(names(c.landed), [wa]);
+  assert.equal(c.landed[0].why, 'worktree-agent');
+  assert.equal(c.landed[0].how, 'per-commit');
+});
+
+test('branches: a merge commit on the branch → not landed', () => {
+  const r = clone();
+  const wa = 'worktree-agent-e0123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'w.txt', 'w\n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'm.txt', 'm\n');
+  git(r, 'checkout', '-q', wa);
+  git(r, 'merge', '-q', '--no-ff', '-m', 'merge main in', 'main');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'cherry-pick', `${wa}~1`);
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+  assert.equal(refusedBranches({ cwd: r, command: `git branch -d ${wa}` }).kept[0].reason, 'merge-commits');
+});
+
+test('branches: a main commit from before the fork point does not count (re-adding what main once removed)', () => {
+  const r = clone();
+  // A second candidate forked earlier, so the one `git log -p` of main also
+  // covers the commits before the re-adding branch's fork point.
+  git(r, 'checkout', '-q', '-b', 'worktree-agent-e1123456789abcdef');
+  commit(r, 'early.txt', 'early\n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'n.txt', '1\n2\n3\n');
+  commit(r, 'n.txt', '1\n2\nX\n3\n'); // main adds X …
+  commit(r, 'n.txt', '1\n2\n3\n'); // … and removes it again
+  const wa = 'worktree-agent-f0123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'n.txt', '1\n2\nX\n3\n'); // the branch re-adds it: same diff as main's older commit
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+});
+
+test('branches: landed, then reverted on main → still landed (user decision 2026-10-21)', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'rv', 'pick');
+  git(r, 'revert', '--no-edit', 'HEAD');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), ['rv']);
+});
+
+test("branches: a mode change counts — the same edit without the branch's chmod is not landed", () => {
+  const r = clone();
+  const wa = 'worktree-agent-a1123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  fs.writeFileSync(path.join(r, 'a.txt'), 'a\nb\n');
+  fs.chmodSync(path.join(r, 'a.txt'), 0o755);
+  git(r, 'commit', '-q', '-am', 'edit a and make it executable');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  commit(r, 'a.txt', 'a\nb\n');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+});
+
+test('branches: a binary file with other bytes on main → not landed', () => {
+  const r = clone();
+  const wa = 'worktree-agent-b1123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  fs.writeFileSync(path.join(r, 'b.bin'), Buffer.from([0, 1, 2, 3]));
+  git(r, 'add', 'b.bin');
+  git(r, 'commit', '-q', '-m', 'add b.bin');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  fs.writeFileSync(path.join(r, 'b.bin'), Buffer.from([0, 1, 2, 4]));
+  git(r, 'add', 'b.bin');
+  git(r, 'commit', '-q', '-m', 'add b.bin');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+});
+
+test('branches: more than 20 candidates to judge → 20 judged, unjudged counts the rest', () => {
+  const r = clone();
+  const base = git(r, 'rev-parse', 'HEAD');
+  const tree = git(r, 'rev-parse', 'HEAD^{tree}');
+  const refs = [];
+  for (let i = 0; i < 22; i++) {
+    const c = spawnSync('git', ['-C', r, 'commit-tree', tree, '-p', base, '-m', `empty ${i}`], {
+      encoding: 'utf8',
+      env: GIT_ENV,
+    });
+    refs.push(`create refs/heads/worktree-agent-n${String(i).padStart(2, '0')} ${c.stdout.trim()}\n`);
+  }
+  const u = spawnSync('git', ['-C', r, 'update-ref', '--stdin'], { input: refs.join(''), env: GIT_ENV });
+  assert.equal(u.status, 0, String(u.stderr));
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+  assert.equal(c.unjudged, 2);
+  assert.equal(classifyBranches({ cwd: root }).unjudged, 0, 'not a repo: nothing left out');
+});
+
+test('branches: more than 500 main commits after the fork point → not judged landed', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'old', 'pick');
+  // 500 more commits on main through fast-import: one spawn, not 500.
+  const head = git(r, 'rev-parse', 'HEAD');
+  let stream = '';
+  for (let i = 0; i < 500; i++) {
+    stream += `commit refs/heads/main\ncommitter t <t@t> ${Math.floor(Date.now() / 1000) + i} +0000\ndata 2\nc\n`;
+    if (i === 0) stream += `from ${head}\n`;
+    stream += `M 100644 inline pad.txt\ndata ${String(i).length + 1}\n${i}\n\n`;
+  }
+  const fi = spawnSync('git', ['-C', r, 'fast-import', '--quiet', '--force'], {
+    input: stream,
+    env: GIT_ENV,
+  });
+  assert.equal(fi.status, 0, String(fi.stderr));
+  git(r, 'reset', '-q', '--hard', 'main');
+  const c = classifyBranches({ cwd: r });
+  assert.deepEqual(names(c.landed), []);
+  assert.deepEqual(names(c.goneUnmerged), ['old']);
+});
+
+// ---- refused: the branches a `git branch -d` command left in place ----
+
+test('refused: branchDeleteTargets reads names from git branch -d / --delete segments only', () => {
+  assert.deepEqual(branchDeleteTargets('git branch -d feat'), [{ dir: null, names: ['feat'] }]);
+  assert.deepEqual(branchDeleteTargets(`git -C '/x y' branch -d -- 'a' "b" fix/c`), [
+    { dir: '/x y', names: ['a', 'b', 'fix/c'] },
+  ]);
+  assert.deepEqual(branchDeleteTargets('git branch --delete a; git status && git branch -dq b'), [
+    { dir: null, names: ['a'] },
+    { dir: null, names: ['b'] },
+  ]);
+  for (const notOne of [
+    'git branch -D feat',
+    'git branch -d -f feat',
+    'git branch -d --force feat',
+    'git branch -d -r origin/feat',
+    'git branch feat',
+    'echo git branch -d feat',
+    'git log --oneline main..feat',
+    'git --git-dir=/x branch -d feat',
+  ]) {
+    assert.deepEqual(branchDeleteTargets(notOne), [], notOne);
+  }
+  // A name the shell would expand is not knowable from the text.
+  assert.deepEqual(branchDeleteTargets('git branch -d "$b" feat-* `x` ok'), [{ dir: null, names: ['ok'] }]);
+  assert.deepEqual(branchDeleteTargets('cd /r && GIT_TRACE=0 git branch -d a\ngit branch -d b'), [
+    { dir: null, names: ['a'] },
+    { dir: null, names: ['b'] },
+  ]);
+});
+
+test('refused: a cherry-picked branch with no upstream that -d refused → landed per-commit', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'fix/x');
+  commit(r, 'x.txt', 'x\n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', 'main..fix/x');
+  assert.notEqual(branchD(r, 'fix/x').status, 0, 'fixture: git branch -d refuses it');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d fix/x' });
+  assert.deepEqual(out.kept, []);
+  assert.deepEqual(out.landed, [
+    { repo: r, name: 'fix/x', sha: git(r, 'rev-parse', 'fix/x'), onto: 'main', how: 'per-commit' },
+  ]);
+});
+
+test('refused: a commit changed in the pick → kept, naming the commit with no copy on main', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'fix/y');
+  commit(r, 'y1.txt', 'y1\n');
+  fs.writeFileSync(path.join(r, 'y2.txt'), 'y2\n');
+  git(r, 'add', 'y2.txt');
+  git(r, 'commit', '-q', '-m', 'add y2');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', 'fix/y~1');
+  commit(r, 'y2.txt', 'y2 changed\n');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d fix/y' });
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept.length, 1);
+  assert.equal(out.kept[0].name, 'fix/y');
+  assert.equal(out.kept[0].reason, 'not-on-default');
+  assert.deepEqual(out.kept[0].unmatched, [
+    { sha: git(r, 'rev-parse', '--short', 'fix/y'), subject: 'add y2' },
+  ]);
+});
+
+test('refused: on main but -d refused because HEAD is elsewhere → landed on-main', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'topic');
+  commit(r, 't.txt', 't\n');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'merge', '-q', '--ff-only', 'topic');
+  git(r, 'checkout', '-q', '-b', 'elsewhere', 'main~1');
+  assert.notEqual(branchD(r, 'topic').status, 0, 'fixture: git branch -d refuses topic from here');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d topic' });
+  assert.deepEqual(names(out.landed), ['topic']);
+  assert.equal(out.landed[0].how, 'on-main');
+});
+
+test('refused: deleted, default, checked-out, symbolic and unknown names are left out', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'gone1', 'pick');
+  git(r, 'branch', 'busy', 'main');
+  git(r, 'worktree', 'add', '-q', path.join(root, 'wt'), 'busy');
+  git(r, 'symbolic-ref', 'refs/heads/alias', 'refs/heads/main');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d main busy alias nosuch deleted-already' });
+  assert.deepEqual(out.landed, []);
+  assert.deepEqual(out.kept, []);
+});
+
+test('refused: git -C <dir> judges that repository, resolved from the cwd', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  const out = refusedBranches({ cwd: root, command: 'git -C repo branch -d feat' });
+  assert.deepEqual(names(out.landed), ['feat']);
+  assert.equal(out.landed[0].repo, r);
+});
+
+test('refused: a rebase in progress skips the run', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  fs.mkdirSync(path.join(r, '.git', 'rebase-merge'));
+  const out = refusedBranches({ cwd: r, command: 'git branch -d feat' });
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.skipped, 'rebase-or-bisect-in-progress');
+});
+
+test('refused: the CLI reads the command on stdin and prints JSON; it deletes nothing', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  const out = spawnSync('node', [SCRIPT, 'refused', `--cwd=${r}`], {
+    input: 'git branch -d feat',
+    encoding: 'utf8',
+  });
+  assert.equal(out.status, 0, out.stderr);
+  assert.deepEqual(names(JSON.parse(out.stdout).landed), ['feat']);
+  assert.ok(git(r, 'branch', '--list', 'feat'), 'feat still exists');
 });
