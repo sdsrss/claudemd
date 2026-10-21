@@ -134,6 +134,14 @@
   - L5：README 的 clean-residue 行补上 `claudemd-landed.*`。
   - L3（剥掉 `GIT_*` 这一步没有测试）、L4（`TMPDIR` 不可用时 `refused` 崩溃、hook 不出声，方向安全，9008c6d 上也一样）：按评审修复规则 Low 默认不修，写进遗留项。
   - 评审深度：第 3 轮超过手册的 2 轮上限，又出了 High → 按规则交给用户决定（再评审一轮 / 直接发 / 暂缓）。
+- 2026-10-21 用户："继续完成剩余的工作，按你的推荐执行，我授权发版……把剩下能做的工作做了一起发版"。读法：先把第 3 轮遗留项里值得做的做完，再派第 4 轮评审（范围 d453478..新 head），通过后发版。逐项：
+  - L4（没有临时目录）：复现后比评审给的级别严重。`branches` 路径同样抛异常，hook 在 merge/pull/fetch/push 之后什么都不输出；0.115.0 在同样条件下仍列出已合并分支，所以这是相对 0.115.0 的回退。修复：临时仓库建不起来时不比较（`compare-failed`），其余照常（066b64b，先写失败用例）。
+  - `origin/HEAD` 指向本地不存在的分支：改为 `no-default-branch`。同类的还有浅克隆：分叉点在浅克隆边界外时 merge-base 同样失败，理由同样写成"shares no history"，一并改为 `shallow`（066b64b）。三处只改变保留的理由，不会让分支变成 landed。
+  - L3（剥掉 `GIT_*` 这一步没有测试）：补了 `GIT_ATTR_SOURCE` 用例（4569fc2）。去掉剥离后，一个改动不在 main 上的分支被判为 landed，用例失败。
+  - 评审员留下的 worktree：干净，已用 `git worktree remove` 删除。
+  - 计时伪影（gsd-lite docs/prompt-audit-shipped）：reflog 时间解析正确（毫秒和 Z 都对，与 TZ 无关，解析到 b52dadb）；两次会话的运行脚本相同；两次运行之间的代码只差一行注释；本会话之前保存的两次运行（7c51d7e、d04c3b2）都判为 landed per-commit。更早那次运行的逐行输出没有保存，原因无法再追。这一行不计入 29 个，不影响发版里的数字。
+  - hook 文字只改了"没有比较"的几种理由；TC、TS 两个任务的结束状态（用脚本重建）上，7c51d7e、3fa16c8 和 066b64b 的 hook 输出逐字节相同，所以不重做离线对比。
+  - 不在本次做：`session-summary` Case 15 在非 UTC 时区失败（0.115.0 就有，与本次改动无关），留作遗留项。
 
 ## 验证记录
 
@@ -162,3 +170,8 @@
 - 离线对比 B4（7c51d7e）→ TC 5/5，TS 5/5，自拼 `-D` 0/10；流记录里新句子 10/10、旧括注 0/10；花费 $2.81
 - 真实数据（7c51d7e）→ 29 个里 27 个已落地、2 个保留，每个分支 111–566 ms（负载 15）；两行 `-d` 计时伪影中 gsd-lite docs/prompt-audit-shipped 从保留变为 landed，0a7e8a5 的代码在同一输入上结论相同，是输入变了
 - 2ae4944 上：`TZ=UTC npm run check` → 通过（node 1679/1681，2 个跳过；全部 shell 套件）；忽略 SIGPIPE → 通过（同上）；`TZ=UTC` bash 3.2.57 → 通过（44/44；不设 TZ 时 session-summary Case 15 失败，与 0.115.0 相同）；`npm run smoke` → 通过（2/2）
+- 第 4 轮前的修复（4569fc2、066b64b）：`node --test tests/scripts/housekeeping.test.js` → 修复前新用例失败 2 个（mkdtemp `ENOENT`；`unrelated` 不等于 `shallow`），修复后通过（83/84，1 个跳过为 macOS 用例）；`bash tests/hooks/branch-prune.test.sh` → 修复前 37/41（11l、11m、11n、12b 失败），修复后 41/41；对 0.115.0 的代码 27/41（新增 21 项里 14 项失败，12b 通过）
+- 变异：去掉默认分支检查、去掉浅克隆检查，各自让 housekeeping 用例失败；去掉 `GIT_*` 剥离，`GIT_ATTR_SOURCE` 用例失败（判为 landed）
+- 真实数据（066b64b）→ 29 个里 27 个已落地、2 个保留，35 行判定都与 d04c3b2 相同，每个分支 85–642 ms（负载 4）
+- TC、TS 结束状态（脚本重建）上的 hook 输出：3fa16c8 对 066b64b 逐字节相同（943、823 字节），7c51d7e 对 066b64b 逐字节相同（945、825 字节）
+- 066b64b 上：`TZ=UTC npm run check` → 通过（node 1684/1686，2 个跳过；全部 shell 套件）；忽略 SIGPIPE → 通过（同上）；`TZ=UTC` bash 3.2.57 → 通过（44/44）；`npm run smoke` → 通过（2/2）；跑完后工作树干净
