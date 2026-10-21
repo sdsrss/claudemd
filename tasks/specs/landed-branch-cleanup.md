@@ -88,7 +88,7 @@
   - 旧："…; if `-d` refuses, keep the branch and name it under open items, never `-D`."
   - 新："…; if `-d` refuses, use `-D` only through the command a hook prints for a branch whose every commit it found on the main line, else keep the branch and name it under open items."
 - 取舍：
-  - 判定放在 hook 而不是规则里，因为两次会话自己判断时都用了 `git cherry`；
+  - 判定放在 hook 而不是规则里，因为 gsd-lite 那次会话自己判断时用的是 `git cherry`（claudemd 那次只凭 cherry-pick 记录）；
   - hook 被关掉时没有命令，就回到保留的做法。
 
 ## 计划
@@ -103,7 +103,21 @@
 
 - 2026-10-21：用户授权按建议实现：两个触发点加规则改句全部做；"落地后被撤销"算已落地。
 - 在 `release/v0.116.0` 分支上做；`next-release` 与 `main` 相同。
+- 注册表原来一个 hook 只写一个事件；branch-prune 要挂在 PostToolUse 和 PostToolUseFailure 两处，所以加了可选字段 `alsoOn`，一致性测试改为核对每一处注册。
+- `refused` 从 stdin 读命令（命令可能是很长的 here-doc，argv 有长度上限）。
+- 成本上限定为：列表路径每次最多判定 20 个，分叉点之后最多 500 个提交（数据里最大 208）。
+- 离线对比第一轮发现缺陷：squash 的情况 hook 写成"每个提交在 main 上都有副本"，这对 squash 不成立；5 次里有 4 次模型自己核对 patch-id，发现说法不对，就没执行命令。修复（11282bf，重写提交信息前为 bf8d41a）：按依据分别说明——逐提交（N 个提交各有副本）、squash（整体改动等于 main 上的哪个提交）、末端已在 main 上。修复后冻结新快照 B2，两个任务都重跑。
+- 变异检验发现 `-C` 后面跟变量目录的情况没有用例覆盖，已补（6af64e0）。
 
 ## 验证记录
 
-- （待填）
+- `node --test tests/scripts/housekeeping.test.js` → 通过（63/63；新用例在实现前失败，因为导出不存在；7 个判定变异和 5 个解析变异各自被对应用例抓到）
+- `bash tests/hooks/branch-prune.test.sh` → 通过（36/36；新增 16 个，实现前其中 8 个失败；5 个 hook 变异各自被抓到；bash 3.2.57 和忽略 SIGPIPE 两种条件下也是 36/36）
+- `node --test tests/scripts/hook-registry.test.js` → 通过（9/9；新用例在注册前失败）
+- `bash tests/hooks/contract.test.sh` → 通过（248/248；新增事件写进文档之前，C 项失败）
+- `node --test tests/scripts/spec-structure.test.js` → 通过（89/89；§7 Git 整行钉、节哈希、标题清单、Recent changes 哈希都已在读过 diff 后更新）
+- `node scripts/version-cascade-check.js` → 通过（v8.3 一致；Sizing 在 ±20B 内）；`node scripts/spec-coherence-audit.js --strict` → 通过（5/5，coreDelta=0，extendedDelta=0）
+- 真实数据重跑（实际实现 `refusedBranches`，按当时的 main）→ 通过：被拒后 `-D` 的 29 个里，27 个判为已落地，2 个保留；loop-testing 现存 2 个保留（32 个、1 个提交没有副本）；gsd-lite 的 2 个在 13:24 main 快进后判为已落地（`git cherry` 全为 `-`）；每个分支 128–1215 ms
+- 离线对比 A（0.115.0）→ TC 0/5 删除 fix/a、5/5 保留 fix/b、自拼 `-D` 0/10；TS 0/5 删除
+- 离线对比 B（42a5214 快照，即 d4fbde7 的 tree）→ TC 5/5 通过；TS 1/5 删除（见决策：squash 文字有误）
+- 离线对比 B2（修复后）→ （待填）
