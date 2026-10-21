@@ -54,7 +54,7 @@ deny	rm -Rf $VAR (uppercase)	rm -Rf $VAR
 pass	rm -rf $HOME/cache (whitelist)	rm -rf $HOME/cache
 pass	rm -rf $TMPDIR/x (whitelist)	rm -rf $TMPDIR/x
 pass	rm -rf $PWD/build (whitelist)	rm -rf $PWD/build
-pass	rm -rf $HOME/* (whitelist + glob)	rm -rf $HOME/*
+deny	rm -rf $HOME/* (a glob is no subpath: all of $HOME, or /* with HOME empty; S8-GLOB below)	rm -rf $HOME/*
 pass	rm -rf "$HOME/cache" (whitelist quoted)	rm -rf "$HOME/cache"
 pass	rm -rf ${HOME}/sub (whitelist braced)	rm -rf ${HOME}/sub
 pass	rm -rf $VAR [allow-rm-rf-var]	rm -rf $VAR [allow-rm-rf-var]
@@ -89,7 +89,7 @@ xfn	S8-DOTSTART3 find ~/./ -delete (start point is /. and slashes)	find ~/./ -de
 xfn	S8-TILDEPWD1 rm -rf ~+ (tilde-plus is $PWD)	rm -rf ~+
 xfn	S8-TILDEPWD2 find ~- -delete (tilde-minus is $OLDPWD)	find ~- -delete
 pass	rm -rf ~/cache (tilde with a subpath)	rm -rf ~/cache
-pass	rm -rf ~/* (tilde with a glob, as $HOME/*)	rm -rf ~/*
+deny	rm -rf ~/* (tilde with only a glob, as bare ~; S8-GLOB below)	rm -rf ~/*
 pass	find ~ -name -delete (bounded find, as $HOME)	find ~ -name '*.tmp' -delete
 pass	rm -rf ./~ (a directory literally named ~)	rm -rf ./~
 # The gate reads targets after quote removal, so a quoted `~` (a directory
@@ -1749,3 +1749,30 @@ deny	S8-NPXM1 an unpinned npx after a pinned one	npx prettier@3.0.0 --check . &&
 deny	S8-NPXM2 guard: a pinned npx behind if, then an unpinned one, denied before and after (keywords with first-segment-only would allow it)	if npx prettier@3.0.0 --check .; then npx some-unknown-pkg; fi
 deny	S8-NPXM3 control: the unpinned npx first was denied before	npx some-unknown-pkg && npx prettier@3.0.0
 pass	S8-NPXM1-fp control: two pinned npx	npx prettier@3.0.0 --check . && npx eslint@9.0.0 .
+
+# === 2026-10-21 S8-GLOB: a subpath made only of * and / bounds nothing ===
+# The whitelist arm required one non-/ character in the residue, and `*` counted, so `$HOME/*`
+# passed while bare `$HOME` was denied. The glob deletes everything under the var, and with the
+# var empty it is `/*`: the Steam shape the arm's own comment cites (rm's --preserve-root guards
+# `/`, not `/*`). `~` expands to an empty string when HOME is empty too. Deny-only: the bare test
+# (and the F43 fold, which must agree with it) now treats `*` like `/`, and a target that newly
+# meets it takes the bare-var arm's existing deny; the `~` arm's pattern takes `*` after a slash.
+# 105,658 distinct real commands (2026-10-21): 2 had such a target, both gate-testing text.
+deny	S8-GLOB1 a quoted var, then a glob	rm -rf "$HOME"/*
+deny	S8-GLOB2 a braced var, then a glob	rm -rf ${HOME}/*
+deny	S8-GLOB3 a guarded var, then a glob (F43 fold)	rm -rf "${HOME:?}"/*
+deny	S8-GLOB4 TMPDIR, then a glob (TMPDIR is often unset on Linux)	rm -rf "$TMPDIR"/*
+deny	S8-GLOB5 PWD, then a glob	rm -rf "$PWD"/*
+deny	S8-GLOB6 OLDPWD, then a glob	rm -rf $OLDPWD/*
+deny	S8-GLOB7 a double-star glob under ~	rm -rf ~/**
+deny	S8-GLOB8 a glob, then a slash	rm -rf ~/*/
+deny	S8-GLOB9 an unbounded find from a home glob	find ~/* -delete
+deny	S8-GLOB10 the var directly followed by a glob	rm -rf "$HOME"*
+deny	S8-GLOB11 the glob after the closing quote	rm -rf "$HOME/"*
+deny	S8-GLOB12 a glob as a second target	rm -rf ./build ~/*
+pass	S8-GLOB1-fp control: a literal subpath before the glob	rm -rf ~/.cache/*
+pass	S8-GLOB2-fp control: a literal prefix in the glob	rm -rf "$TMPDIR"/claudemd-*
+pass	S8-GLOB3-fp control: a bounded find from a home glob	find ~/* -name '*.tmp' -delete
+pass	S8-GLOB4-fp control: ~* is not the home directory	rm -rf ~*
+pass	S8-GLOB5-fp control: a literal subpath, then a glob	rm -rf "$HOME/cache/"*
+pass	S8-GLOB6-fp control: a glob with a literal suffix	rm -rf $HOME/*.log

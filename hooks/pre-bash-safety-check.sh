@@ -1188,12 +1188,18 @@ if :; then
     # whitelisted-var arm below: `rm -rf $HOME` denied and `rm -rf ~` passed.
     # Deny-only: it fires on `~` followed by nothing but slashes, and not on a
     # bounded find, the same two conditions that arm denies `$HOME` under;
-    # `~/x`, `~/*` and `~user` keep their verdicts, as `$HOME/x` and `$HOME/*` do.
-    s8_tilde_re='^~/*$'
+    # `~/x` and `~user` keep their verdicts, as `$HOME/x` does. A subpath made
+    # only of `*` and `/` (`~/*`, `~/**`, `~/*/`) bounds nothing, so it reads as
+    # bare too (S8-GLOB, 2026-10-21; the whitelisted-var arm below does the same
+    # for `$HOME/*`). `~*` does not match: bash leaves an unknown `~user` prefix
+    # literal, so it is a glob in the current directory, not the home.
+    s8_tilde_re='^~(/[/*]*)?$'
     if [[ "$rm_target" =~ $s8_tilde_re ]] && (( S8_FIND_BOUNDED == 0 )); then
       HITS+=("$S8_RM_VERB ~ with no literal subpath (bare home directory)")
       HIT_SECTIONS+=('§8-rm-rf-var')
-      if (( S8_RM_IS_FIND == 0 )); then
+      if (( S8_RM_IS_FIND == 0 )) && [[ "$rm_target" == *'*'* ]]; then
+        REASONS+=$'\n  - '"$S8_RM_VERB $rm_target"$': a subpath of only * and / matches everything under ~ (and under / when HOME is empty). Write the subpath literally.'
+      elif (( S8_RM_IS_FIND == 0 )); then
         REASONS+=$'\n  - '"$S8_RM_VERB"$' ~ with no subpath: ~ is $HOME, and the whitelist permits ~/sub, not bare ~ (a directory literally named ~ is ./~)'
       else
         REASONS+=$'\n  - '"$S8_RM_VERB"$' on bare ~ with no selection primary — it deletes everything under it. Add a primary (-name/-type/-mtime …), or a literal subpath.'
@@ -1354,12 +1360,17 @@ if :; then
     # below resets BASH_REMATCH, and under `set -u` reading it aborts the hook,
     # which the harness reads as ALLOW (fail-open, the #106 class).
     if [[ "$varname" =~ ^(HOME|PWD|OLDPWD|TMPDIR):?\? ]] \
-       && (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
+       && (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/*] ]]; then
       varname="${varname%%[:?]*}"
     fi
     case "$varname" in
       HOME|PWD|OLDPWD|TMPDIR)
-        if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/] ]]; then
+        # "Bare" means the residue holds nothing but `/` and `*` (S8-GLOB,
+        # 2026-10-21): `$HOME/*` deletes everything under $HOME and is `/*` when
+        # HOME is empty — the Steam shape above, which `--preserve-root` does not
+        # catch. Until then `*` counted as a subpath. The F43 fold above tests the
+        # same class, so `${HOME:?}/*` reaches this arm too.
+        if (( S8_FIND_BOUNDED == 0 )) && [[ ! "$residue" =~ [^/*] ]]; then
           HITS+=("$S8_RM_VERB \$$varname with no literal subpath (bare whitelisted-var expansion)")
           HIT_SECTIONS+=('§8-rm-rf-var')
           # Verb-specific advice. "Add a subpath" is the fix for `rm -rf $HOME`;
@@ -1378,7 +1389,9 @@ if :; then
               | sed -E 's/[${}"'"'"']//g; s/[^A-Za-z0-9_].*$//')
             # The verb the user typed, as every other rm line does (0.94.0
             # pre-tag review: this one line was still hard-coded as `rm -rf`).
-            if [[ -n "$s8_subvar" ]]; then
+            if [[ "$residue" == *'*'* ]]; then
+              REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' followed by a subpath of only * and /: it matches everything under $'"$varname"$' (and under / when $'"$varname"$' is empty). Write the subpath literally.'
+            elif [[ -n "$s8_subvar" ]]; then
               REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' whose only subpath is $'"$s8_subvar"$': the gate reads $'"$s8_subvar"$' as empty, which is bare $'"$varname"$', and a guard on $'"$s8_subvar"$' does not change that. Write the subpath literally.'
             else
               REASONS+=$'\n  - '"$S8_RM_VERB"$' $'"$varname"$' with no subpath (whitelist permits $'"$varname"$'/sub, not bare $'"$varname"$')'
