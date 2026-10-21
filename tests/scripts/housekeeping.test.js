@@ -1060,6 +1060,30 @@ test('branches: no claudemd-landed directory stays behind, and a stale one is re
   assert.deepEqual(fs.readdirSync(tmp), ['claudemd-landed.XyZ789']);
 });
 
+// With no temp directory (TMPDIR names one that is not there) the throwaway
+// repository cannot be made. That threw, and the hook printed nothing, not
+// even the merged branches 0.115.0 listed (round 4).
+test('branches / refused: with no temp directory a candidate is not compared, and the merged ones are still listed', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'done', 'ff');
+  landAndDeleteRemote(r, 'feat', 'pick');
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = path.join(root, 'no-such-dir');
+  try {
+    const c = classifyBranches({ cwd: r });
+    assert.deepEqual(names(c.deletable), ['done']);
+    assert.deepEqual(names(c.landed), []);
+    assert.deepEqual(names(c.goneUnmerged), ['feat']);
+    const out = refusedBranches({ cwd: r, command: 'git branch -d feat' });
+    assert.deepEqual(out.landed, []);
+    assert.equal(out.kept[0]?.reason, 'compare-failed');
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved;
+  }
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), ['feat']);
+});
+
 test('branches: landed, then reverted on main → still landed (user decision 2026-10-21)', () => {
   const r = clone();
   landAndDeleteRemote(r, 'rv', 'pick');
@@ -1398,6 +1422,43 @@ test('refused: on main but -d refused because HEAD is elsewhere → landed on-ma
   const out = refusedBranches({ cwd: r, command: 'git branch -d topic' });
   assert.deepEqual(names(out.landed), ['topic']);
   assert.equal(out.landed[0].how, 'on-main');
+});
+
+// merge-base finds no fork point when origin/HEAD names a branch with no local
+// copy, or when a shallow clone stops before the fork point. Both read as
+// "unrelated", and the hook said the branch shares no history with the
+// default branch (round 4).
+test('refused: no local default branch, or a shallow clone short of the fork point, is said so', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'old');
+  commit(r, 'old.txt', 'old\n');
+  git(r, 'push', '-q', 'origin', 'old');
+  git(r, 'checkout', '-q', 'main');
+  for (const n of [1, 2, 3]) commit(r, `m${n}.txt`, `${n}\n`);
+  git(r, 'push', '-q', 'origin', 'main');
+  const full = refusedBranches({ cwd: r, command: 'git branch -d old' });
+  assert.equal(full.kept[0]?.reason, 'not-on-default', 'control: the full clone compares it');
+  const s = path.join(root, 'shallow');
+  git(
+    root,
+    'clone',
+    '-q',
+    '--depth',
+    '2',
+    '--no-single-branch',
+    `file://${path.join(root, 'remote.git')}`,
+    s
+  );
+  git(s, 'branch', '-q', 'old', 'origin/old');
+  const shallow = refusedBranches({ cwd: s, command: 'git branch -d old' });
+  assert.equal(shallow.kept[0]?.reason, 'shallow');
+  git(r, 'update-ref', 'refs/remotes/origin/trunk', 'main');
+  git(r, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
+  const missing = refusedBranches({ cwd: r, command: 'git branch -d old' });
+  assert.deepEqual(
+    missing.kept.map(k => [k.name, k.onto, k.reason]),
+    [['old', 'trunk', 'no-default-branch']]
+  );
 });
 
 test('refused: a revision expression is not a branch name (review L3)', () => {

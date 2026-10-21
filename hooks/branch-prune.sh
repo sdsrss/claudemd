@@ -147,8 +147,10 @@ if ((REFUSED)); then
         elif .reason == "merge-commits" then "it has merge commits"
         elif .reason == "too-far" then "it forked more than 500 commits back"
         elif .reason == "unrelated" then "it shares no history with it"
+        elif .reason == "shallow" then "the clone is shallow and holds no commit it shares with it"
+        elif .reason == "no-default-branch" then "there is no local \(.onto) branch to compare it with"
         elif .reason == "partial-clone" then "the repository is a partial clone, and comparing would fetch from its remote"
-        else "it could not be compared: git 2.40 or later is needed, or a git command failed" end) + ")"] | join(", ")')
+        else "it could not be compared: git 2.40 or later is needed, a git command failed, or no temp directory could be made" end) + ")"] | join(", ")')
       ((K > CAP)) && KEPT+=" (+$((K - CAP)) more)"
       MSG+=" Not on $ONTO: $KEPT. Keep these and name them under open items; do not force-delete them."
     fi

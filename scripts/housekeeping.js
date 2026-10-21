@@ -62,8 +62,10 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
           \`on-main\` when its tip is on the default branch and -d compared
           it with something else) or \`kept\`, with up to 3 of the commits
           that have no copy on the default branch (\`missingCount\` counts
-          them all), or reason \`compare-failed\` when git could not make
-          the comparison. Never deletes.
+          them all), or a reason such as \`compare-failed\` when the
+          comparison could not be made, \`shallow\` when a shallow clone
+          stops before the fork point, or \`no-default-branch\` when the
+          default branch has no local copy. Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -459,7 +461,15 @@ function makeInPlace(top) {
   let ready = null;
   const setup = () => {
     reapStaleLandedTmp(os.tmpdir());
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed.'));
+    // An empty template directory: no hooks, no info/ files. With no temp
+    // directory (TMPDIR names one that is not there, a full disk) the branch is
+    // not compared and the run goes on; the throw lost the whole list (round 4).
+    try {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed.'));
+      fs.mkdirSync(path.join(tmp, 'template'));
+    } catch {
+      return false;
+    }
     const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
     const base = {
       ...clean,
@@ -468,8 +478,6 @@ function makeInPlace(top) {
       GIT_ATTR_NOSYSTEM: '1',
     };
     const repo = path.join(tmp, 'repo.git');
-    // An empty template directory: no hooks, no info/ files.
-    fs.mkdirSync(path.join(tmp, 'template'));
     const init = spawnSync(
       'git',
       ['init', '-q', '--bare', `--template=${path.join(tmp, 'template')}`, `--object-format=${format}`, repo],
@@ -514,8 +522,15 @@ function isPartialClone(git) {
 // to the whole change), else { reason, missing } (the commits with no copy).
 function judgeLanded(git, top, defaultRef, shas) {
   const verdicts = new Map();
+  // origin/HEAD can name a branch with no local copy; merge-base then failed
+  // for every branch, which read as unrelated history (round 4).
+  if (git('rev-parse', '--verify', '--quiet', defaultRef) === null) {
+    for (const sha of shas) verdicts.set(sha, { reason: 'no-default-branch', missing: [] });
+    return verdicts;
+  }
   const open = [];
   const partial = isPartialClone(git);
+  let shallow = null;
   for (const sha of shas) {
     if (git('merge-base', '--is-ancestor', sha, defaultRef) !== null) {
       verdicts.set(sha, { how: 'on-main' });
@@ -527,7 +542,9 @@ function judgeLanded(git, top, defaultRef, shas) {
     }
     const base = git('merge-base', sha, defaultRef);
     if (!base) {
-      verdicts.set(sha, { reason: 'unrelated', missing: [] });
+      // A shallow clone can stop before the fork point.
+      shallow ??= git('rev-parse', '--is-shallow-repository') === 'true';
+      verdicts.set(sha, { reason: shallow ? 'shallow' : 'unrelated', missing: [] });
       continue;
     }
     const own = (git('rev-list', '--parents', `${defaultRef}..${sha}`) || '')

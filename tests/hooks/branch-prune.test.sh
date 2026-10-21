@@ -387,21 +387,48 @@ printf '#!/bin/sh\nfor a in "$@"; do case "$a" in --merge-base=*) exit 129;; esa
 chmod +x "$SANDBOX/git239/git"
 OUT=$(fevt 'git branch -d fix/pick' bp-11l | PATH="$SANDBOX/git239:$PATH" bash "$HOOK" 2>/dev/null)
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
-[[ "$CTX" == *"Not on main: fix/pick (it could not be compared: git 2.40 or later is needed, or a git command failed)."* &&
+[[ "$CTX" == *"Not on main: fix/pick (it could not be compared: git 2.40 or later is needed, a git command failed, or no temp directory could be made)."* &&
   "$CTX" != *"Delete them with"* && "$CTX" != *"no identical copy"* ]] &&
   ok "11l a git without merge-tree --merge-base reads as not compared" || ng "11l (ctx: $CTX)"
+
+# Case 11m: origin/HEAD names a branch with no local copy, and a shallow clone
+# stops before the fork point. Both said "it shares no history with it" (round 4).
+pick_repo
+git -C "$REPO" update-ref refs/remotes/origin/trunk main
+git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+OUT=$(fevt 'git branch -d fix/pick' bp-11m | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"Not on trunk: fix/pick (there is no local trunk branch to compare it with)."* && "$CTX" != *"Delete them with"* ]] &&
+  ok "11m no local default branch is named as the reason" || ng "11m (ctx: $CTX)"
+fresh_repo
+(
+  cd "$REPO" || exit 1
+  git checkout -q -b old main~1 && echo o >o && git add o && git commit -q -m o && git push -q origin old
+  git checkout -q main && for i in 1 2; do echo "$i" >"s$i" && git add "s$i" && git commit -q -m "s$i"; done
+  git push -q origin main
+)
+rm -rf "${SANDBOX:?}/shallow"
+git clone -q --depth 2 --no-single-branch "file://$SANDBOX/remote.git" "$SANDBOX/shallow"
+git -C "$SANDBOX/shallow" branch -q old origin/old
+OUT=$(fevt 'git branch -d old' bp-11n "$SANDBOX/shallow" | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"Not on main: old (the clone is shallow and holds no commit it shares with it)."* ]] &&
+  ok "11n a shallow clone short of the fork point is named as the reason" || ng "11n (ctx: $CTX)"
 
 # Case 12: after a pull, a [gone] branch that was rebase-merged on the remote
 # is listed as landed with the checked -D command, beside the merged one -d
 # deletes; the branch with no upstream stays unlisted.
-fresh_repo
-(
-  cd "$REPO" || exit 1
-  git checkout -q -b feat2 && echo f2 >f2 && git add f2 && git commit -q -m 'add f2' && git push -q -u origin feat2
-  git checkout -q main && echo m2 >m2 && git add m2 && git commit -q -m 'main moves on'
-  git cherry-pick main..feat2 >/dev/null && git push -q origin main
-  git push -q origin --delete feat2 && git fetch -q --prune
-)
+rebased_repo() {
+  fresh_repo
+  (
+    cd "$REPO" || exit 1
+    git checkout -q -b feat2 && echo f2 >f2 && git add f2 && git commit -q -m 'add f2' && git push -q -u origin feat2
+    git checkout -q main && echo m2 >m2 && git add m2 && git commit -q -m 'main moves on'
+    git cherry-pick main..feat2 >/dev/null && git push -q origin main
+    git push -q origin --delete feat2 && git fetch -q --prune
+  )
+}
+rebased_repo
 OUT=$(evt 'git pull' bp-12 | bash "$HOOK" 2>/dev/null)
 CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
 D12=$(dcmd "$CTX")
@@ -412,6 +439,15 @@ if [[ "$CTX" == *"branch -d -- 'feat'"* && "$CTX" == *"1 local branch(es) have t
 else
   ng "12 (cmd: $D12; ctx: $CTX)"
 fi
+
+# Case 12b: with no temp directory the landed branch cannot be compared, and
+# the merged one is still listed. The judgement threw and the hook printed
+# nothing, where 0.115.0 listed feat (round 4).
+rebased_repo
+OUT=$(evt 'git pull' bp-12b | TMPDIR="$SANDBOX/no-such-dir" bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"branch -d -- 'feat'"* && "$CTX" != *feat2* ]] &&
+  ok "12b no temp directory: the merged branch is still listed" || ng "12b (ctx: $CTX)"
 
 # Case 13: the handed-over -D command passes this plugin's own Bash gate.
 pick_repo
