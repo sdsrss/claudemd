@@ -68,12 +68,12 @@
   - 否则需要同时满足：
     - 分支独有、不含合并提交的提交至少 1 个；`D..B` 里没有合并提交；
     - 分叉点 base = `merge-base B D`，`base..D` 不超过 500 个提交；
-    - 每个独有提交的 `git patch-id --verbatim` 都出现在 `base..D` 的提交里 → `per-commit`；
-    - 否则分支总改动（`git diff base B`）的 patch-id 出现在 `base..D` 里 → `squash`。
+    - 每个独有提交的 `git patch-id --verbatim` 都出现在 `base..D` 的提交里，并且一个 main 提交只能对应一个分支提交（按时间从旧到新配对，评审第 2 轮 H1）→ `per-commit`；
+    - 否则分支总改动（`git diff base B`）的 patch-id 出现在 `base..D` 里 → `squash`；但如果分支末端的 tree 和它更早某个提交的 tree 相同（删了又加回），不按 squash 判（第 2 轮 H1）。
   - diff 选项固定：`--no-color --no-ext-diff --no-textconv --full-index --no-renames`，在仓库顶层运行（避开 `diff.relative`）；`--format='commit %H'`。
   - 二进制按 blob id 比；权限变化计入 patch-id（沙箱已验证）；子模块指针始终显示（`--ignore-submodules=none --submodule=short`）。
-  - 位置确认（评审第 1 轮 H1 之后）：patch-id 不看行号，所以每个匹配都要再做一次三方合并：`git merge-tree --write-tree --merge-base=<改动的基础> <main 上对应的提交> <分支提交>`，要求无冲突，并且结果 tree 等于那个对应提交的 tree。最初用的 `git apply` 会把补丁挪到上下文能对上的别处，已弃用。结果对象写进临时对象目录 `claudemd-landed.XXXXXX`，运行后删除；超时被杀留下的，下次运行清理 10 分钟以前的，`clean-residue` 也会清理。
-  - git < 2.39 没有 `--verbatim`，< 2.40 没有 `merge-tree --merge-base` → 不判。部分克隆不判（会从远端拉对象）。
+  - 位置确认（评审第 1 轮 H1 之后）：patch-id 不看行号，所以每个匹配都要再做一次三方合并：`git merge-tree --write-tree --merge-base=<改动的基础> <main 上对应的提交> <分支提交>`，要求无冲突，并且结果 tree 等于那个对应提交的 tree。最初用的 `git apply` 会把补丁挪到上下文能对上的别处，已弃用。合并在临时裸仓库 `claudemd-landed.XXXXXX/repo.git` 里运行：通过 alternates 借用原仓库的对象，去掉所有 `GIT_*` 环境变量，不读全局、系统和仓库配置，`-c core.attributesFile=/dev/null`，所以不读任何属性文件、不运行 merge driver（第 2 轮 M1、M2）。merge-tree 退出码大于 1 时判为 `compare-failed`，而不是“缺提交”（第 2 轮 M3）。临时目录运行后删除；超时被杀留下的，下次运行清理 10 分钟以前的，`clean-residue` 也会清理。
+  - git < 2.39 没有 `--verbatim`，< 2.40 没有 `merge-tree --merge-base` → 不判。部分克隆不判（会从远端拉对象）；`remote.*.promisor` 按布尔值读，`yes`/`1` 也算（git 2.53 的部分克隆只写这一项）。
 - 只认 `base..D`：分叉点之前的 main 提交不算（分支重新加回 main 早先删掉的内容，不是"已落地"）。
 - 成本控制：
   - main 一侧一次 `git log -p` 覆盖所有候选的 base 中最早的那个（`merge-base --octopus`），最多 500 个提交；
@@ -109,6 +109,15 @@
 - 成本上限定为：列表路径每次最多判定 20 个，分叉点之后最多 500 个提交（数据里最大 208）。
 - 离线对比第一轮发现缺陷：squash 的情况 hook 写成"每个提交在 main 上都有副本"，这对 squash 不成立；5 次里有 4 次模型自己核对 patch-id，发现说法不对，就没执行命令。修复（11282bf，重写提交信息前为 bf8d41a）：按依据分别说明——逐提交（N 个提交各有副本）、squash（整体改动等于 main 上的哪个提交）、末端已在 main 上。修复后冻结新快照 B2，两个任务都重跑。
 - 变异检验发现 `-C` 后面跟变量目录的情况没有用例覆盖，已补（6af64e0）。
+- 2026-10-21 打 tag 前评审第 2 轮（28638fc..9008c6d）→ 0 Critical / 1 High / 3 Medium / 5 Low，结论"不要打 tag"。全部复现后修复（3ecbd0e）：
+  - H1：分支删掉一行又加回，前两个提交落地后，第三个提交被配到第一个提交在 main 上的副本，打印出的 `-D` 会删掉它。改为一个 main 提交只对应一个分支提交；squash 路径加上"末端 tree 不等于更早提交的 tree"。代价：squash 合并的分支如果最后几个提交正好抵消前面的（加调试行再删掉），会被保留并问用户。
+  - M1/M2：merge-tree 在原仓库里运行，用户和仓库的属性、merge driver 会左右合并结果，driver 还会被执行。改为在临时裸仓库里运行（见方案）。
+  - M3：git 2.39 下 merge-tree 失败被当成"没有副本"。改为 `compare-failed`。
+  - 评审"没查"清单里的 `promisor = yes`：实测会从远端拉对象（pack 从 4 个变成 12 个），一并修复。
+  - L2（CHANGELOG 漏列 git 选项）、L3（`command cd`/`builtin cd`）、L5（三个修复没有能失败的测试）已修；L1 测试数在 CHANGELOG 里更新。
+  - L4 的钩子文字部分没改：`on-main` 判定的那一行仍带"(`git patch-id --verbatim`)"，结论"字节一致"成立，只是方法说明不精确；这段文字是 B3 实测过的，改动要重新做离线对比。
+  - `GIT_CONFIG_GLOBAL=/dev/null` 没有能失败的测试：`core.attributesFile=/dev/null` 已经挡住了用户属性这条路；试过 `merge.renormalize` 加 `core.autocrlf`，判定不变。
+  - 评审深度已到 2 轮（发版手册：到 2 轮后问用户）。是否再派第 3 轮，由用户决定。
 
 ## 验证记录
 
@@ -126,3 +135,8 @@
 - 最终代码上 23 个变异：22 个各自让至少一个用例失败；不看空白的 patch-id 那个不会，因为位置确认本身会拒掉只差空白的匹配
 - 真实数据（最终代码）→ 27 个已落地、2 个保留，单个分支 62–426 ms
 - 离线对比 B3（2d8faf8，最终代码和文字）→ TC 5/5，TS 5/5，自拼 `-D` 0/10；A 对 B3 为 0/10 对 10/10
+- 第 2 轮修复（3ecbd0e）：`node --test tests/scripts/housekeeping.test.js` → 通过（77/77；H1、M1、M2、M3、promisor、解析器的新用例在修复前失败 6 个）；`bash tests/hooks/branch-prune.test.sh` → 通过（38/38；11l 在修复前失败；对 0.115.0 的代码 12/18 失败）
+- 第 2 轮变异 10 个：9 个各自让用例失败；去掉 `GIT_CONFIG_GLOBAL=/dev/null` 的那个不会（见决策）
+- 评审员的复现脚本在 3ecbd0e 上：H1 → kept（1 个提交没有副本）；M1 ours/union → kept；M2 driver 没运行、仓库干净；promisor=yes → partial-clone，pack 数不变
+- 真实数据（3ecbd0e）→ 29 个里 27 个已落地、2 个保留，每个分支 46–513 ms
+- B3 两个任务的最终状态上，3ecbd0e 和 2d8faf8 的钩子输出逐字节相同（TC 874 字节、TS 756 字节）
