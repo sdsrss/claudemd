@@ -114,6 +114,46 @@ test('status: every field and value the page names for an unparseable manifest i
   assert.equal(cached.manifestError, 'unparseable');
 });
 
+test('status: an unparseable settings.json is named in the output, and the page says to relay it (160a)', () => {
+  // Reproduced 2026-10-20: a truncated ~/.claude/settings.json read exactly
+  // like one that sets no kill switch — `pendingKillSwitches: {}`, empty
+  // stderr, no field naming the file — because readSettings' throw was caught
+  // into `{}`.
+  const settings = box.claude('settings.json');
+  const body = JSON.stringify({ env: { DISABLE_TMP_SWEEP_HOOK: '1' } });
+  // The project layer is the sandbox home, whose .claude/settings.json IS the
+  // user file and is skipped; the repo's own .claude/settings.json stays out.
+  const env = box.env({ CLAUDE_PROJECT_DIR: box.home });
+  delete env.DISABLE_TMP_SWEEP_HOOK;
+  const statusOut = () => {
+    const r = run('status.js', [], env);
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+  };
+  // Control: the same file, parseable, reports the switch it sets, and no
+  // settings error.
+  fs.writeFileSync(settings, body);
+  const valid = statusOut();
+  assert.deepEqual(valid.pendingKillSwitches.tmp_sweep, { effective: false, persisted: true });
+  assert.equal(valid.settings, undefined, JSON.stringify(valid.settings));
+  fs.writeFileSync(settings, body.slice(0, -3));
+  const broken = statusOut();
+  assert.equal(broken.settings?.settingsError, 'unparseable', JSON.stringify(broken));
+  assert.equal(broken.settings.settingsPath, settings);
+  assert.match(broken.settings.detail, /not valid JSON/);
+  // V8's message quotes the file around some faults — this one comes back as
+  // `..."":{"T":tru,"U":"sk-l"...` — and settings.json can hold tokens in
+  // `env`: the detail the model relays carries none of it.
+  fs.writeFileSync(settings, '{"env":{"T":tru,"U":"sk-leak-9"}}');
+  const quoted = statusOut();
+  assert.equal(quoted.settings?.settingsError, 'unparseable');
+  assert.doesNotMatch(quoted.settings.detail, /sk-l/);
+  assertLine(
+    'status',
+    '- If `settings.settingsError` is `unparseable`: `settings.settingsPath` (the user `settings.json`) is on disk but is not valid JSON, so the kill switches it sets are left out of `pendingKillSwitches` and the `persisted` values. Relay `settings.detail` and do not describe the kill-switch state as complete.'
+  );
+});
+
 test('statusline: the page says remove restores the whole saved slot and adopt refuses a non-object settings.json', () => {
   assertLine(
     'statusline',

@@ -254,13 +254,14 @@ export async function status({ verbose = false } = {}) {
   // the layered value: a project's .claude/settings.local.json, then its
   // .claude/settings.json, then the user file (D#402). The boolean `effective`
   // remains the canonical "this session" value (back-compat).
+  // settingsPath() from lib/paths.js — this was hand-rolled with a `''` HOME
+  // fallback (cwd-relative) where paths.js falls back to os.homedir(), so with
+  // HOME unset the pendingKillSwitches drift this block exists to report went
+  // silently empty (2026-07-26 audit).
+  const sp = settingsPath();
+  let settingsUnparseable = false;
   const persistedEnv = (() => {
     try {
-      // settingsPath() from lib/paths.js — this was hand-rolled with a `''`
-      // HOME fallback (cwd-relative) where paths.js falls back to os.homedir(),
-      // so with HOME unset the pendingKillSwitches drift this block exists to
-      // report went silently empty (2026-07-26 audit).
-      const sp = settingsPath();
       if (!fs.existsSync(sp)) return {};
       // readSettings(), not a raw JSON.parse: settings.json written by an
       // editor that emits a UTF-8 BOM throws here, the catch returns {}, and
@@ -270,7 +271,12 @@ export async function status({ verbose = false } = {}) {
       // (2026-08-29 audit R10-20).
       const s = readSettings();
       return (s && s.env) || {};
-    } catch {
+    } catch (e) {
+      // A file that does not parse still reads as "sets nothing" here, but it
+      // is no longer silent (160a): the same `{}` was indistinguishable from a
+      // file with no kill switches in it. Only the parse failure is named —
+      // readSettings wraps it with the SyntaxError as its cause.
+      if (e && e.cause instanceof SyntaxError) settingsUnparseable = true;
       return {};
     }
   })();
@@ -351,6 +357,20 @@ export async function status({ verbose = false } = {}) {
     features,
     log: { lines: logLines },
   };
+  // Named the way plugin.manifestError is (160a), in a block present only when
+  // the file is on disk and does not parse. `detail` leaves out the parser's
+  // message on purpose: V8 quotes the file around the fault, settings.json can
+  // hold tokens in `env`, and this text is relayed to the model.
+  if (settingsUnparseable) {
+    out.settings = {
+      settingsError: 'unparseable',
+      settingsPath: sp,
+      detail:
+        'settings.json is not valid JSON (interrupted write or hand-edit), so the kill switches it sets ' +
+        'could not be read: pendingKillSwitches and the persisted values leave them out. ' +
+        'Fix: correct the JSON by hand (a trailing comma is the usual cause).',
+    };
+  }
 
   if (verbose) {
     // verbose.killSwitches: per-hook env var name + display name + event + effective + persisted.
