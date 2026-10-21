@@ -102,3 +102,40 @@ test(
     assert.ok(!failed[0].includes('is not writable'), failed[0]);
   }
 );
+
+// 163, reproduced 2026-10-20: install once, edit ~/.claude/CLAUDE.md, install
+// again — the output said `"spec":"overwrite-spec","backupDir":null` with
+// nothing on stderr, while a `spec-backup-<stamp>/` holding the edited file had
+// been created. Its path lived only in a local. `backupDir` keeps its meaning
+// (the PERSONAL backup restore reads, null on this branch); the spec copy gets a
+// field of its own.
+test('163: overwriting an edited installed spec reports where the previous files were copied', () => {
+  const json = r => {
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+  };
+  const fresh = json(runInstall());
+  assert.equal(fresh.spec, 'fresh');
+
+  const home = box.claude('CLAUDE.md');
+  const edited = `${fs.readFileSync(home, 'utf8')}\n## My notes\nAlways prefer tabs.\n`;
+  fs.writeFileSync(home, edited);
+  const r = runInstall();
+  const out = json(r);
+  assert.equal(out.spec, 'overwrite-spec');
+  assert.equal(out.backupDir, null, 'backupDir stays the personal backup, which this branch never makes');
+  assert.equal(typeof out.specBackupDir, 'string', JSON.stringify(out));
+  assert.equal(path.dirname(out.specBackupDir), box.claude());
+  assert.match(path.basename(out.specBackupDir), /^spec-backup-/);
+  assert.equal(fs.readFileSync(path.join(out.specBackupDir, 'CLAUDE.md'), 'utf8'), edited);
+  const named = r.stderr.split('\n').filter(l => l.includes(out.specBackupDir));
+  assert.equal(named.length, 1, r.stderr);
+  assert.match(named[0], /^\[claudemd\] /);
+
+  // Controls: a fresh install and a re-install over unchanged files copy
+  // nothing and say nothing; the field is there, and null.
+  assert.equal(fresh.specBackupDir, null, JSON.stringify(fresh));
+  const again = runInstall();
+  assert.equal(json(again).specBackupDir, null);
+  assert.doesNotMatch(again.stderr, /spec-backup-/);
+});

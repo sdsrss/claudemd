@@ -14,6 +14,7 @@ Surface the JSON output as a one-line human summary:
 
 - `spec`: `fresh` (no prior files) | `backup-and-overwrite` (existing files moved to `backup-<ISO>/`) | `overwrite-spec` (a claudemd spec was already there) | `skipped-locked` (another install held the lock — **report this as "did nothing", not as a success**; `entries` is empty because this run installed nothing, and the process exits **3** to say so; retry once the other install finishes).
 - `backupDir`: path to the backup directory when applicable.
+- `specBackupDir`: on `overwrite-spec`, the `spec-backup-<ISO>/` directory the replaced spec files were copied to because they differed from the shipped ones (an older version, or edits made to the installed spec); `null` otherwise. When it is set, name it: anything the user had added to `~/.claude/CLAUDE.md` by hand is in that copy, not in the new file.
 - `userContentDetected: true` — flag this loudly: the existing `~/.claude/CLAUDE.md` did not look like a claudemd spec; the user's hand-written content is in `backupDir/CLAUDE.md`. To bring it back, the user runs `/claudemd-uninstall restore` and then `/plugin uninstall claudemd@claudemd` (while the plugin stays installed, the next session start installs the spec again), or merges the two files by hand.
 - `entries.length`: number of registered hooks.
 - `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless).

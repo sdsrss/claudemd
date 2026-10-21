@@ -154,6 +154,23 @@ test('status: an unparseable settings.json is named in the output, and the page 
   );
 });
 
+test('install: the page names specBackupDir, and the field holds the copy of an edited spec (163)', () => {
+  assertLine(
+    'install',
+    '- `specBackupDir`: on `overwrite-spec`, the `spec-backup-<ISO>/` directory the replaced spec files were copied to because they differed from the shipped ones (an older version, or edits made to the installed spec); `null` otherwise. When it is set, name it: anything the user had added to `~/.claude/CLAUDE.md` by hand is in that copy, not in the new file.'
+  );
+  const env = box.env({ CLAUDE_PLUGIN_ROOT: REPO, CLAUDEMD_NO_STATUSLINE: '1' });
+  assert.equal(run('install.js', [], env).status, 0);
+  const edited = `${fs.readFileSync(box.claude('CLAUDE.md'), 'utf8')}\nmy note\n`;
+  fs.writeFileSync(box.claude('CLAUDE.md'), edited);
+  const r = run('install.js', [], env);
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.spec, 'overwrite-spec');
+  assert.match(path.basename(out.specBackupDir), /^spec-backup-/);
+  assert.equal(fs.readFileSync(path.join(out.specBackupDir, 'CLAUDE.md'), 'utf8'), edited);
+});
+
 test('statusline: the page says remove restores the whole saved slot and adopt refuses a non-object settings.json', () => {
   assertLine(
     'statusline',

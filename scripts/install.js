@@ -295,6 +295,7 @@ export async function install(opts = {}) {
     return {
       spec: 'skipped-locked',
       backupDir: null,
+      specBackupDir: null,
       settingsBackup: null,
       settingsBackupsPruned: [],
       entries: [],
@@ -521,8 +522,13 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // was not an invariant, and moving on it could delete user content. doctor
   // reports the condition instead. Do not re-add a mover here without reading
   // tasks/legacy-spec-backup-migration.md.
+  // specBackupDir is the spec-namespace copy below, reported in a field of its
+  // own (163): `backupDir` means the PERSONAL backup restore reads, it is the
+  // rollback source copySpecFiles is handed, and the hand-hook migration reuses
+  // it — none of which a spec copy is.
   let specResult,
-    backupDir = null;
+    backupDir = null,
+    specBackupDir = null;
   if (existing.length === 0) {
     specResult = 'fresh';
   } else if (claudeMdIsSpec || onlySpecSiblings) {
@@ -578,7 +584,7 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
     // costs one file and breaks neither property.
     specResult = 'overwrite-spec';
     if (!homeSpecMatchesShipped(pluginRoot)) {
-      const specBackupDir = reserveBackupDir({ label: BACKUP_LABELS.spec });
+      specBackupDir = reserveBackupDir({ label: BACKUP_LABELS.spec });
       fs.mkdirSync(specBackupDir, { recursive: true });
       for (const src of existing) {
         try {
@@ -673,6 +679,14 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // content rather than a re-copyable shipped spec. It is null on the
   // overwrite-spec branch, which is the correct no-rollback case.
   copySpecFiles(pluginRoot, SPEC_FILES, { backupDir });
+  // Said once the new files are in place, not when the copy was taken: a
+  // failed copySpecFiles above has replaced nothing (163).
+  if (specBackupDir) {
+    process.stderr.write(
+      `[claudemd] replaced installed spec files that differed from the shipped ones; the previous ` +
+        `files are in ${specBackupDir}/ (anything added to them by hand is there, not in the new files).\n`
+    );
+  }
   // The per-phase modules core §2.2 points at. Mirrored, not backed up: the
   // directory is claudemd's own (spec-hash.js#syncSpecModules).
   syncSpecModules(pluginRoot);
@@ -818,6 +832,7 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   return {
     spec: specResult,
     backupDir,
+    specBackupDir,
     settingsBackup,
     settingsBackupsPruned,
     entries,
