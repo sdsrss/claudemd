@@ -506,13 +506,16 @@ export function groupBySection(hits, cutoverTs = null) {
 // rows by (hook, reason) so /claudemd-audit + /claudemd-doctor can see
 // "banned-vocab silently skipped 12× yesterday because jq was missing on
 // the runner" — a class of incident pre-fix had zero log trace.
-// Fail-open reasons that mean "the gate ran and had nothing to evaluate", not
-// "the gate went blind": `mem-index-missing` is a project with no MEMORY.md, the
-// normal state of most projects. Closed set — an unclassified reason counts as
-// blind by default. The argument for exactly one member (and against
-// `transcript-missing` / `event-fields-missing`, which are the cwd-encoding
-// drift alarm) lives beside doctor.js's hook-fail-open check, its first consumer.
-export const UNEVALUABLE_FAILOPEN_REASONS = new Set(['mem-index-missing']);
+// Fail-open reasons that mean "the gate ran and could not evaluate", not "the
+// gate went blind": `mem-index-missing` is a project with no MEMORY.md, the
+// normal state of most projects; `gh-timeout` / `gh-failed` are a `gh run list`
+// that ran past ship-baseline's 2 s budget or exited non-zero for a repo on
+// github.com (defect 177), with no prerequisite missing. Closed set — an
+// unclassified reason counts as blind by default. The argument for these members
+// (and against `transcript-missing` / `event-fields-missing`, which are the
+// cwd-encoding drift alarm) lives beside doctor.js's hook-fail-open check, its
+// first consumer.
+export const UNEVALUABLE_FAILOPEN_REASONS = new Set(['mem-index-missing', 'gh-timeout', 'gh-failed']);
 
 // v0.98.0 — `notApplicable` / `blind` split `total` by that set. On 2026-09-26
 // 45 of the memory-read-check fail-open rows were mem-index-missing from

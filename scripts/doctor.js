@@ -907,11 +907,11 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // steady-state-nonzero shape 0.72.0 and 0.74.2 already fixed twice elsewhere:
   // an exit code that is always red carries no information.
   //
-  // EXACTLY ONE reason is advisory, and the two that were nearly added beside it
-  // are why this comment is long (0.76.2 pre-tag review, H-1 / MEDIUM-1 — two
-  // independent reviewers converged on it). `transcript-missing` and
-  // `event-fields-missing` are not "no memory here", they are the cwd-encoding
-  // DRIFT ALARM that audit R10-06b added. memory-read-check.sh says it outright
+  // Until defect 177 EXACTLY ONE reason was advisory, and the two that were
+  // nearly added beside it are why this comment is long (0.76.2 pre-tag review,
+  // H-1 / MEDIUM-1 — two independent reviewers converged on it).
+  // `transcript-missing` and `event-fields-missing` are not "no memory here",
+  // they are the cwd-encoding DRIFT ALARM that audit R10-06b added. memory-read-check.sh says it outright
   // beside those very emitters — "A mis-derived ENCODED makes BOTH paths miss,
   // which is indistinguishable from 'this project has no memory index' unless
   // the row says which one was absent" — and records that the encoding has
@@ -923,6 +923,15 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // authority for doing so; that file says the opposite. Fed 200 rows of the
   // drift signature, that draft answered ok:true, "enforcement itself is
   // intact" — the wrong sentence for a total bypass.
+  //
+  // `gh-timeout` / `gh-failed` joined the set with defect 177: ship-baseline
+  // records them when `gh run list` ran past its 2 s budget or exited non-zero
+  // for a repo on github.com, and lets the push through. In two runs of 8 calls
+  // on 2026-10-21 one took 2.84 s and two failed after 10 s, so as prerequisite
+  // rows a network blip would hold this check red for the whole window. Each reason's meaning is printed only when it has rows
+  // (UNEVALUABLE_EXPLAIN below): the sentence written for mem-index-missing is
+  // not true of a push that went ahead unchecked, and "enforcement itself is
+  // intact" is not either.
   //
   // The UNEVALUABLE set is the closed one, so a reason nobody has classified yet
   // (a new emitter, a renamed constant) lands in the ok:false bucket by default
@@ -980,10 +989,29 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         .map(([k, n]) => `${k}=${n}`)
         .join(', ');
     };
+    // What each could-not-evaluate reason means. Only the entries that have rows
+    // are printed, so every sentence is true of a row the detail counts.
+    const UNEVALUABLE_EXPLAIN = [
+      {
+        reasons: ['mem-index-missing'],
+        means:
+          'mem-index-missing: the project directory had no MEMORY.md index, so the rule had nothing to check',
+        advice: 'Add a memory index to those projects if they should have one; otherwise this is expected.',
+      },
+      {
+        reasons: ['gh-timeout', 'gh-failed'],
+        means:
+          'gh-timeout / gh-failed: `gh run list` ran past its 2 s budget or exited non-zero for a repo on github.com, so the push went ahead without its CI colour being read',
+        advice: 'If they recur, check `gh auth status` and the network.',
+      },
+    ];
+    const unevaluableReasons = new Set(unevaluable.map(h => h.extra?.reason || ''));
+    const explained = UNEVALUABLE_EXPLAIN.filter(e => e.reasons.some(r => unevaluableReasons.has(r)));
+    const unevaluableMeaning = `, not counted as a bypass${explained.length ? `: ${explained.map(e => e.means).join('; ')}` : ''}.`;
     // Both counts print on either branch: a red row must not hide the advisory
     // rows behind it, and an advisory row must not read as "nothing happened".
     const unevaluableClause = unevaluable.length
-      ? ` Separately, ${unevaluable.length} gate invocation(s) could not evaluate (${summarize(unevaluable)}) — the project had no MEMORY.md / transcript, which is not a bypass.`
+      ? ` Separately, ${unevaluable.length} gate invocation(s) could not evaluate (${summarize(unevaluable)})${unevaluableMeaning}`
       : '';
     if (prereqFailOpen.length > 0) {
       checks.push({
@@ -1001,7 +1029,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       checks.push({
         name: 'hook-fail-open',
         ok: true,
-        detail: `${unevaluable.length} gate invocation(s) in ${RULE_USAGE_WINDOW_DAYS}d could not evaluate (${summarize(unevaluable)}): the project directory had no MEMORY.md index or no session transcript, so the rule had nothing to check — enforcement itself is intact. Add a memory index to those projects if they should have one; otherwise this is expected.`,
+        detail: `${unevaluable.length} gate invocation(s) in ${RULE_USAGE_WINDOW_DAYS}d could not evaluate (${summarize(unevaluable)})${unevaluableMeaning}${explained.map(e => ` ${e.advice}`).join('')}`,
       });
     } else {
       checks.push({

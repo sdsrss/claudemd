@@ -511,6 +511,141 @@ OUT=$(run_hook fail-red "$EVENT_SUB_NOTES")
 [[ -z "$OUT" ]] && echo "PASS: 52 '(git push-notes)' is not a push" \
   || { echo "FAIL: 52 (expected silent, got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Cases 53-62 (defect 177): a `gh run list` that timed out or failed let the push
+# through and wrote no row, while a missing jq one step earlier writes a
+# `fail-open` row. Two runs of 8 real calls on 2026-10-21: 1.46-1.68 s on 13 of
+# 16 against the 2 s budget, 2.84 s on one, a failure after 10 s on two, so the
+# silent arm is a routine one. The row is owed only when the pushed repo has a
+# github.com remote; for any other remote, or none, `gh` has nothing to look up.
+#
+# Every run gets a HOME of its own: hook_record_failopen keeps one row per
+# (hook, reason) per minute, so a shared HOME would let the second case of a
+# reason pass on the first one's throttle.
+F177=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX"); trap 'rm -rf "$TMP_HOME" "$R15_B" "$F177"' EXIT
+F177_N=0
+f177_repo() {  # <dir> [url...] — a worktree whose remotes are the given URLs
+  local dir="$1" i=0 url
+  shift
+  git init -q "$dir" || return 1
+  for url in "$@"; do
+    git -C "$dir" remote add "r$i" "$url"
+    i=$((i + 1))
+  done
+}
+f177_hook() {  # <PATH for the hook> <repo> — sets F177_OUT, F177_ROWS
+  local p="$1" repo="$2" ev
+  F177_N=$((F177_N + 1))
+  F177_HOME="$F177/home-$F177_N"
+  mkdir -p "$F177_HOME/.claude"
+  ev=$(jq -nc --arg d "$repo" '{session_id:"t",tool_name:"Bash",tool_input:{command:"git push origin main"},cwd:$d}')
+  F177_OUT=$(HOME="$F177_HOME" PATH="$p" bash "$HOOK" <<<"$ev" 2>&1)
+  F177_ROWS=$(jq -r 'select(.hook=="ship-baseline" and .event=="fail-open") | .extra.reason' \
+    "$F177_HOME/.claude/logs/claudemd.jsonl" 2>/dev/null | tr '\n' ' ')
+  F177_ROWS=${F177_ROWS% }
+}
+f177_run() { f177_hook "$MOCKS/$1:$PATH" "$2"; }
+
+F177_GH="$F177/on-github"
+f177_repo "$F177_GH" "git@github.com:sdsrss/claudemd.git"
+F177_OTHER="$F177/on-gitlab"
+f177_repo "$F177_OTHER" "https://gitlab.com/sdsrss/claudemd.git"
+F177_NONE="$F177/no-remote"
+f177_repo "$F177_NONE"
+
+# Case 53: gh exits 1 in a repo on github.com → still allowed, one gh-failed row.
+f177_run exit-1 "$F177_GH"
+[[ -z "$F177_OUT" && "$F177_ROWS" == "gh-failed" ]] && echo "PASS: 53 gh exits 1 on a github.com repo → allowed, one gh-failed row" \
+  || { echo "FAIL: 53 (expected silent + rows 'gh-failed', got out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
+
+# Case 54: the other spellings of a github.com remote — https, ssh://, a user in
+# the URL, upper case, and github.com as the SECOND remote of the repo.
+C54_BAD=""
+for urls in "https://github.com/sdsrss/claudemd.git" "ssh://git@github.com/sdsrss/claudemd.git" \
+  "https://ci@github.com/sdsrss/claudemd" "git@GitHub.com:sdsrss/claudemd" \
+  "https://gitlab.com/x/y.git https://github.com/sdsrss/claudemd"; do
+  F177_N=$((F177_N + 1))
+  IFS=' ' read -r -a C54_URLS <<<"$urls"
+  f177_repo "$F177/form-$F177_N" "${C54_URLS[@]}"
+  f177_run exit-1 "$F177/form-$F177_N"
+  [[ "$F177_ROWS" == "gh-failed" ]] || C54_BAD+="[$urls → '$F177_ROWS'] "
+done
+[[ -z "$C54_BAD" ]] && echo "PASS: 54 every github.com remote spelling records gh-failed" \
+  || { echo "FAIL: 54 (spellings without a gh-failed row: $C54_BAD)"; FAIL=$((FAIL + 1)); }
+
+# Case 55: gh outlives the 2 s budget → allowed at the budget, one gh-timeout row.
+# Same 6 s bound against a 12 s stub as Case 6, for the same reason.
+START=$(date +%s)
+f177_run slow "$F177_GH"
+ELAPSED=$(($(date +%s) - START))
+[[ -z "$F177_OUT" && "$F177_ROWS" == "gh-timeout" && $ELAPSED -le 6 ]] \
+  && echo "PASS: 55 gh past the 2 s budget on a github.com repo → one gh-timeout row (${ELAPSED}s)" \
+  || { echo "FAIL: 55 (expected silent + rows 'gh-timeout' within 6s, got out: $F177_OUT; rows: '$F177_ROWS'; ${ELAPSED}s)"; FAIL=$((FAIL + 1)); }
+
+# Case 56: the same timeout through platform_timeout's own watchdog, the path a
+# Mac without coreutils takes. It maps the kill to 124 as GNU timeout does. The
+# stub is `slow-single` (see its header for why `slow` takes 12 s here).
+START=$(date +%s)
+CLAUDEMD_NO_TIMEOUT_BIN=1 f177_run slow-single "$F177_GH"
+ELAPSED=$(($(date +%s) - START))
+[[ -z "$F177_OUT" && "$F177_ROWS" == "gh-timeout" && $ELAPSED -le 6 ]] \
+  && echo "PASS: 56 watchdog timeout on a github.com repo → one gh-timeout row (${ELAPSED}s)" \
+  || { echo "FAIL: 56 (expected silent + rows 'gh-timeout' within 6s, got out: $F177_OUT; rows: '$F177_ROWS'; ${ELAPSED}s)"; FAIL=$((FAIL + 1)); }
+
+# Case 57: gh exits 1 where there is no GitHub to ask → no row, as before.
+f177_run exit-1 "$F177_OTHER"; C57_OTHER="$F177_OUT|$F177_ROWS"
+f177_run exit-1 "$F177_NONE"; C57_NONE="$F177_OUT|$F177_ROWS"
+[[ "$C57_OTHER" == "|" && "$C57_NONE" == "|" ]] && echo "PASS: 57 gh exits 1 on a gitlab / remote-less repo → no row" \
+  || { echo "FAIL: 57 (expected silent and no row; gitlab: '$C57_OTHER', none: '$C57_NONE')"; FAIL=$((FAIL + 1)); }
+
+# Case 58: the timeout arm is held to the same remote test.
+f177_run slow "$F177_OTHER"
+[[ -z "$F177_OUT" && -z "$F177_ROWS" ]] && echo "PASS: 58 gh timeout on a gitlab repo → no row" \
+  || { echo "FAIL: 58 (expected silent and no row, got out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
+
+# Case 59: hosts that only contain the string github.com are not github.com.
+C59_BAD=""
+for url in "https://github.com.example.org/x/y" "https://gitlab.com/github.com/y" \
+  "git@notgithub.com:x/y" "/srv/mirrors/github.com/x.git" "https://example.org/github.com:x"; do
+  F177_N=$((F177_N + 1))
+  f177_repo "$F177/lookalike-$F177_N" "$url"
+  f177_run exit-1 "$F177/lookalike-$F177_N"
+  [[ -z "$F177_ROWS" ]] || C59_BAD+="[$url → '$F177_ROWS'] "
+done
+[[ -z "$C59_BAD" ]] && echo "PASS: 59 a URL that merely contains github.com records nothing" \
+  || { echo "FAIL: 59 (lookalikes that recorded a row: $C59_BAD)"; FAIL=$((FAIL + 1)); }
+
+# Cases 60-61: a successful call with nothing in it is "no runs yet", not a
+# failure — `[]` (what gh prints for that) and empty stdout alike.
+f177_run empty-list "$F177_GH"
+[[ -z "$F177_OUT" && -z "$F177_ROWS" ]] && echo "PASS: 60 gh prints [] on a github.com repo → no fail-open row" \
+  || { echo "FAIL: 60 (expected silent and no fail-open row, got out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
+f177_run empty-output "$F177_GH"
+[[ -z "$F177_OUT" && -z "$F177_ROWS" ]] && echo "PASS: 61 gh prints nothing on a github.com repo → no fail-open row" \
+  || { echo "FAIL: 61 (expected silent and no fail-open row, got out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
+
+# Case 62: gh not installed → no row; doctor's own `gh` row reports that. The
+# PATH keeps everything else: each PATH directory holding a `gh` is replaced by
+# a copy of its links without it. The control runs the same PATH with the exit-1
+# stub in front, so a PATH that broke the hook before its gh step (and so wrote
+# nothing for an unrelated reason) cannot pass this case.
+C62_PATH=""
+IFS=: read -r -a C62_DIRS <<<"$PATH"
+for d in "${C62_DIRS[@]}"; do
+  [[ -n "$d" ]] || continue
+  if [[ -x "$d/gh" ]]; then
+    F177_N=$((F177_N + 1))
+    mkdir -p "$F177/nogh-$F177_N"
+    ln -s "$d"/* "$F177/nogh-$F177_N/" 2>/dev/null
+    rm -f "$F177/nogh-$F177_N/gh"
+    d="$F177/nogh-$F177_N"
+  fi
+  C62_PATH="${C62_PATH:+$C62_PATH:}$d"
+done
+f177_hook "$MOCKS/exit-1:$C62_PATH" "$F177_GH"; C62_CONTROL="$F177_ROWS"
+f177_hook "$C62_PATH" "$F177_GH"
+[[ "$C62_CONTROL" == "gh-failed" && -z "$F177_OUT" && -z "$F177_ROWS" ]] && echo "PASS: 62 gh not installed → no row (control with a failing gh: gh-failed)" \
+  || { echo "FAIL: 62 (control rows '$C62_CONTROL' want gh-failed; no-gh out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
+
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same
 # drift class the 2026-07-27 audit found in memory-read-check.test.sh.

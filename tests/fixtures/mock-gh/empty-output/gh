@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# A successful call that prints nothing at all (the hook's empty-result exit).
+exit 0

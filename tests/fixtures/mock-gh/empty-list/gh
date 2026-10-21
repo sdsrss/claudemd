@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# What `gh run list --json …` prints for a branch with no runs yet: a successful
+# answer with nothing in it, not a failure.
+echo '[]'

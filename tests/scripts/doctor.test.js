@@ -1001,6 +1001,63 @@ test('ENG-03: hook-fail-open — "no MEMORY.md in that project" is advisory, not
   assert.match(c.detail, /10 gate invocation\(s\)/, 'the count is still reported, not hidden');
   assert.match(c.detail, /memory-read-check:mem-index-missing=10/);
   assert.doesNotMatch(c.detail, /silently bypassed/, 'no unactionable repair instruction');
+  assert.match(
+    c.detail,
+    /mem-index-missing: the project directory had no MEMORY\.md index, so the rule had nothing to check/
+  );
+  assert.match(
+    c.detail,
+    /Add a memory index to those projects if they should have one; otherwise this is expected\./
+  );
+  assert.doesNotMatch(c.detail, /gh run list/, 'the gh explanation is printed only for gh rows');
+});
+
+// Defect 177: ship-baseline records gh-timeout / gh-failed when `gh run list`
+// ran past its 2 s budget or exited non-zero for a repo on github.com, and then
+// lets the push through. The gate could not evaluate; nothing is missing, so a
+// network blip must not hold doctor red for the 30-day window. The detail has
+// to say what these rows mean: the old could-not-evaluate sentence spoke only
+// of a project with no MEMORY.md / transcript.
+const ghFailOpenRow = reason =>
+  `{"ts":"${new Date().toISOString()}","hook":"ship-baseline","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"${reason}"},"session_id":null}\n`;
+const GH_MEANS =
+  /gh-timeout \/ gh-failed: `gh run list` ran past its 2 s budget or exited non-zero for a repo on github\.com, so the push went ahead without its CI colour being read/;
+
+test('defect 177: gh-timeout / gh-failed are could-not-evaluate, and the detail says what they mean', async () => {
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  fs.writeFileSync(
+    log,
+    ghFailOpenRow('gh-timeout') + ghFailOpenRow('gh-timeout') + ghFailOpenRow('gh-failed')
+  );
+  const c = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
+  assert.equal(c.ok, true, c.detail);
+  assert.match(
+    c.detail,
+    /^3 gate invocation\(s\) in 30d could not evaluate \(ship-baseline:gh-timeout=2, ship-baseline:gh-failed=1\), not counted as a bypass: /
+  );
+  assert.match(c.detail, GH_MEANS);
+  assert.match(c.detail, /If they recur, check `gh auth status` and the network\./);
+  assert.doesNotMatch(c.detail, /MEMORY\.md/, 'the no-memory-index explanation is not true of these rows');
+});
+
+test('defect 177: beside a real prerequisite failure the gh rows are named with their meaning, and the row stays red', async () => {
+  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
+  const now = new Date().toISOString();
+  fs.writeFileSync(
+    log,
+    `{"ts":"${now}","hook":"banned-vocab","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"jq-missing"},"session_id":null}\n` +
+      ghFailOpenRow('gh-failed') +
+      `{"ts":"${now}","hook":"memory-read-check","event":"fail-open","spec_section":"§hooks-fail-open","extra":{"reason":"mem-index-missing"},"session_id":null}\n`
+  );
+  const c = (await doctor({})).checks.find(x => x.name === 'hook-fail-open');
+  assert.equal(c.ok, false, 'jq-missing disables enforcement — still red');
+  assert.match(c.detail, /^1 live-environment fail-open event\(s\) in 30d \(banned-vocab:jq-missing=1\)/);
+  assert.match(
+    c.detail,
+    / Separately, 2 gate invocation\(s\) could not evaluate \((ship-baseline:gh-failed=1, memory-read-check:mem-index-missing=1|memory-read-check:mem-index-missing=1, ship-baseline:gh-failed=1)\), not counted as a bypass: /
+  );
+  assert.match(c.detail, GH_MEANS);
+  assert.match(c.detail, /mem-index-missing: the project directory had no MEMORY\.md index/);
 });
 
 test('ENG-03: a real prerequisite failure still flags red, and still names the advisory rows', async () => {

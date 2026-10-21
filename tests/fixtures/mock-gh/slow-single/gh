@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# `slow` with the sleep exec'd, so the stub is one process, as the real `gh`
+# binary is. platform_timeout's own watchdog (the path a Mac without coreutils
+# takes) TERMs the pid it started and nothing below it: behind `slow`, the
+# orphaned `sleep` kept the hook's `$( )` open for the full 12 s. GNU and uutils
+# `timeout` signal the whole process group, so `slow` never showed that there.
+exec sleep 12

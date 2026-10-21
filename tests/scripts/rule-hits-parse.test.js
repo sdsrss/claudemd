@@ -583,3 +583,15 @@ test('byFailOpen: notApplicable / blind split total by the unevaluable-reason se
   );
   assert.equal(r['banned-vocab'].blind, 1, 'an unclassified reason is blind by default');
 });
+
+// Defect 177: ship-baseline records gh-timeout / gh-failed when `gh run list`
+// could not answer for a repo on github.com. The gate could not evaluate; no
+// prerequisite is missing, so both count as notApplicable, not blind.
+test('byFailOpen: gh-timeout and gh-failed count as notApplicable', () => {
+  const fo = reason => ({ event: 'fail-open', hook: 'ship-baseline', extra: { reason } });
+  const r = byFailOpen([fo('gh-timeout'), fo('gh-failed'), fo('jq-missing')]);
+  assert.deepEqual(
+    { t: r['ship-baseline'].total, na: r['ship-baseline'].notApplicable, b: r['ship-baseline'].blind },
+    { t: 3, na: 2, b: 1 }
+  );
+});

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# `gh run list` failing outright: a network error, an expired `gh auth`, or an
+# API error all end like this. Defect 177: the hook let the push through and
+# wrote no row.
+echo 'HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/actions/runs)' >&2
+exit 1

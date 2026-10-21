@@ -16,7 +16,7 @@ source "$LIB_DIR/platform.sh" 2>/dev/null || true
 hook_kill_switch SHIP_BASELINE || exit 0
 # The `|| true` on the platform source is deliberate (a missing lib must not
 # take the hook down at source time) but it left `platform_timeout` unasserted:
-# the two `gh run list` calls below both end in `|| exit 0`, so a missing lib
+# the two `gh run list` calls below then ended in `|| exit 0`, so a missing lib
 # turned `command not found` (127) into a silent allow — the OBS-1 gap this
 # hook's own header claims to have closed (2026-08-29 audit R10-06a).
 # `source` exiting 0 is not evidence a function exists
@@ -138,7 +138,8 @@ hook_read_telemetry_ids "$EVENT"
 PUSH_SEG=$(echo "$CMD_FLAT" | grep -oE "git${HOOK_GIT_GLOBAL_FLAGS}[[:space:]]+push[^;&|]*" | head -n1)
 echo "$PUSH_SEG" | grep -qE '(^|[[:space:]])(-h|--help)([[:space:]]|$)' && exit 0
 
-# Require gh CLI
+# Require gh CLI. No fail-open row when it is missing: doctor's `gh` row
+# already reports that, as advisory (audit R11-23).
 command -v gh >/dev/null 2>&1 || exit 0
 
 # WHICH repository is being pushed (2026-09-02 audit R11-15).
@@ -187,11 +188,40 @@ fi
 BRANCH=$(git -C "$SB_DIR" branch --show-current 2>/dev/null)
 # gh resolves the repo from its cwd, so it has to run inside the target too —
 # `gh run list --branch B` in repo A would report A's runs for B's branch name.
+GH_RC=0
 if [[ -n "$BRANCH" ]]; then
-  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || GH_RC=$?
 else
-  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || exit 0
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || GH_RC=$?
 fi
+# A gh that timed out or failed leaves no CI colour to gate on, so the push goes
+# through — and until defect 177 it went through with no row, while a missing jq
+# above records one. Two runs of 8 calls on 2026-10-21: `gh run list` took
+# 1.46-1.68 s on 13 of 16 against this 2 s budget, 2.84 s on one, and failed
+# after 10 s on two, so this is a routine arm, not a corner. The row is owed
+# only when the pushed repo has a github.com remote: for any other remote, or
+# none, failing is gh's normal answer and the gate had nothing to check.
+# `remote -v` prints URLs after
+# url.<base>.insteadOf rewriting, i.e. the host git really talks to. The host
+# must be github.com itself: after `scheme://[user@]` or scp-style `[user@]`,
+# and followed by `:`, `/` or the end of the URL, so `github.com.example.org`
+# and a path that merely contains `github.com/` do not count. platform_timeout
+# returns 124 on a timeout on all three of its paths (GNU timeout, gtimeout, its
+# own watchdog), and the command's own status otherwise. Process substitution,
+# not a pipe, so only grep's status decides (see TRIGGER_RE above).
+if [[ "$GH_RC" -ne 0 ]]; then
+  SB_REMOTES=$(git -C "$SB_DIR" remote -v 2>/dev/null)
+  if grep -qiE '[[:space:]]([a-z][a-z0-9+.-]*://([^/@[:space:]]*@)?|([^/@:[:space:]]*@)?)github\.com([/:]|[[:space:]]|$)' \
+    < <(printf '%s\n' "$SB_REMOTES" 2>/dev/null); then
+    if [[ "$GH_RC" -eq 124 ]]; then
+      hook_record_failopen ship-baseline gh-timeout
+    else
+      hook_record_failopen ship-baseline gh-failed
+    fi
+  fi
+  exit 0
+fi
+# A successful call that printed nothing is "no runs yet", not a failure.
 [[ -n "$RUN_JSON" ]] || exit 0
 
 # Baseline color = the most recent COMPLETED run, not simply the newest one.
