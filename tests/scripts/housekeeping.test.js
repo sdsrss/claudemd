@@ -1219,6 +1219,39 @@ test('refused: a git without merge-tree --merge-base → kept as not compared, n
   assert.deepEqual(out.kept[0].unmatched, []);
 });
 
+// The git macOS ships (Apple Git, /usr/bin/git) is older than the one CI puts
+// first on PATH; the case above only imitates git 2.39.
+const appleGit = (() => {
+  if (process.platform !== 'darwin') return null;
+  const v = spawnSync('/usr/bin/git', ['--version'], { encoding: 'utf8' });
+  const m = v.status === 0 && /(\d+)\.(\d+)/.exec(v.stdout);
+  return m ? { text: v.stdout.trim(), major: Number(m[1]), minor: Number(m[2]) } : null;
+})();
+test(
+  "refused: macOS's own git judges a cherry-pick as far as its version allows",
+  { skip: !appleGit && 'needs macOS with /usr/bin/git' },
+  t => {
+    t.diagnostic(appleGit.text);
+    const r = clone();
+    git(r, 'checkout', '-q', '-b', 'fix/y');
+    commit(r, 'y.txt', 'y\n');
+    git(r, 'checkout', '-q', 'main');
+    commit(r, 'other.txt', 'other\n');
+    git(r, 'cherry-pick', 'main..fix/y');
+    const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
+      input: 'git branch -d fix/y',
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `/usr/bin${path.delimiter}${process.env.PATH}` },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    const at = (major, minor) =>
+      appleGit.major > major || (appleGit.major === major && appleGit.minor >= minor);
+    if (at(2, 40)) assert.deepEqual(names(out.landed), ['fix/y']);
+    else assert.equal(out.kept[0]?.reason, at(2, 39) ? 'compare-failed' : 'patch-id-failed');
+  }
+);
+
 test('refused: a commit changed in the pick → kept, naming the commit with no copy on main', () => {
   const r = clone();
   git(r, 'checkout', '-q', '-b', 'fix/y');
