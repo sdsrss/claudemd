@@ -223,7 +223,9 @@ hook_record ledger-staleness ledger-stale-advisory "$EXTRA" '§11-ledger' "$SESS
 
 printf '[claudemd] §11 / G7 — this session edited code and did not write to its ledger in the last %s transcript rows.\n' "$LS_WINDOW" >&2
 # Control characters in the name print as `?`: this line reaches the user's
-# terminal, and a ledger name is repo text (as in session-start's banner).
+# terminal, and a ledger name is repo text. [[:cntrl:]] follows the locale: C0
+# controls and DEL always (what session-start's jq replaces), C1 controls too
+# under a UTF-8 locale.
 printf '  Ledger: %s (%s code-file edit(s) in the last %s transcript rows, and no Edit/Write on it in that span).\n' \
   "${LEDGER//[[:cntrl:]]/?}" "$LS_EDITS" "$LS_WINDOW" >&2
 if (( LS_COUNT > 1 )); then

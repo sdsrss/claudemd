@@ -189,7 +189,9 @@ for proj_dir in "$PROJECTS_ROOT"/*/; do
   # the entry's file read as a file_orphan (backlog item 169). Same regex as
   # memtags_file (lib/memory-tags.sh) and indexEntryFile
   # (scripts/lib/memory-tags.js); tests/fixtures/memory-index-links.json runs
-  # all three.
+  # all three. Unlike those two, this scan has no fallback for a line with no
+  # `](….md)` link: it never read one (0.114.0 neither), and such a line's file
+  # reads as file_orphan here.
   in_index_list=$(awk 'match($0, /\]\([^)]+\.md\)/) { print substr($0, RSTART + 2, RLENGTH - 3) }' "$index_file" 2>/dev/null)
   [[ -n "$in_index_list" ]] && in_index_list="$in_index_list"$'\n'
 

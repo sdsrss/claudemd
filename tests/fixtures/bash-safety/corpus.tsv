@@ -1782,7 +1782,16 @@ pass	S8-GLOB6-fp control: a glob with a literal suffix	rm -rf $HOME/*.log
 xfn	S8-GLOBEQ1 F24 a ? glob before * matches what ~/* matches	rm -rf ~/?*
 xfn	S8-GLOBEQ2 F24 the same after $HOME	rm -rf $HOME/?*
 xfn	S8-GLOBEQ3 F24 a bracket glob	rm -rf ~/[!.]*
-xfn	S8-GLOBEQ4 F24 an unbounded find from a ? glob	find ~/? -delete
+xfn	S8-GLOBEQ4 F24 an unbounded find from a ?* glob	find ~/?* -delete
+pass	S8-GLOBEQ4-fp control: a lone ? names one-character entries, like a literal name	find ~/? -delete
 xfp	S8-TILDEQ2 F20 a quoted ~/* is a literal path, read after quote removal	rm -rf '~/*'
 xfp	S8-GLOBLIT1 F20 a quoted star is a file literally named *, read after quote removal	rm -rf "$HOME/*"
 xfn	S8-TILDEPWD3 F22 ~+ (PWD) then a glob	rm -rf ~+/*
+# F25 BRACE and F26 DOTGLOB (0.115.0 delta review, reviewer-constructed): the residue strip
+# removes `{}` and keeps `,`, so a brace expansion that yields the bare home reads as bounded;
+# `.*` leaves a literal `.`, so every dotfile under the home reads as a subpath.
+xfn	S8-BRACE1 F25 a brace whose empty arm leaves bare ~/	rm -rf ~/{a,}
+xfn	S8-BRACE2 F25 a guarded HOME followed by an empty brace	rm -rf "${HOME:?}"{,}
+xfn	S8-BRACE3 F25 a glob followed by an empty brace	rm -rf $HOME/*{,}
+xfn	S8-DOTGLOB1 F26 every dotfile under ~	rm -rf ~/.*
+xfn	S8-DOTGLOB2 F26 every dotfile under $HOME	rm -rf $HOME/.*

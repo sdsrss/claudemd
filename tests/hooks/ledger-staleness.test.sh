@@ -407,8 +407,8 @@ touch -t 202001010000 "$PAR/tasks/old-ledger.md"
 touch -t 202001020000 "$PAR/tasks/$NLB"
 OUT=$(ls_par)
 SS=$(ss_ctx)
-# The path reaches the user's terminal: control characters print as `?`, as in
-# session-start's banner (0.115.0 pre-tag review L5).
+# The path reaches the user's terminal: control characters print as `?` (C0 and
+# DEL as in session-start's banner; 0.115.0 pre-tag review L5).
 if ls_row_is "$NLB" 2 && [[ "$OUT" == *"$PAR/tasks/a?b-ledger.md"* && "$OUT" != *"$PAR/tasks/$NLB"* \
       && "$OUT" == *"most recently modified of 2 ledgers"* ]] \
    && [[ "$SS" == *"PAR-NL"* && "$SS" != *"PAR-OLD"* ]]; then

@@ -210,9 +210,10 @@ export function classifyTag(tag) {
 // taking the last sent the doctor's tag findings, the coherence audit's
 // dangling/orphan rows and the §11 deny to that other file (backlog item 169).
 //
-// Every parser of index lines uses this definition: spec-coherence-audit.js
-// imports this function, and the shell side spells the same regex in
-// hooks/lib/memory-tags.sh (memtags_file) and hooks/mem-audit.sh. The lines in
+// Every parser of index lines uses this definition for a line with a `](….md)`
+// link: spec-coherence-audit.js imports this function, and the shell side
+// spells the same regex in hooks/lib/memory-tags.sh (memtags_file, which also
+// has the fallback below) and hooks/mem-audit.sh (which has none). The lines in
 // tests/fixtures/memory-index-links.json are run through each of them.
 //
 // A line with no `](….md)` link keeps the old reading, the rightmost `(….md)`,

@@ -59,8 +59,9 @@ function memtags_esc(s,   out, i, c) {
 # — the greedy `.*` of the old `sed -n '\''s/.*(\([^)]*\.md\)).*/\1/p'\''` — so a
 # hook text linking or naming another memory, `— supersedes [old](old.md)`,
 # sent the deny and the hint to old.md (backlog item 169). Same definition as
-# indexEntryFile in scripts/lib/memory-tags.js and the link scan in
-# hooks/mem-audit.sh; tests/fixtures/memory-index-links.json runs all of them.
+# indexEntryFile in scripts/lib/memory-tags.js, fallback included, and as the
+# link scan in hooks/mem-audit.sh for lines that have a `](….md)` link (that
+# scan has no fallback); tests/fixtures/memory-index-links.json runs all of them.
 # awk'\''s match() is leftmost, and `[^)]+` cannot cross a `)`, so the match is
 # the leftmost `](` whose target ends in `.md`. A line with no such link keeps
 # the old reading, the rightmost `(….md)`: dropping it dropped its tags, and the

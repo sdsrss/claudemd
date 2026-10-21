@@ -1217,7 +1217,7 @@ if :; then
     # steam-for-linux#3671 — `rm -rf "$STEAM_ROOT/"*` with empty STEAM_ROOT).
     # The whitelist only certifies the var is shell-typed, not that the
     # target is bounded. Require ≥1 character other than `/` and `*` in the
-# residue: a glob-only residue names no subpath (S8-GLOB, 0.115.0).
+    # residue: a glob-only residue names no subpath (S8-GLOB, 0.115.0).
     # `$1`..`$9` are expansions here too, so a whitelisted var whose only subpath
     # is `$1` reads as bare (`"$HOME/$1"`, S8-POS3). Deleting more text from the
     # residue can only make the checks below deny more, never less.
