@@ -118,6 +118,14 @@
   - L4 的钩子文字部分没改：`on-main` 判定的那一行仍带"(`git patch-id --verbatim`)"，结论"字节一致"成立，只是方法说明不精确；这段文字是 B3 实测过的，改动要重新做离线对比。
   - `GIT_CONFIG_GLOBAL=/dev/null` 没有能失败的测试：`core.attributesFile=/dev/null` 已经挡住了用户属性这条路；试过 `merge.renormalize` 加 `core.autocrlf`，判定不变。
   - 评审深度已到 2 轮（发版手册：到 2 轮后问用户）。是否再派第 3 轮，由用户决定。
+- 2026-10-21 用户："把剩下的做完了一起发版"。读法：做完遗留项后发版；打 tag 前按推荐再派第 3 轮评审（新代码在会执行 `-D` 的路径上，没人独立看过；多一轮的代价约 20 分钟，少一轮的风险在删除路径上）。做完的遗留项：
+  - L4 钩子文字：两处"byte for byte (`git patch-id --verbatim`)"去掉括注，依据由每个分支的说明给出（7c51d7e）；用例 11、12 改为整句匹配，旧文字下 36/38。离线对比 B4（7c51d7e）通过。
+  - 补查发现 `refs/replace` 漏洞：替换引用把分支末端换成 main 上那个副本的内容、父提交换成分叉点，前一个提交就从 `rev-list main..topic` 里消失，判为 per-commit 已落地（`git branch -d` 拒绝）。修复：判定的 git 调用一律加 `--no-replace-objects`（1da7aa0，先写失败用例）。patch-id 仍按替换后的内容算，只用来挑候选；merge-tree 在没有引用的临时仓库里比真实对象。`.git/info/grafts` 只改父提交、不改快照，被藏的提交的改动会出现在嫁接后提交的 diff 里，实测判为保留。
+  - 真实 git 2.39.5（Debian bookworm 容器）：与模拟一致；macOS 自带 git 只能在 CI 上查，加了只在 macOS 运行的用例（1c369da），按版本断言结果并打印版本。
+  - 浅克隆：深度 1、2、4 和已落地分支的 1、2、3、5，分叉点在浅克隆边界之外时判为 unrelated 保留，深度 5 判为 landed。
+  - 耗时：本仓库克隆、20 个分支各 10 个提交全部 cherry-pick，push 一次 1.29–1.69 s（10 次），0.115.0 为 0.16–0.20 s；另一批 5 次 1.52–5.06 s。超过预算（8 s，同时有 `-d` 时各 4 s）会被中止、不输出。
+  - 新发现、未改（遗留）：`origin/HEAD` 指向一个本地不存在的分支时，所有候选都判为 `unrelated`，保留理由写成"it shares no history with it"，理由不对，方向安全。
+  - squash 取舍保持不变（CHANGELOG "Not changed"）。
 
 ## 验证记录
 
@@ -140,3 +148,9 @@
 - 评审员的复现脚本在 3ecbd0e 上：H1 → kept（1 个提交没有副本）；M1 ours/union → kept；M2 driver 没运行、仓库干净；promisor=yes → partial-clone，pack 数不变
 - 真实数据（3ecbd0e）→ 29 个里 27 个已落地、2 个保留，每个分支 46–513 ms
 - B3 两个任务的最终状态上，3ecbd0e 和 2d8faf8 的钩子输出逐字节相同（TC 874 字节、TS 756 字节）
+- 替换引用修复（1da7aa0）：`node --test tests/scripts/housekeeping.test.js` → 修复前新用例失败（landed: topic, per-commit），修复后通过（78/78）；加上 macOS 用例后 79 个里 78 通过、1 跳过（Linux）
+- macOS 用例去掉平台条件后：宿主 git 2.53 → 通过（landed）；node:20-slim 里的 git 2.39.5 → 通过（compare-failed）
+- `bash tests/hooks/branch-prune.test.sh` → 通过（38/38）；换回旧钩子文字 → 36/38（11、12 失败）
+- 离线对比 B4（7c51d7e）→ TC 5/5，TS 5/5，自拼 `-D` 0/10；流记录里新句子 10/10、旧括注 0/10；花费 $2.81
+- 真实数据（7c51d7e）→ 29 个里 27 个已落地、2 个保留，每个分支 111–566 ms（负载 15）；两行 `-d` 计时伪影中 gsd-lite docs/prompt-audit-shipped 从保留变为 landed，0a7e8a5 的代码在同一输入上结论相同，是输入变了
+- 2ae4944 上：`TZ=UTC npm run check` → 通过（node 1679/1681，2 个跳过；全部 shell 套件）；忽略 SIGPIPE → 通过（同上）；`TZ=UTC` bash 3.2.57 → 通过（44/44；不设 TZ 时 session-summary Case 15 失败，与 0.115.0 相同）；`npm run smoke` → 通过（2/2）
