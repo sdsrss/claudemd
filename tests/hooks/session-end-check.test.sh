@@ -1225,6 +1225,13 @@ MANY33=("$G32"/many/*.txt)
 T="$TMP_HOME/case33e.jsonl"
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "${MANY33[@]:1}")"
 printf 'edited\n' > "$G32/a.txt"
+# The hook starts no git call once its SECONDS reaches 2, and SECONDS ticks on
+# the wall clock's whole second, so a hook started late in a second gets as
+# little as 1 s. This case takes 0.6-0.7 s under bash 3.2 here; on one core
+# shared with two busy loops (1.8 s) it settled when started 0.0-0.5 s into a
+# second and counted all 1,000 from 0.6 s on, which is how it failed once in
+# CI. Starting it just after a tick gives it the whole 2 s every time.
+S33=$SECONDS; while (( SECONDS == S33 )); do sleep 0.01; done
 run_hook32 "$T"
 E1=$(opens32)
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "${MANY33[@]}")"
