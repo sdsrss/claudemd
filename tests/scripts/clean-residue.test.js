@@ -73,6 +73,23 @@ test('scan finds claudemd-sync-* files and claudemd-(mockgh|work).* dirs', () =>
   assert.equal(r.sandboxes.length, 2);
 });
 
+// housekeeping.js judges landed branches in a throwaway object directory,
+// `claudemd-landed.XXXXXX`; one a timeout killed is reaped here too. The name
+// is joined to the mkdtemp template so a rename fails here.
+test('scan finds claudemd-landed.* dirs, the template housekeeping.js creates', () => {
+  const src = fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/housekeeping.js'),
+    'utf8'
+  );
+  assert.match(src, /mkdtempSync\(path\.join\(os\.tmpdir\(\), 'claudemd-landed\.'\)\)/);
+  fs.mkdirSync(path.join(tmpDir, 'claudemd-landed.AbC123'));
+  fs.mkdirSync(path.join(tmpDir, 'claudemd-landed-old'));
+  assert.deepEqual(
+    scan({ tmpDir }).sandboxes.map(b => path.basename(b.path)),
+    ['claudemd-landed.AbC123']
+  );
+});
+
 // --- audit-2026-08-22 P1-5: the memtags spill file had no reaper ------------
 //
 // hooks/lib/memory-tags.sh spills an oversize haystack to a $TMPDIR file. If

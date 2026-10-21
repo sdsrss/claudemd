@@ -8,7 +8,7 @@ import { stateDir, projectsRoot, encodeProjectCwd } from './lib/paths.js';
 const USAGE = `Usage: node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]
 
 Clean leftover claudemd-sync-* / claudemd-memtags-hay-* sentinels and historical
-claudemd-(mockgh|work).*
+claudemd-(mockgh|work|landed).*
 sandbox dirs from $TMPDIR, stale tool-exhaust from ~/.claude/tmp per spec
 §EXT §7-EXT retention (mtime > TMP_RETENTION_DAYS, default 7), and orphaned
 per-session sentinels from ~/.claude/.claudemd-state, and headless-probe
@@ -77,7 +77,9 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error |
 // asserted in tests/scripts/clean-residue.test.js, so a rename there fails here
 // rather than silently orphaning the files again.
 const SENTINEL_PATTERN = /^claudemd-(sync-|memtags-hay-)/;
-const SANDBOX_PATTERN = /^claudemd-(mockgh|work)\./;
+// `claudemd-landed.*`: the throwaway object directory housekeeping.js judges
+// landed branches in, left behind when the branch-prune hook's timeout kills it.
+const SANDBOX_PATTERN = /^claudemd-(mockgh|work|landed)\./;
 
 // The default `mktemp` / `mktemp -d` name shape, EXACTLY: `tmp.` plus ten
 // alphanumerics and nothing else. Not a `tmp.*` glob — that would also swallow
