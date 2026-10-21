@@ -266,7 +266,7 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 //
 // `landed`: a rebase merge, a cherry-pick or a squash puts a branch's work on
 // the default branch as NEW commits, so `git branch -d` refuses the branch
-// forever. Such a branch is landed when every one of its commits has a commit
+// forever. Such a branch is landed when each of its commits has its own commit
 // on the default branch, after the fork point, with the same `git patch-id
 // --verbatim`, or its whole change equals one such commit (a squash). 0.93.0
 // rejected patch-id for deletion (review H3, M2); the two objections and what
