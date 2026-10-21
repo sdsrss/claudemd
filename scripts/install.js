@@ -529,6 +529,9 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   let specResult,
     backupDir = null,
     specBackupDir = null;
+  // Previous spec files the copy below could not read, named in the stderr line
+  // (0.115.0 pre-tag review L7: the line said every previous file was there).
+  const specBackupMissed = [];
   if (existing.length === 0) {
     specResult = 'fresh';
   } else if (claudeMdIsSpec || onlySpecSiblings) {
@@ -589,9 +592,10 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
       for (const src of existing) {
         try {
           fs.copyFileSync(src, path.join(specBackupDir, path.basename(src)));
-        } catch {
+        } catch (e) {
           /* unreadable entry (dangling link, permissions) — the copy is a
              safety net, not a precondition; install must not fail on it. */
+          specBackupMissed.push(`${path.basename(src)} (${e.code || e.message})`);
         }
       }
       pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.spec });
@@ -684,7 +688,11 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   if (specBackupDir) {
     process.stderr.write(
       `[claudemd] replaced installed spec files that differed from the shipped ones; the previous ` +
-        `files are in ${specBackupDir}/ (anything added to them by hand is there, not in the new files).\n`
+        `files are in ${specBackupDir}/ (anything added to them by hand is there, not in the new files)` +
+        (specBackupMissed.length
+          ? `, except ${specBackupMissed.join(', ')}, which could not be copied and whose previous text is not kept`
+          : '') +
+        '.\n'
     );
   }
   // The per-phase modules core §2.2 points at. Mirrored, not backed up: the
@@ -862,6 +870,24 @@ function writeDeniedMessage(e) {
     return null;
   } catch {
     /* not writable — the case this message is for */
+  }
+  // chmod by this user cannot fix a directory another user owns (a ~/.claude
+  // made by `sudo claude` is root's), and no chown command is offered: the
+  // directory named is the nearest existing ancestor, which can be a system
+  // directory (0.115.0 pre-tag review M2).
+  let owner;
+  try {
+    owner = fs.statSync(dir).uid;
+  } catch {
+    /* unknown owner — fall through to the chmod advice */
+  }
+  if (typeof process.getuid === 'function' && owner !== undefined && owner !== process.getuid()) {
+    return (
+      `${dir} is not writable by this user and belongs to another user (uid ${owner}) (${e.message}); ` +
+      `chmod run by this user cannot change that. Its owner, or root, has to make it writable — if it was ` +
+      `created by a command run with sudo, give it back to this user — then run the install again ` +
+      `(/claudemd-install, or start a new session).`
+    );
   }
   return (
     `${dir} is not writable by this user (${e.message}). Make it writable — for example ` +

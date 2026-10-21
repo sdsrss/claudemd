@@ -139,3 +139,55 @@ test('163: overwriting an edited installed spec reports where the previous files
   assert.equal(json(again).specBackupDir, null);
   assert.doesNotMatch(again.stderr, /spec-backup-/);
 });
+
+// 0.115.0 pre-tag review M2: the chmod advice cannot work on a directory that
+// belongs to another user (a ~/.claude created by `sudo claude` is root's), and
+// a chown command is not offered either: the directory named is the nearest
+// existing ancestor, which can be a system directory. `/` stands in for one.
+const rootOwned = (() => {
+  try {
+    return fs.statSync('/').uid !== process.getuid();
+  } catch {
+    return false;
+  }
+})();
+test(
+  '160b: a directory owned by another user — the failure says chmod by this user cannot fix it, and offers no command',
+  { skip: asRoot || !rootOwned },
+  () => {
+    const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/install.js')], {
+      encoding: 'utf8',
+      env: box.env({ HOME: '/', CLAUDE_PLUGIN_ROOT: REPO, CLAUDEMD_NO_STATUSLINE: '1' }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    const failed = r.stderr.split('\n').filter(l => l.startsWith('install failed: '));
+    assert.equal(failed.length, 1, r.stderr);
+    assert.ok(failed[0].includes('/ is not writable by this user and belongs to another user'), failed[0]);
+    assert.doesNotMatch(failed[0], /chmod u\+rwx|chown/);
+    assert.match(failed[0], /EACCES: permission denied/);
+  }
+);
+
+// 0.115.0 pre-tag review L7: the copy loop skips a file it cannot read, and the
+// stderr line still said every previous file was in the backup. It names the
+// ones it could not copy.
+test('163: a previous spec file the backup could not copy is named, not claimed', { skip: asRoot }, () => {
+  assert.equal(runInstall().status, 0);
+  const home = box.claude('CLAUDE.md');
+  fs.writeFileSync(home, `${fs.readFileSync(home, 'utf8')}\n## Mine\n`);
+  const ext = box.claude('CLAUDE-extended.md');
+  fs.appendFileSync(ext, '\n## Also mine\n');
+  fs.chmodSync(ext, 0o000);
+  let r;
+  try {
+    r = runInstall();
+  } finally {
+    if (fs.existsSync(ext)) fs.chmodSync(ext, 0o644);
+  }
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(fs.existsSync(path.join(out.specBackupDir, 'CLAUDE-extended.md')), false);
+  const line = r.stderr.split('\n').find(l => l.includes(out.specBackupDir));
+  assert.ok(line, r.stderr);
+  assert.match(line, /except CLAUDE-extended\.md \(EACCES\), which could not be copied/);
+});
