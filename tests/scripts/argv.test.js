@@ -135,3 +135,61 @@ test('repeated value flag: last wins (no error)', () => {
   const r = parseStrict(['--days=1', '--days=2'], { values: ['--days'] });
   assert.equal(r.values['--days'], '2');
 });
+
+// --- 174a: a bare `--` did not end the options ---
+// POSIX: `--` ends the options and every word after it is an operand, however
+// it is spelled. parseStrict rejected the `--` itself as "Unknown argument".
+// None of its callers takes an operand, so a word after `--` is still refused,
+// and refused as an operand: `-- --apply` must never parse as `--apply`.
+test('174a: a trailing -- ends the options and adds nothing', () => {
+  const r = parseStrict(['--apply', '--days=3', '--'], { bools: ['--apply'], values: ['--days'] });
+  assert.deepEqual([...r.bools], ['--apply']);
+  assert.deepEqual(r.values, { '--days': '3' });
+  assert.equal(parseStrict(['--'], {}).bools.size, 0);
+});
+
+test('174a: a word after -- is an operand, never a flag, and parseStrict takes none', () => {
+  for (const argv of [
+    ['--', '--apply'],
+    ['--', '--days=1'],
+    ['--', 'x'],
+    ['--apply', '--', '--apply'],
+    ['--', '--'],
+  ]) {
+    const operand = argv[argv.indexOf('--') + 1];
+    assert.throws(
+      () => parseStrict(argv, { bools: ['--apply'], values: ['--days'] }),
+      e => e instanceof ArgvError && e.message === `Unexpected argument after '--': '${operand}'.`,
+      argv.join(' ')
+    );
+  }
+});
+
+test('174a: --help or -h after -- is an operand, not a request for help', () => {
+  const dir = sandbox.dir('dd');
+  const cli = path.join(dir, 'cli.mjs');
+  fs.writeFileSync(
+    cli,
+    `import { printHelpAndExit, parseStrictOrExit } from ${JSON.stringify(ARGV_LIB)};
+const argv = process.argv.slice(2);
+printHelpAndExit(argv, 'Usage: cli');
+console.log(JSON.stringify([...parseStrictOrExit(argv, { bools: ['--apply'] }).bools]));
+`
+  );
+  const run = args => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  for (const word of ['--help', '-h']) {
+    const r = run(['--', word]);
+    assert.equal(r.status, 2, `-- ${word}: stdout=${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /Usage:/, `-- ${word}`);
+    assert.equal(r.stderr.trim(), `Unexpected argument after '--': '${word}'.`);
+  }
+  // Controls: before `--` both still print help, and a trailing `--` is accepted.
+  for (const args of [['--help'], ['-h'], ['--help', '--']]) {
+    const h = run(args);
+    assert.equal(h.status, 0, args.join(' '));
+    assert.equal(h.stdout, 'Usage: cli\n', args.join(' '));
+  }
+  const ok = run(['--apply', '--']);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(ok.stdout.trim(), '["--apply"]');
+});

@@ -878,3 +878,84 @@ test('D#174e: --help names the pattern file and the repository package.json decl
     `no Pattern source line naming ${repo}:\n${r.stdout}`
   );
 });
+
+// --- 174a: `--` did not end the options ---
+// Every word that starts with `--` was taken for a flag and the bare `--` was an
+// unknown one, so `lint -- --json`, `lint -- "fix --stdin parsing"` and
+// `audit -- x.jsonl` all exited 2 with "unknown flag '--'": text that starts
+// with `--` could not be linted at all. POSIX: after `--`, every word is text.
+test('174a: lint -- <text> scans text that starts with --', () => {
+  const hit = run(['lint', '--', '--json is significantly better']);
+  assert.equal(hit.status, 1, `stdout=${hit.stdout} stderr=${hit.stderr}`);
+  assert.match(hit.stderr, /significantly/);
+  const clean = run(['lint', '--', 'fix --stdin parsing']);
+  assert.equal(clean.status, 0, `stderr=${clean.stderr}`);
+  assert.equal(clean.stdout, 'OK: no §10-V hits\n');
+  // A word after `--` that spells a flag is the text itself: it neither
+  // switches a mode nor prints help. `--json` before `--` is still the flag.
+  for (const word of ['--json', '--stdin', '--file', '--help', '-h', '--']) {
+    const r = run(['lint', '--json', '--', word]);
+    assert.equal(r.status, 0, `${word}: stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(JSON.parse(r.stdout).text, word);
+  }
+  // Words on both sides of `--` are one text, in order — and with text after
+  // `--`, a `-h` before it is a word of that text (D#174c), not help.
+  for (const [argv, text] of [
+    [['lint', '--json', 'a', '--', '--b'], 'a --b'],
+    [['lint', '--json', '-h', '--', 'x'], '-h x'],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.status, 0, `${argv.join(' ')}: stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(JSON.parse(r.stdout).text, text);
+  }
+});
+
+test('174a: audit -- <path> reads the path', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlc-174a-'));
+  const transcript = path.join(tmp, 'x.jsonl');
+  fs.writeFileSync(
+    transcript,
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'significantly' }] } }) +
+      '\n'
+  );
+  try {
+    const r = run(['audit', '--include-ratio', '--', transcript]);
+    assert.equal(r.status, 1, `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, /significantly/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('174a: what -- does not open — every refusal it could bypass still refuses', () => {
+  for (const [argv, re] of [
+    [['lint', '--stdin', '--', 'x'], /^lint: --stdin and positional text are mutually exclusive$/m],
+    [['lint', '--file', 'a.txt', '--', 'x'], /^lint: --file and positional text are mutually exclusive$/m],
+    [['lint', '--file', '--', 'x'], /^lint: --file requires a path argument$/m],
+    [['lint', '--comment-char', '--', ';'], /^lint: --comment-char requires a single ASCII character/m],
+    [['lint', '--'], /^lint: text required/m],
+    [['lint', '--', ''], /^lint: the text is empty/m],
+    [['audit', 'a.jsonl', '--', 'b.jsonl'], /^audit: takes one <jsonl-path>, got 2/m],
+    [['audit', '--'], /^audit: <jsonl-path> required$/m],
+    [['audit', '--', '--json'], /^audit: file not found: --json$/m],
+    [['audit', '--', '-h'], /^audit: file not found: -h$/m],
+    [['--', 'lint', 'x'], /^unknown subcommand: --$/m],
+  ]) {
+    const r = run(argv, '');
+    assert.equal(r.status, 2, `${JSON.stringify(argv)}: stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(r.stderr, re, JSON.stringify(argv));
+    assert.doesNotMatch(r.stderr, /unknown flag '--'/, JSON.stringify(argv));
+  }
+});
+
+test('174a: --help documents --, and the example it prints scans its text', () => {
+  const h = run(['--help']);
+  const m = h.stdout.match(
+    /^ {2}`--` ends the flags: every word after it is text \(for audit, the path\),\n {2}even one that starts with `-`: `claudemd-cli lint -- "([^"]+)"`\.$/m
+  );
+  assert.ok(m, `no -- paragraph in --help:\n${h.stdout}`);
+  const r = run(['lint', '--json', '--', m[1]]);
+  assert.equal(r.status, 0, `stdout=${r.stdout} stderr=${r.stderr}`);
+  assert.equal(JSON.parse(r.stdout).text, m[1]);
+  assert.match(m[1], /^--/, 'the example must start with -- to show what -- is for');
+});

@@ -33,7 +33,7 @@ import {
 // scripts/lint-argv.js came to authenticate a CLI's argv contract by FUNCTION
 // NAME — any file declaring a local `validateAndExpandFlags` satisfied the gate
 // (audit-2026-08-22 条目 14). The gate now requires this import.
-import { validateAndExpandFlags } from '../scripts/lib/argv.js';
+import { validateAndExpandFlags, splitAtEndOfOptions } from '../scripts/lib/argv.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..');
@@ -64,6 +64,9 @@ Notes:
   is auto-treated as \`--file <arg>\` so \`claudemd-cli lint .git/COMMIT_EDITMSG\`
   works as expected in a commit-msg hook. Pass --stdin or quote literal
   text to opt out.
+
+  \`--\` ends the flags: every word after it is text (for audit, the path),
+  even one that starts with \`-\`: \`claudemd-cli lint -- "--json is wrong"\`.
 
   A commit-msg hook is handed the RAW message file, which still holds git's
   \`#\` template block and — under \`git commit -v\` — the staged diff below the
@@ -185,7 +188,9 @@ function decodeTextOrExit(buf, source) {
 }
 
 function lintCmd(rawArgs) {
-  const args = validateAndExpandFlags(
+  // `operands`: the words after a bare `--`, all text (174a). Flags are read
+  // from `args` only, so `lint -- --json` scans the word instead of obeying it.
+  const { args, operands } = validateAndExpandFlags(
     rawArgs,
     ['--json', '--stdin', '--commit-msg', '--no-commit-msg'],
     ['--file', '--comment-char'],
@@ -246,17 +251,19 @@ function lintCmd(rawArgs) {
     }
     filePath = next;
   }
-  const positional = args.filter((a, i) => {
-    if (a.startsWith('--')) return false;
-    if (fileIdx !== -1 && i === fileIdx + 1) return false;
-    // …and the value slot of every other value-taking flag, or
-    // `lint --comment-char ';' --stdin` would treat ';' as literal text to scan
-    // (and then trip the "--stdin and positional text are mutually exclusive"
-    // guard) — the same silent-value-swallow family validateAndExpandFlags exists to
-    // prevent.
-    if (ccIdx !== -1 && i === ccIdx + 1) return false;
-    return true;
-  });
+  const positional = args
+    .filter((a, i) => {
+      if (a.startsWith('--')) return false;
+      if (fileIdx !== -1 && i === fileIdx + 1) return false;
+      // …and the value slot of every other value-taking flag, or
+      // `lint --comment-char ';' --stdin` would treat ';' as literal text to scan
+      // (and then trip the "--stdin and positional text are mutually exclusive"
+      // guard) — the same silent-value-swallow family validateAndExpandFlags exists to
+      // prevent.
+      if (ccIdx !== -1 && i === ccIdx + 1) return false;
+      return true;
+    })
+    .concat(operands);
 
   // Mutual-exclusion: pick one source — stdin > --file > positional.
   if (stdin && filePath) {
@@ -456,10 +463,10 @@ function lintCmd(rawArgs) {
 }
 
 function auditCmd(rawArgs) {
-  const args = validateAndExpandFlags(rawArgs, ['--json', '--include-ratio'], [], 'audit');
+  const { args, operands } = validateAndExpandFlags(rawArgs, ['--json', '--include-ratio'], [], 'audit');
   const json = args.includes('--json'); // argv-lint:allow — validated upstream by validateAndExpandFlags
   const includeRatio = args.includes('--include-ratio'); // argv-lint:allow — validated upstream by validateAndExpandFlags
-  const positional = args.filter(a => !a.startsWith('--'));
+  const positional = args.filter(a => !a.startsWith('--')).concat(operands);
   const transcriptPath = positional[0];
 
   // A shell glob (`audit dir/*.jsonl`) hands over several paths; scanning only
@@ -620,11 +627,17 @@ function main() {
   // `lint fix the -h flag` printed help, exit 0, and scanned nothing. It counts
   // only where no text can be: first, or the subcommand's only non-flag word.
   // Other subcommands take paths, not text, and keep `-h` anywhere.
-  const words = argv.slice(1).filter(a => !a.startsWith('--'));
+  // Both are looked for only before a bare `--`: after it every word is text or
+  // a path, so `lint -- --help` scans the word (174a).
+  const { head, operands } = splitAtEndOfOptions(argv);
+  const words = head.slice(1).filter(a => !a.startsWith('--'));
   const shortHelp =
-    argv[0] === '-h' || (argv[0] === 'lint' ? words.length === 1 && words[0] === '-h' : argv.includes('-h'));
+    argv[0] === '-h' ||
+    (argv[0] === 'lint'
+      ? words.length === 1 && words[0] === '-h' && operands.length === 0
+      : head.includes('-h'));
   // argv-lint:allow — help detection runs before subcommand routing; --help takes no value
-  if (argv.length === 0 || argv.includes('--help') || shortHelp) {
+  if (argv.length === 0 || head.includes('--help') || shortHelp) {
     process.stdout.write(USAGE + '\n');
     process.exit(argv.length === 0 ? 2 : 0);
   }

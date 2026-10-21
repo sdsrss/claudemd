@@ -46,15 +46,27 @@ export function invokedAsMain(importMetaUrl) {
   }
 }
 
+// The POSIX end-of-options marker: a bare `--` ends the options, and every word
+// after it is an operand however it is spelled. Every parser below splits here
+// first. Until 174a none did, so `--` itself was an unknown flag (exit 2) and a
+// text that starts with `--` could not reach `claudemd-cli lint` at all.
+// `head` is everything before the first `--` (flags, and the CLI's interleaved
+// text words); `operands` is everything after it, verbatim.
+export function splitAtEndOfOptions(argv) {
+  const i = argv.indexOf('--');
+  return i === -1 ? { head: argv, operands: [] } : { head: argv.slice(0, i), operands: argv.slice(i + 1) };
+}
+
 // Discoverability helper: when `--help` or `-h` is the first non-empty arg
 // (or anywhere in argv for scripts with no flags), print usage to stdout and
 // exit 0. Caller invokes BEFORE parseStrict so unknown-arg rejection doesn't
 // shadow the universal first-probe of every Unix CLI. Pre-fix, every
 // parseStrict-using script (audit / sparkline / hard-rules-audit /
 // clean-residue / doctor) responded `Unknown argument: '--help'.` exit 2 —
-// classic discoverability bug for new users.
+// classic discoverability bug for new users. After `--` the word is an
+// operand, not a request for help (174a).
 export function printHelpAndExit(argv, usage) {
-  if (argv.some(a => a === '--help' || a === '-h')) {
+  if (splitAtEndOfOptions(argv).head.some(a => a === '--help' || a === '-h')) {
     process.stdout.write(usage.endsWith('\n') ? usage : usage + '\n');
     process.exit(0);
   }
@@ -125,7 +137,8 @@ export function parseStrict(argv, { bools = [], values = [] } = {}) {
   const out = { bools: new Set(), values: {} };
   const knownBool = new Set(bools);
   const knownValue = new Set(values);
-  for (const a of argv) {
+  const { head, operands } = splitAtEndOfOptions(argv);
+  for (const a of head) {
     if (knownBool.has(a)) {
       out.bools.add(a);
       continue;
@@ -148,6 +161,10 @@ export function parseStrict(argv, { bools = [], values = [] } = {}) {
     }
     throw new ArgvError(`Unknown argument: '${a}'.`);
   }
+  // No caller takes an operand, so one after `--` is refused, and refused as an
+  // operand: `-- --apply` never parses as `--apply`. A `--` with nothing after
+  // it adds nothing.
+  if (operands.length > 0) throw new ArgvError(`Unexpected argument after '--': '${operands[0]}'.`);
   return out;
 }
 // parseStrictOrExit — parseStrict with the exit contract every CLI in this repo
@@ -188,11 +205,18 @@ export function parseStrictOrExit(argv, spec = {}) {
 // silently dropped; `args.indexOf('--file')` returns -1 for `--file=PATH`,
 // so the value was silently ignored; an unknown `--jzon` typo was silently
 // stripped from positional and never surfaced. Each path now exits 2.
-export function validateAndExpandFlags(args, knownBools, knownValues, sub) {
+//
+// Returns `{ args, operands }`. `args` is the validated, expanded words before
+// the first bare `--`, flags and text words interleaved, which is what the
+// caller reads flags from. `operands` is every word after `--`, verbatim: text
+// to the caller, never a flag, so it is kept out of `args`, where a flag
+// lookup would find `--json` in `lint -- --json` (174a).
+export function validateAndExpandFlags(rawArgs, knownBools, knownValues, sub) {
   const out = [];
   const bools = new Set(knownBools);
   const values = new Set(knownValues);
-  for (const a of args) {
+  const { head, operands } = splitAtEndOfOptions(rawArgs);
+  for (const a of head) {
     if (!a.startsWith('--')) {
       out.push(a);
       continue;
@@ -222,5 +246,5 @@ export function validateAndExpandFlags(args, knownBools, knownValues, sub) {
     process.stderr.write(`${sub}: unknown flag '${a}'.\n`);
     process.exit(2);
   }
-  return out;
+  return { args: out, operands };
 }
