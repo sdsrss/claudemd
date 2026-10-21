@@ -407,7 +407,10 @@ touch -t 202001010000 "$PAR/tasks/old-ledger.md"
 touch -t 202001020000 "$PAR/tasks/$NLB"
 OUT=$(ls_par)
 SS=$(ss_ctx)
-if ls_row_is "$NLB" 2 && [[ "$OUT" == *"$PAR/tasks/$NLB"* && "$OUT" == *"most recently modified of 2 ledgers"* ]] \
+# The path reaches the user's terminal: control characters print as `?`, as in
+# session-start's banner (0.115.0 pre-tag review L5).
+if ls_row_is "$NLB" 2 && [[ "$OUT" == *"$PAR/tasks/a?b-ledger.md"* && "$OUT" != *"$PAR/tasks/$NLB"* \
+      && "$OUT" == *"most recently modified of 2 ledgers"* ]] \
    && [[ "$SS" == *"PAR-NL"* && "$SS" != *"PAR-OLD"* ]]; then
   ok "10d: a newline-named newest ledger is the one both arms name, chosen among 2"
 else
@@ -425,8 +428,10 @@ else
 fi
 
 # 10f: two ledgers in the same second, half a second apart. platform_stat_mtime
-# reads whole seconds, so they tie and the first name in glob order wins; `ls -t`
-# compared nanoseconds and named zzz while session-start named aaa. Sub-second
+# reads whole seconds, so they tie and the first name in glob order wins in both
+# hooks. In 0.114.0 both used `ls -t`, which compares nanoseconds, and named zzz:
+# the pick moved to the name order, up to a second older, in exchange for one
+# resolver (0.115.0 pre-tag review L6). Sub-second
 # mtimes through node, because `touch -t` has no fraction field on either BSD or
 # GNU and their `-d` syntaxes differ.
 rm -rf "$PAR"

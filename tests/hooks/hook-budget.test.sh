@@ -186,8 +186,9 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync
 #
 # More than one of them, inside a tasks/ directory wider than the ledgers alone,
 # because both are what the hook walks: it resolves its subject with
-# hook_newest_ledger — a glob over "$cwd"/tasks/*-ledger.md with one stat per
-# matching ledger — and prints
+# hook_newest_ledger — a glob over "$cwd"/tasks/*-ledger.md with one
+# platform_stat_mtime call (a subshell and up to two stat execs) per matching
+# ledger — and prints
 # an extra line only when it chose between several candidates. One ledger timed
 # the one-candidate arm of both (v0.91.0 pre-ship review M7, residual form).
 # Sized above this maintainer's real tasks/ (45 entries, 1 ledger) for the same
