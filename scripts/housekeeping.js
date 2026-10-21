@@ -37,12 +37,14 @@ branches  REPORT (never delete) the local branches that are safe to delete:
           counts the rest.
           A candidate whose tip is on neither the default branch nor
           origin/<default> (a rebase merge, a cherry-pick, a squash) is listed
-          under \`landed\` when every one of its commits has a commit on the
-          default branch, after the fork point, with the same \`git patch-id
-          --verbatim\` (whitespace kept, binary files compared by blob id), or
-          its whole change equals one such commit, and that commit is the
-          same change at the same place (a three-way merge of the change onto
-          it, git 2.40+, leaves it as it is); a partial clone is not judged.
+          under \`landed\` when each of its commits has its own commit on
+          the default branch, after the fork point, with the same \`git
+          patch-id --verbatim\` (whitespace kept, binary files compared by
+          blob id), or its whole change equals one such commit and its tip is
+          not back at an earlier commit's tree; and that commit is the same
+          change at the same place (a three-way merge of the change onto it,
+          git 2.40+, run with no config or attributes, leaves it as it is). A
+          partial clone is not judged.
           \`git branch -d\` refuses these, so deleting them takes \`git
           branch -D\`. Judges at most 20 such candidates, counting the rest
           in \`unjudged\`, and none whose fork point is more than 500 commits
@@ -53,13 +55,15 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
           stdin) that still exist, are not the default branch, a worktree
           checkout or a symbolic ref, at most 20 (\`unjudged\` counts the
           rest). Comments, redirections, a segment with a GIT_* assignment,
-          and one after a \`cd\` without an absolute -C, name nothing. Each
+          and one after a \`cd\` (also \`command cd\`, \`builtin cd\`) without
+          an absolute -C, name nothing. Each
           is \`landed\` (as above, with \`how\`: \`per-commit\` and the number
           of \`commits\`, \`squash\` and the commit it equals, \`via\`, or
           \`on-main\` when its tip is on the default branch and -d compared
           it with something else) or \`kept\`, with up to 3 of the commits
           that have no copy on the default branch (\`missingCount\` counts
-          them all). Never deletes.
+          them all), or reason \`compare-failed\` when git could not make
+          the comparison. Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -402,13 +406,18 @@ function verbatimPatchIds(top, args) {
 // adds to the tree; a submodule pointer the diff hid shows in the tree. The
 // first build applied the diff with `git apply`, which moves a hunk to any
 // place its context matches (0.116.0 review H1). `--merge-base` needs git 2.40;
-// an older git fails here, and the branch is not landed.
+// when merge-tree fails (an older git, a missing object) the branch is
+// `compare-failed`, not missing commits (round 2 M3).
 //
-// merge-tree writes the trees and blobs of a result that differs; they go to a
-// throwaway object directory, removed after the run. A run killed at the
-// hook's timeout cannot remove it, so each run first reaps this user's
-// directories of that name older than 10 minutes (review M2), as does
-// /claudemd-clean-residue.
+// The merge runs in a throwaway bare repository that reads the repository's
+// objects as an alternate, with no user, system or repository config and no
+// attributes: merge=ours or merge=union from .git/info/attributes, a
+// .gitattributes or the user's attributes file decided the result, and a
+// configured merge driver ran, with its temp files in the repository's top
+// directory (round 2 M1, M2). Its objects directory takes what merge-tree
+// writes for a result that differs. It is removed after the run; one a run
+// killed at the hook's timeout left is reaped by the next run after 10
+// minutes (review M2), and by /claudemd-clean-residue.
 const LANDED_TMP = /^claudemd-landed\.[A-Za-z0-9]{6}$/;
 const LANDED_TMP_STALE_MS = 10 * MINUTE;
 
@@ -432,31 +441,52 @@ function reapStaleLandedTmp(root, now = Date.now()) {
   }
 }
 
+class CompareFailed extends Error {}
+
 function makeInPlace(top) {
-  const objects = gitIn(top)('rev-parse', '--path-format=absolute', '--git-path', 'objects');
+  const git = gitIn(top);
+  const objects = git('rev-parse', '--path-format=absolute', '--git-path', 'objects');
+  const format = git('rev-parse', '--show-object-format');
   let tmp = null;
-  const env = () => {
-    if (tmp === null) {
-      reapStaleLandedTmp(os.tmpdir());
-      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed.'));
-      // git refuses a GIT_OBJECT_DIRECTORY that does not exist ("not a git repository").
-      fs.mkdirSync(path.join(tmp, 'objects'));
-    }
-    return {
-      ...process.env,
-      GIT_OBJECT_DIRECTORY: path.join(tmp, 'objects'),
-      GIT_ALTERNATE_OBJECT_DIRECTORIES: objects,
-      GIT_NO_LAZY_FETCH: '1',
+  let env = null;
+  // true once the throwaway repository is there, false when it could not be made.
+  let ready = null;
+  const setup = () => {
+    reapStaleLandedTmp(os.tmpdir());
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed.'));
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+    const base = {
+      ...clean,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_ATTR_NOSYSTEM: '1',
     };
+    const repo = path.join(tmp, 'repo.git');
+    // An empty template directory: no hooks, no info/ files.
+    fs.mkdirSync(path.join(tmp, 'template'));
+    const init = spawnSync(
+      'git',
+      ['init', '-q', '--bare', `--template=${path.join(tmp, 'template')}`, `--object-format=${format}`, repo],
+      { encoding: 'utf8', env: base }
+    );
+    env = { ...base, GIT_DIR: repo, GIT_ALTERNATE_OBJECT_DIRECTORIES: objects };
+    return init.status === 0;
   };
-  const run = args => spawnSync('git', ['-C', top, ...args], { encoding: 'utf8', env: env() });
-  // [from, to] is the branch's change; onto the matching commit.
+  // -c core.attributesFile: with no global config, git still reads
+  // $XDG_CONFIG_HOME/git/attributes (or ~/.config/git/attributes).
+  const run = args =>
+    spawnSync('git', ['-c', 'core.attributesFile=/dev/null', ...args], { encoding: 'utf8', env, cwd: tmp });
+  // [from, to] is the branch's change; onto the matching commit. Throws
+  // CompareFailed when git cannot tell (exit status above 1).
   const inPlace = (from, to, onto) => {
-    if (!objects) return false;
+    ready ??= Boolean(objects && format) && setup();
+    if (!ready) throw new CompareFailed();
     const merged = run(['merge-tree', '--write-tree', '--no-messages', `--merge-base=${from}`, onto, to]);
-    if (merged.status !== 0) return false;
+    if (merged.status === 1) return false; // conflicts
+    if (merged.status !== 0) throw new CompareFailed();
     const tree = run(['rev-parse', '--verify', '--quiet', `${onto}^{tree}`]);
-    return tree.status === 0 && merged.stdout.split('\n')[0] === tree.stdout.trim();
+    if (tree.status !== 0) throw new CompareFailed();
+    return merged.stdout.split('\n')[0] === tree.stdout.trim();
   };
   const done = () => {
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
@@ -465,10 +495,12 @@ function makeInPlace(top) {
 }
 
 // A partial clone lacks blobs, and diffing would fetch them from the remote,
-// from inside a hook (review M3): such a repository is not judged.
+// from inside a hook (review M3): such a repository is not judged. A promisor
+// remote is any boolean true (`yes`, `on`, `1` too); git 2.53 records a
+// partial clone with remote.<name>.promisor alone.
 function isPartialClone(git) {
   if (git('config', '--get', 'extensions.partialclone')) return true;
-  return /\strue$/m.test(git('config', '--get-regexp', '^remote\\..*\\.promisor$') || '');
+  return /\strue$/m.test(git('config', '--type=bool', '--get-regexp', '^remote\\..*\\.promisor$') || '');
 }
 
 // Each sha → { how: 'on-main' | 'per-commit' | 'squash' } when its work is on
@@ -534,22 +566,47 @@ function judgeOpen(open, main, top, defaultRef, inPlace, verdicts) {
       verdicts.set(o.sha, { reason: 'patch-id-failed', missing: [] });
       continue;
     }
-    // patch id → the commits after the fork point that carry it.
+    // patch id → the commits after the fork point that carry it, oldest first.
     const byId = new Map();
-    for (const [c, id] of main) if (o.after.has(c)) byId.set(id, [...(byId.get(id) || []), c]);
-    // An empty commit has no patch id, so it counts as missing; so does a
-    // match whose change sits at another place.
-    const missing = o.commits.filter(c => !(byId.get(mine.get(c)) || []).some(m => inPlace(`${c}^`, c, m)));
-    if (missing.length === 0) {
-      verdicts.set(o.sha, { how: 'per-commit', commits: o.commits.length });
-      continue;
+    for (const [c, id] of [...main].reverse()) if (o.after.has(c)) byId.set(id, [...(byId.get(id) || []), c]);
+    try {
+      verdicts.set(o.sha, matchBranch(o, mine, byId, top, defaultRef, inPlace));
+    } catch (e) {
+      if (!(e instanceof CompareFailed)) throw e;
+      verdicts.set(o.sha, { reason: 'compare-failed', missing: [] });
     }
-    const whole = verbatimPatchIds(top, ['diff', ...DIFF_OPTS, o.base, o.sha]);
-    const wholeId = whole && [...whole.values()][0];
-    const via = wholeId && (byId.get(wholeId) || []).find(m => inPlace(o.base, o.sha, m));
-    if (via) verdicts.set(o.sha, { how: 'squash', via });
-    else verdicts.set(o.sha, { reason: 'not-on-default', missing });
   }
+}
+
+function matchBranch(o, mine, byId, top, defaultRef, inPlace) {
+  // Each main commit stands for one branch commit, oldest first: a branch that
+  // adds a line, removes it and adds it again has two adds, and one copy on
+  // main stands for the first only (round 2 H1). An empty commit has no patch
+  // id, so it counts as missing; so does a match whose change sits at another
+  // place.
+  const used = new Set();
+  const copied = new Set();
+  for (const c of [...o.commits].reverse()) {
+    const m = (byId.get(mine.get(c)) || []).find(m => !used.has(m) && inPlace(`${c}^`, c, m));
+    if (m) {
+      used.add(m);
+      copied.add(c);
+    }
+  }
+  const missing = o.commits.filter(c => !copied.has(c));
+  if (missing.length === 0) return { how: 'per-commit', commits: o.commits.length };
+  // A branch whose tip has the tree of one of its earlier commits (it took
+  // something out and put it back) has that commit's change as its whole
+  // change, so a copy of that commit would read as a squash of the branch
+  // (round 2 H1). Such a branch is not judged a squash.
+  const trees = (
+    gitIn(top)('rev-list', '--no-commit-header', '--format=%T', `${defaultRef}..${o.sha}`) || ''
+  ).split('\n');
+  if (trees.indexOf(trees[0], 1) > 0) return { reason: 'not-on-default', missing };
+  const whole = verbatimPatchIds(top, ['diff', ...DIFF_OPTS, o.base, o.sha]);
+  const wholeId = whole && [...whole.values()][0];
+  const via = wholeId && (byId.get(wholeId) || []).find(m => inPlace(o.base, o.sha, m));
+  return via ? { how: 'squash', via } : { reason: 'not-on-default', missing };
 }
 
 export function classifyBranches({ cwd = process.cwd() } = {}) {
@@ -725,7 +782,9 @@ export function branchDeleteTargets(command) {
     for (; i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i].text); i++)
       if (words[i].text.startsWith('GIT_')) ok = false;
     const git = words[i];
-    if (['cd', 'pushd', 'popd'].includes(git?.text)) moved = true;
+    // `command cd` and `builtin cd` too (round 2 L3).
+    const run = ['command', 'builtin'].includes(git?.text) ? words[i + 1] : git;
+    if (['cd', 'pushd', 'popd'].includes(run?.text)) moved = true;
     if (!ok || !git || git.dynamic || (git.text !== 'git' && !git.text.endsWith('/git'))) continue;
     let dir = null;
     for (i++; ok && i < words.length && words[i].text.startsWith('-'); i++) {

@@ -377,6 +377,20 @@ CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2
 [[ "$CTX" == *"Not on main: feat (the repository is a partial clone, and comparing would fetch from its remote)."* && "$CTX" != *"Delete them with"* ]] &&
   ok "11k a partial clone is kept with its reason" || ng "11k (ctx: $CTX)"
 
+# Case 11l: git 2.39 has `patch-id --verbatim` but not `merge-tree
+# --merge-base`. The line said the cherry-picked commits had no identical copy;
+# it says the branch could not be compared (pre-tag review round 2 M3).
+pick_repo
+mkdir -p "$SANDBOX/git239"
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in --merge-base=*) exit 129;; esac; done\nexec %s "$@"\n' \
+  "'$(command -v git)'" >"$SANDBOX/git239/git"
+chmod +x "$SANDBOX/git239/git"
+OUT=$(fevt 'git branch -d fix/pick' bp-11l | PATH="$SANDBOX/git239:$PATH" bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"Not on main: fix/pick (it could not be compared: git 2.40 or later is needed, or a git command failed)."* &&
+  "$CTX" != *"Delete them with"* && "$CTX" != *"no identical copy"* ]] &&
+  ok "11l a git without merge-tree --merge-base reads as not compared" || ng "11l (ctx: $CTX)"
+
 # Case 12: after a pull, a [gone] branch that was rebase-merged on the remote
 # is listed as landed with the checked -D command, beside the merged one -d
 # deletes; the branch with no upstream stays unlisted.

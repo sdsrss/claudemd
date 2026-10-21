@@ -77,7 +77,7 @@ Exit codes: 0 success | 1 validation error | 2 argv-shape error |
 // asserted in tests/scripts/clean-residue.test.js, so a rename there fails here
 // rather than silently orphaning the files again.
 const SENTINEL_PATTERN = /^claudemd-(sync-|memtags-hay-)/;
-// `claudemd-landed.*`: the throwaway object directory housekeeping.js judges
+// `claudemd-landed.*`: the throwaway repository housekeeping.js judges
 // landed branches in, left behind when the branch-prune hook's timeout kills it.
 const SANDBOX_PATTERN = /^claudemd-(mockgh|work|landed)\./;
 

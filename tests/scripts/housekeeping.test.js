@@ -693,6 +693,43 @@ test('branches: a main commit from before the fork point does not count (re-addi
   assert.deepEqual(names(c.landed), []);
 });
 
+// A branch that adds a line, removes it and adds it back. After its first two
+// commits landed, main has one copy of the add, which stands for the first add
+// only: the third commit is new work. Matching it to that copy, or reading
+// the copy as a squash of the whole branch (whose whole change is the first
+// commit's again), deleted it (pre-tag review round 2 H1).
+test('branches: a commit that adds back what the branch removed is not landed by the earlier copy', () => {
+  const r = clone();
+  const plain = 'a = 1\nb = 2\nc = 3\n';
+  const debug = 'a = 1\nb = 2\nprint("debug", a, b)\nc = 3\n';
+  commit(r, 'app.py', plain);
+  const wa = 'worktree-agent-a2123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'app.py', debug);
+  commit(r, 'app.py', plain);
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', `main..${wa}`);
+  git(r, 'checkout', '-q', wa);
+  commit(r, 'app.py', debug);
+  git(r, 'checkout', '-q', 'main');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+  const out = refusedBranches({ cwd: r, command: `git branch -d ${wa}` });
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept[0]?.reason, 'not-on-default');
+  assert.equal(out.kept[0].missingCount, 1);
+  assert.ok(
+    git(r, 'rev-parse', wa).startsWith(out.kept[0].unmatched[0].sha),
+    'the third commit is the one named'
+  );
+  // Control: once the third commit lands as well, each commit has its own copy.
+  git(r, 'cherry-pick', wa);
+  assert.deepEqual(
+    classifyBranches({ cwd: r }).landed.map(b => [b.name, b.how, b.commits]),
+    [[wa, 'per-commit', 3]]
+  );
+});
+
 // patch-id ignores line numbers: the same hunk, with the same context, at
 // another place in the file has the same id. A file with two identical blocks
 // where the branch edits the first and main the second must not read as
@@ -765,6 +802,123 @@ test('branches: an edit that main made to the other identical block, after chang
   assert.deepEqual(names(refusedBranches({ cwd: r, command: `git branch -d ${wa}` }).landed), []);
 });
 
+// The same-place check is a three-way merge, and merge attributes chose its
+// result: merge=ours keeps main's side, the built-in merge=union keeps both
+// sides of a conflict, so a change that is not on main read as landed. They
+// came from .git/info/attributes with a driver in the repository config, from
+// the user's ~/.gitconfig and attributes file, and from a .gitattributes
+// (pre-tag review round 2 M1).
+test('branches: merge attributes and drivers do not decide the same-place check', () => {
+  const withEnv = (vars, fn) => {
+    const saved = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));
+    const set = values => {
+      for (const [k, v] of Object.entries(values))
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+    };
+    set(vars);
+    try {
+      return fn();
+    } finally {
+      set(saved);
+    }
+  };
+  const block = v => `p\nq\nr\nVALUE=${v}\na4\ns\nt\nu\n`;
+  const wa = 'worktree-agent-b2123456789abcdef';
+  // The branch edits block 1; main makes the same edit in block 2.
+  const otherBlock = r => {
+    commit(r, 'f.txt', block(1) + block(1));
+    git(r, 'checkout', '-q', '-b', wa);
+    commit(r, 'f.txt', block('X') + block(1));
+    git(r, 'checkout', '-q', 'main');
+    commit(r, 'f.txt', block(1) + block('X'));
+  };
+  // The branch drops VALUE=1/a4 from block 1; main first changes block 1,
+  // then drops the same lines from block 2 (the same patch id).
+  const dropBlock = r => {
+    const dropped = 'p\nq\nr\ns\nt\nu\n';
+    commit(r, 'f.txt', block(1) + block(1));
+    git(r, 'checkout', '-q', '-b', wa);
+    commit(r, 'f.txt', dropped + block(1));
+    git(r, 'checkout', '-q', 'main');
+    commit(r, 'f.txt', block(2) + block(1));
+    commit(r, 'f.txt', block(2) + dropped);
+  };
+  const ours = path.join(root, 'home-ours');
+  fs.mkdirSync(ours);
+  fs.writeFileSync(path.join(ours, 'attributes'), 'f.txt merge=ours\n');
+  fs.writeFileSync(
+    path.join(ours, '.gitconfig'),
+    `[core]\n\tattributesFile = ${path.join(ours, 'attributes')}\n[merge "ours"]\n\tdriver = true\n`
+  );
+  const union = path.join(root, 'home-union');
+  fs.mkdirSync(path.join(union, '.config', 'git'), { recursive: true });
+  fs.writeFileSync(path.join(union, '.config', 'git', 'attributes'), 'f.txt merge=union\n');
+  const cases = [
+    [
+      '.git/info/attributes',
+      otherBlock,
+      r => {
+        git(r, 'config', 'merge.ours.driver', 'true');
+        fs.mkdirSync(path.join(r, '.git', 'info'), { recursive: true });
+        fs.writeFileSync(path.join(r, '.git', 'info', 'attributes'), 'f.txt merge=ours\n');
+      },
+      {},
+    ],
+    ['~/.gitconfig', otherBlock, () => {}, { HOME: ours, GIT_CONFIG_GLOBAL: undefined }],
+    [
+      '~/.config/git/attributes',
+      dropBlock,
+      () => {},
+      { HOME: union, XDG_CONFIG_HOME: path.join(union, '.config'), GIT_CONFIG_GLOBAL: undefined },
+    ],
+    [
+      '.gitattributes',
+      dropBlock,
+      r => {
+        fs.writeFileSync(path.join(r, '.gitattributes'), 'f.txt merge=union\n');
+        git(r, 'add', '.gitattributes');
+        git(r, 'commit', '-q', '-m', 'attributes');
+      },
+      {},
+    ],
+  ];
+  for (const [where, fixture, attrs, vars] of cases) {
+    for (const d of ['remote.git', 'seed', 'repo'])
+      fs.rmSync(path.join(root, d), { recursive: true, force: true });
+    const r = clone();
+    attrs(r);
+    fixture(r);
+    assert.deepEqual(
+      withEnv(vars, () => names(classifyBranches({ cwd: r }).landed)),
+      [],
+      where
+    );
+  }
+});
+
+// Judging ran a merge driver from the repository's config (an npx-based one
+// would reach the network from the hook), and git put the driver's temp files
+// in the repository's top directory (pre-tag review round 2 M2).
+test('branches: judging runs no merge driver and adds no file to the repository', () => {
+  const r = clone();
+  const lines = Array.from({ length: 20 }, (_, i) => `${i + 1}\n`);
+  commit(r, 'lock.json', lines.join(''));
+  const wa = 'worktree-agent-c2123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'lock.json', lines.map((l, i) => (i === 1 ? 'two\n' : l)).join(''));
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'lock.json', lines.map((l, i) => (i === 17 ? 'eighteen\n' : l)).join(''));
+  git(r, 'cherry-pick', wa); // needs a content merge to check: main changed the file too
+  const marker = path.join(root, 'driver-ran');
+  git(r, 'config', 'merge.npm.driver', `touch '${marker}'; git merge-file %A %O %B`);
+  fs.mkdirSync(path.join(r, '.git', 'info'), { recursive: true });
+  fs.writeFileSync(path.join(r, '.git', 'info', 'attributes'), 'lock.json merge=npm\n');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), [wa]);
+  assert.equal(fs.existsSync(marker), false, 'the driver did not run');
+  assert.equal(git(r, 'status', '--porcelain', '--ignored'), '');
+});
+
 // A submodule pointer the diff does not show: diff.submodule=log, or
 // `ignore = all` in .gitmodules, left it out of both patch ids (review H2).
 test('branches: a moved submodule pointer that the diff settings hide is not landed', () => {
@@ -797,6 +951,36 @@ test('branches: a moved submodule pointer that the diff settings hide is not lan
   }
 });
 
+// The other side: under the same settings, a commit that only moves a
+// submodule pointer, cherry-picked, is landed. Its diff is shown
+// (--ignore-submodules=none, --submodule=short), so it has a patch id; hidden,
+// it had none and read as missing (pre-tag review round 2 L5).
+test('branches: a cherry-picked submodule pointer move is landed whatever the diff settings', () => {
+  for (const hide of ['config', 'gitmodules']) {
+    for (const d of ['remote.git', 'seed', 'repo'])
+      fs.rmSync(path.join(root, d), { recursive: true, force: true });
+    const r = clone();
+    git(r, 'update-index', '--add', '--cacheinfo', '160000,0123456789abcdef0123456789abcdef01234567,sub');
+    if (hide === 'gitmodules') {
+      fs.writeFileSync(
+        path.join(r, '.gitmodules'),
+        '[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n\tignore = all\n'
+      );
+      git(r, 'add', '.gitmodules');
+    }
+    git(r, 'commit', '-q', '-m', 'add sub');
+    const wa = 'worktree-agent-f3123456789abcdef';
+    git(r, 'checkout', '-q', '-b', wa);
+    git(r, 'update-index', '--cacheinfo', '160000,89abcdef0123456789abcdef0123456789abcdef,sub');
+    git(r, 'commit', '-q', '-m', 'move sub');
+    git(r, 'checkout', '-q', 'main');
+    commit(r, 'other.txt', 'other\n');
+    git(r, 'cherry-pick', wa);
+    if (hide === 'config') git(r, 'config', 'diff.submodule', 'log');
+    assert.deepEqual(names(classifyBranches({ cwd: r }).landed), [wa], hide);
+  }
+});
+
 // Judging a partial clone would fetch the missing blobs from the remote,
 // from inside a hook (review M3): it is not judged.
 test('branches: a partial clone is not judged and fetches nothing', () => {
@@ -819,6 +1003,13 @@ test('branches: a partial clone is not judged and fetches nothing', () => {
   assert.deepEqual(names(out.landed), []);
   assert.equal(out.kept[0]?.reason, 'partial-clone');
   assert.equal(packs(), before, 'no object fetched');
+  // A promisor remote written as `yes` is one too (git 2.53 records a partial
+  // clone with remote.origin.promisor alone): git fetched from it, 4 packs
+  // becoming 12 (2026-10-21), when only `true` was recognised.
+  git(r, 'config', 'remote.origin.promisor', 'yes');
+  const again = refusedBranches({ cwd: r, command: 'git branch -d feat' });
+  assert.equal(again.kept[0]?.reason, 'partial-clone');
+  assert.equal(packs(), before, 'no object fetched (promisor = yes)');
 });
 
 // The throwaway object directory is removed after a run; one a killed run
@@ -955,6 +1146,9 @@ test('refused: branchDeleteTargets reads names from git branch -d / --delete seg
   // the one the hook judges in: nothing (review text L4).
   assert.deepEqual(branchDeleteTargets('cd /other && git branch -d feat'), []);
   assert.deepEqual(branchDeleteTargets('pushd sub; git branch -d feat'), []);
+  // through the `command` and `builtin` builtins too (pre-tag review round 2 L3)
+  assert.deepEqual(branchDeleteTargets('command cd /x; git branch -d feat'), []);
+  assert.deepEqual(branchDeleteTargets('builtin cd /x && git branch -d feat'), []);
   assert.deepEqual(branchDeleteTargets('cd /x && git -C /abs branch -d feat'), [
     { dir: '/abs', names: ['feat'] },
   ]);
@@ -995,6 +1189,36 @@ test('refused: a cherry-picked branch with no upstream that -d refused → lande
       commits: 1,
     },
   ]);
+});
+
+// git 2.39 has `patch-id --verbatim` but not `merge-tree --merge-base`; the
+// failed merge read as "no identical copy", and the kept line named a commit
+// that has one (pre-tag review round 2 M3).
+test('refused: a git without merge-tree --merge-base → kept as not compared, naming no commit', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'fix/y');
+  commit(r, 'y.txt', 'y\n');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'other.txt', 'other\n');
+  git(r, 'cherry-pick', 'main..fix/y');
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = path.join(root, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(
+    path.join(bin, 'git'),
+    `#!/bin/sh\nfor a in "$@"; do case "$a" in --merge-base=*) echo "error: unknown option" >&2; exit 129;; esac; done\nexec '${realGit}' "$@"\n`,
+    { mode: 0o755 }
+  );
+  const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
+    input: 'git branch -d fix/y',
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(res.status, 0, res.stderr);
+  const out = JSON.parse(res.stdout);
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept[0]?.reason, 'compare-failed');
+  assert.deepEqual(out.kept[0].unmatched, []);
 });
 
 test('refused: a commit changed in the pick → kept, naming the commit with no copy on main', () => {
