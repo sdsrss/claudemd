@@ -1111,6 +1111,26 @@ test('ack-fail-open: a row the acknowledgement did not cover is red, whatever it
   }
 });
 
+test('ack-fail-open: an entry covers only a row equal in all three parts, also once its own row has left the log (review M2)', async () => {
+  // The case above keeps the acknowledged row beside each variant, so a match
+  // that ignored ts or hook still had one entry to spend and one row left red.
+  // Here the acknowledged row is gone; each variant is the only row.
+  const t = minutesAgo(30);
+  fs.writeFileSync(ackFile(), JSON.stringify({ acknowledged: [[t, 'banned-vocab', 'patterns-missing']] }));
+  for (const only of [
+    failOpenRow(minutesAgo(20)),
+    failOpenRow(t, 'patterns-missing', 'reply-language'),
+    failOpenRow(t, 'jq-missing'),
+  ]) {
+    writeLog([only]);
+    const c = failOpenCheck(await doctor({}));
+    assert.equal(c.ok, false, `${only}: ${c.detail}`);
+    assert.doesNotMatch(c.detail, /acknowledged one/, only);
+  }
+  writeLog([failOpenRow(t)]);
+  assert.equal(failOpenCheck(await doctor({})).ok, true, 'control: the row the entry names');
+});
+
 test('ack-fail-open: no clock reading decides it — rows dated ahead of the clock are acknowledged, and the row recorded after the clock is put back is red', async () => {
   // A clock that ran a day ahead dated these rows; it has since been corrected.
   const ahead = [new Date(Date.now() + 86400000), new Date(Date.now() + 86460000)].map(d =>
@@ -1209,7 +1229,7 @@ test('ack-fail-open: the red row says how to clear it, and the acknowledged gree
   const red = failOpenCheck(await doctor({}));
   assert.match(
     red.detail,
-    /once restored, `\/claudemd-doctor --ack-fail-open` acknowledges these, and any fail-open it did not acknowledge turns this red again\./
+    /once restored, `\/claudemd-doctor --ack-fail-open` acknowledges these, and any live-environment fail-open it did not acknowledge turns this red again\./
   );
   fs.appendFileSync(
     box.claude('logs/claudemd.jsonl'),

@@ -71,8 +71,10 @@ Options:
                       manually — this flag cannot do that.
   --ack-fail-open     The cause of the hook-fail-open row is fixed: record the
                       fail-open events the row counts, by ts, hook and reason,
-                      in ~/.claude/.claudemd-state/fail-open-ack.json; those no
-                      longer turn the row red, any other one does.
+                      in fail-open-ack.json in the state directory
+                      (~/.claude/.claudemd-state/ unless CLAUDEMD_STATE_DIR
+                      names another); those no longer turn the row red, any
+                      other such event does.
                       Writes nothing when there is nothing unacknowledged.
   --help, -h          Print this message and exit.
 
@@ -987,13 +989,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       checks.push({
         name: 'hook-fail-open',
         ok: false,
-        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and any fail-open it did not acknowledge turns this red again.${acknowledged.length ? ` ${acknowledged.length} acknowledged one(s) not counted.` : ''}${unevaluableClause}`,
+        detail: `${prereqFailOpen.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(prereqFailOpen)}); enforcement silently bypassed (jq / patterns-file prerequisite missing). Investigate and restore; once restored, \`/claudemd-doctor --ack-fail-open\` acknowledges these, and any live-environment fail-open it did not acknowledge turns this red again.${acknowledged.length ? ` ${acknowledged.length} acknowledged one(s) not counted.` : ''}${unevaluableClause}`,
       });
     } else if (acknowledged.length > 0) {
       checks.push({
         name: 'hook-fail-open',
         ok: true,
-        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged with --ack-fail-open. Any fail-open recorded after that turns this red again.${unevaluableClause}`,
+        detail: `${acknowledged.length} live-environment fail-open event(s) in ${RULE_USAGE_WINDOW_DAYS}d (${summarize(acknowledged)}), all acknowledged with --ack-fail-open. Any live-environment fail-open recorded after that turns this red again.${unevaluableClause}`,
       });
     } else if (unevaluable.length > 0) {
       checks.push({
