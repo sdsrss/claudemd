@@ -1,5 +1,5 @@
 # §8 闸门：`~/*` 与 `$HOME/*` 这类只有通配符的目标按裸变量拒绝
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 `.converge/BACKLOG.md` 第 175 行：`rm -rf ~/*`、`rm -rf "$HOME"/*` 被 §8 闸门放行，而 `rm -rf ~`、`rm -rf "$HOME"` 被拒。回归语料把这两种放行标成 `pass`（corpus.tsv:57 "whitelist + glob"，自 v0.17.2；:92，自 941ecfd），所以它们是闸门有意的判决，改它是改判决（allow→deny），不是修实现与文档不符。
@@ -21,7 +21,7 @@
 - [x] AC2：对照不变：`rm -rf ~/cache`、`rm -rf ~/.cache/*`、`rm -rf "$HOME/cache"`、`rm -rf $TMPDIR/claudemd-*`、`find ~/* -name '*.tmp' -delete`、`rm -rf ~*`（不是家目录） — 验证：同上
 - [x] AC3：真实命令回放（transcript 里全部不重复 Bash 命令中含 rm/find 的子集），新旧钩子对比：deny→allow 为 0；allow→deny 每条逐一核对，只能是 AC1 的形状 — 验证：`tasks/s8-replay/replay_sha.py` + `cmp_sha.py`
 - [x] AC4：只能 allow→deny（按构造）：改动只在"裸"条件里把 `*` 与 `/` 同等看待，满足新条件的目标走已有的拒绝分支 — 验证：读码 + AC3
-- [ ] AC5：发版说明有迁移说明与退路（单条命令用使用者的 `[allow-rm-rf-var]`，或写出字面子路径；整体回退按 docs/ROLLBACK.md） — 验证：发版前评审
+- [x] AC5：发版说明有迁移说明与退路（单条命令用使用者的 `[allow-rm-rf-var]`，或写出字面子路径；整体回退按 docs/ROLLBACK.md） — 验证：发版前评审
 
 ## 方案
 - 白名单分支：`[[ ! "$residue" =~ [^/] ]]` → `[[ ! "$residue" =~ [^/*] ]]`，F43 折叠条件同改（两处必须一致，否则 `${HOME:?}/*` 折叠不到 HOME 分支）。为什么只能 allow→deny：新条件成立 ⊇ 旧条件成立；新增成立的情形全部走 HOME/PWD/OLDPWD/TMPDIR 分支里已有的拒绝；新条件不成立时旧条件也不成立，路径与以前相同。
@@ -33,7 +33,7 @@
 - [x] S1：语料改标与新增行（红）
 - [x] S2：两处条件 + `~` 正则 + 文案（绿）；bash 3.2 下跑该套件（本机无 3.2 二进制：静态检查 bash32-constructs 通过，运行时由 CI 的 macOS 腿跑 /bin/bash 3.2.57）
 - [x] S3：真实命令回放（AC3）
-- [ ] S4：CHANGELOG 段落，随 0.115.0 发版前评审
+- [x] S4：CHANGELOG 段落，随 0.115.0 发版前评审
 
 ## 决策与进展
 - 2026-10-21：频率。`tasks/s8-replay/extract.py` 抽出 105,658 条不重复真实 Bash 命令；以 rm/find 目标为 `~` 或 HOME/TMPDIR/PWD/OLDPWD 后跟只有 `/` 与 `*` 的正则计数：HOME 1 条、`~` 1 条，两条都不是任务操作（一条是编辑 BACKLOG.md 的脚本引用了这个形状，一条是闸门探针）；TMPDIR/PWD/OLDPWD 0 条。改判的误拒成本按这批数据为 0 条；拦住的是删除整个家目录或 `/*`。
@@ -45,9 +45,16 @@
 - 2026-10-21：发版前评审第 1 轮（hooks 与脚本两个评审）：本组件 1 个 M（`?`、`[…]` 等价通配可绕过，评审建议登记不打补丁）与 L（文案对部分形状不对、文案没有测试钉住、注释过时、F20/F22 的新形状）。修复 db827e7：改文案并以 4 条拒绝原因行钉住（初稿文案下 3 条失败）；登记 F24（xfn）、F20 加两条（xfp）、F22 加一条（xfn）。判定未动：套件 1206/1206。
 - 2026-10-21：第 2 轮（新开，只看修复范围）：0C/0H/0M，本组件 L：带引号的字面 `*` 拿到"没有子路径"的文案不成立（F20 误拒，出路是不经变量写出完整路径）；`find ~/? -delete` 不等价于 `*`（改为放行对照，F24 换成 `find ~/?* -delete`）；花括号展开（`~/{a,}`）与 `~/.*` 未登记（登记为 F25、F26）；本文件方案节仍是初稿文案；F20 的真实命中格没更新。全部按文字与语料修，不再开评审。
 
+- 2026-10-21：随 0.115.0 发布。fd0c6f0 快进到 main，tag v0.115.0（带注释），GitHub Release 已建，PR #15 合并；npm `+ claudemd-cli@0.115.0`（09:10:26Z），dist-tags.latest 为 0.115.0（09:17:28Z）。
+
 ## 验证记录
 - 回放 `cmp_sha.py all.json old.json new.json` → 通过（compared 21791，verdict flips 0，stdout/rc differences 0）
 - `bash tests/hooks/pre-bash-safety.test.sh`（改前）→ 失败（1181/1195，14 条新拒绝行）
 - `bash tests/hooks/pre-bash-safety.test.sh`（17c036a）→ 通过（1195/1195，Residuals: xfn=61 xfp=14）
 - `npm run lint`（工作树）→ 通过（exit 0）
 - `bash tests/lib/bash32-constructs.sh` → 通过
+- `bash tests/hooks/pre-bash-safety.test.sh`（9f5e7ef 起）→ 通过（1212/1212，Residuals: xfn=71 xfp=16）
+- `npm run check`（aa00336）→ 通过（node 1643/1644，跳过 1；shell 套件全过）
+- PR CI 39566119854（aa00336）、39568539254（fd0c6f0）→ 通过（7/7）
+- tag CI 39571046650、main CI 39571040787、npm-publish 39571047089（fd0c6f0）→ 通过
+- `npm view claudemd-cli dist-tags.latest` → 0.115.0

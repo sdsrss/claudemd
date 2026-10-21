@@ -1,5 +1,5 @@
 # doctor：fail-open 修好后可以确认清零（`--ack-fail-open`）
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 `/claudemd-doctor` 的 `hook-fail-open` 行：30 天窗口里只要有一条"先决条件缺失"类的 fail-open 记录（jq 不在、patterns 文件读不了、状态目录写不进等），这一行就红、doctor 退出 3。使用者按提示修好之后，这一行仍然红满 30 天，doctor 的退出码在这段时间里不再反映现状（0.113.3、0.113.4 的 CHANGELOG "Not changed"；backlog 第 75 行）。
@@ -13,12 +13,12 @@
 - 不做：按原因自动判断是否恢复；改 fail-open 的分类（bad-event / 无从判定 / 先决条件缺失三类不变）；改别的检查。
 
 ## 验收标准
-- [ ] AC1：有未确认的红类记录时，`--ack-fail-open` 写下确认文件（列出被确认各行的 ts、hook、原因），同一次输出里这一行为绿，并写明这次新确认了几条 — 验证：`node --test tests/scripts/doctor.test.js`（ack-fail-open 用例）
-- [ ] AC2：确认之后再出现一条红类记录，这一行重新变红，并同时报出已确认的条数 — 验证：同上
-- [ ] AC3：没有可确认的记录（没有红类，或都已确认）时不写文件，输出说明原因 — 验证：同上
-- [ ] AC4：确认文件损坏或读不了时视为没有确认（红的照红） — 验证：同上
-- [ ] AC5：确认文件写不进时 doctor 退出 1 并说明原因；不加参数时的判定与退出码与 0.113.4 相同 — 验证：同上 + 现有 `doctor.test.js` 的 fail-open 用例不改仍通过
-- [ ] AC6：命令页、USAGE、README、ARCHITECTURE 说的与代码一致；命令页写明只在使用者确认原因已修好后才用 — 验证：`npm run check`（含 exit-code-doc-drift 等闸门）+ 发版前评审
+- [x] AC1：有未确认的红类记录时，`--ack-fail-open` 写下确认文件（列出被确认各行的 ts、hook、原因），同一次输出里这一行为绿，并写明这次新确认了几条 — 验证：`node --test tests/scripts/doctor.test.js`（ack-fail-open 用例）
+- [x] AC2：确认之后再出现一条红类记录，这一行重新变红，并同时报出已确认的条数 — 验证：同上
+- [x] AC3：没有可确认的记录（没有红类，或都已确认）时不写文件，输出说明原因 — 验证：同上
+- [x] AC4：确认文件损坏或读不了时视为没有确认（红的照红） — 验证：同上
+- [x] AC5：确认文件写不进时 doctor 退出 1 并说明原因；不加参数时的判定与退出码与 0.113.4 相同 — 验证：同上 + 现有 `doctor.test.js` 的 fail-open 用例不改仍通过
+- [x] AC6：命令页、USAGE、README、ARCHITECTURE 说的与代码一致；命令页写明只在使用者确认原因已修好后才用 — 验证：`npm run check`（含 exit-code-doc-drift 等闸门）+ 发版前评审
 
 ## 方案
 （2026-10-21 第三版。前两版用"确认时刻"做判据，两轮评审的 3 个 Medium 都出在时刻比较与原地写入上，见决策节。）
@@ -36,7 +36,7 @@
 - [x] S1：测试（红）：ack 写入与转绿、确认后新行转红、无可确认不写、坏文件按未确认、写不进退出 1、不加参数行为不变
 - [x] S2：实现 + USAGE + 红行说明（绿）
 - [x] S3：命令页、README、ARCHITECTURE
-- [ ] S4：CHANGELOG、版本号、`npm run check`、PR CI、发版前评审、tag、release
+- [x] S4：CHANGELOG、版本号、`npm run check`、PR CI、发版前评审、tag、release
 
 ## 决策与进展
 - 2026-10-20：`/tmp/claudemd-sync-*` 先查过：是 `hooks/version-sync.sh:50` 每个会话一个的 0 字节哨兵，`:57` 删除 24 小时前的，按设计如此，不是残留。
@@ -78,4 +78,12 @@
   - L3（范围之前就有）：docs/RULE-HITS-SCHEMA.md:69 把 transcript-missing、event-fields-missing 写成建议级，与代码相反；0.115.0 的 177 修复已改正，本版不动。
   - 文字与测试修复不再开评审，按 runbook 做 claim-drift。评审到此结束（使用者同意的两轮）。
 
+- 2026-10-21：发布 0.114.0。cd68796 快进到 main，tag v0.114.0（带注释），GitHub Release 已建，PR #14 合并；npm `+ claudemd-cli@0.114.0`（07:20:22Z），dist-tags.latest 为 0.114.0（07:22:06Z）。
+
 ## 验证记录
+- `node --test tests/scripts/doctor.test.js`（13 个 ack-fail-open 用例，在 cd68796 的全量检查里）→ 通过
+- `bash tests/hooks/fail-open.test.sh`（含 T24、T24b）→ 通过（72/72）
+- `npm run check`（cb07cf8，与 cd68796 只差 CHANGELOG 正文）→ 通过（node 1617/1618，跳过 1；shell 套件全过）
+- PR CI 39555722080（cd68796）→ 通过（7/7）
+- tag CI 39557692211、main CI 39557687720、npm-publish 39557692215（cd68796）→ 通过
+- `npm view claudemd-cli dist-tags.latest` → 0.114.0
