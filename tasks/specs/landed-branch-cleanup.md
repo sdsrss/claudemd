@@ -43,19 +43,19 @@
 
 ## 验收标准
 
-- [ ] AC1：判定正确，`node --test tests/scripts/housekeeping.test.js` 新用例在改动前失败：
+- [x] AC1：判定正确，`node --test tests/scripts/housekeeping.test.js` 新用例在改动前失败：
   - rebase 式落地、cherry-pick 落地、squash 落地 → landed；
   - 只差空白、内容改过、分支上有合并提交、匹配的 main 提交在分叉点之前 → 不判为 landed；
   - 落地后在 main 上被撤销 → 仍判为 landed（用户 2026-10-21 决定）；
   - 祖先但 `-d` 因上游或 HEAD 被拒 → landed（on-main）。
-- [ ] AC2：hook 行为，`bash tests/hooks/branch-prune.test.sh` 新用例在改动前失败：
+- [x] AC2：hook 行为，`bash tests/hooks/branch-prune.test.sh` 新用例在改动前失败：
   - `-d` 被拒（PostToolUseFailure）→ 列出 landed 并给出带校验的 `-D` 命令；未落地的列出缺失提交；
   - 执行给出的命令能删掉 landed 分支；分支在判定后又加了提交 → 命令不删；
   - 已检出的分支不列；
   - pull/merge 后的列表包含 landed 的 `[gone]` 分支，不包含没有上游的分支；
   - 关闭开关有效。
-- [ ] AC3：核心句子整行钉住；版本级联、Sizing、`spec-coherence-audit --strict` 一致 — 验证：`npm run check`
-- [ ] AC4：离线对比，`claude -p` 沙箱，每组 5 次：
+- [x] AC3：核心句子整行钉住；版本级联、Sizing、`spec-coherence-audit --strict` 一致 — 验证：`npm run check`
+- [x] AC4：离线对比，`claude -p` 沙箱，每组 5 次：
   - cherry-pick 场景下，新规范删除 landed 分支、保留内容改过的分支；
   - 旧规范两个都保留；
   - 两组都不对未落地分支用 `-D`。
@@ -71,8 +71,9 @@
     - 每个独有提交的 `git patch-id --verbatim` 都出现在 `base..D` 的提交里 → `per-commit`；
     - 否则分支总改动（`git diff base B`）的 patch-id 出现在 `base..D` 里 → `squash`。
   - diff 选项固定：`--no-color --no-ext-diff --no-textconv --full-index --no-renames`，在仓库顶层运行（避开 `diff.relative`）；`--format='commit %H'`。
-  - 二进制按 blob id 比；权限变化计入 patch-id（沙箱已验证）。
-  - git < 2.39 没有 `--verbatim` → patch-id 失败 → 不判。
+  - 二进制按 blob id 比；权限变化计入 patch-id（沙箱已验证）；子模块指针始终显示（`--ignore-submodules=none --submodule=short`）。
+  - 位置确认（评审第 1 轮 H1 之后）：patch-id 不看行号，所以每个匹配都要再做一次三方合并：`git merge-tree --write-tree --merge-base=<改动的基础> <main 上对应的提交> <分支提交>`，要求无冲突，并且结果 tree 等于那个对应提交的 tree。最初用的 `git apply` 会把补丁挪到上下文能对上的别处，已弃用。结果对象写进临时对象目录 `claudemd-landed.XXXXXX`，运行后删除；超时被杀留下的，下次运行清理 10 分钟以前的，`clean-residue` 也会清理。
+  - git < 2.39 没有 `--verbatim`，< 2.40 没有 `merge-tree --merge-base` → 不判。部分克隆不判（会从远端拉对象）。
 - 只认 `base..D`：分叉点之前的 main 提交不算（分支重新加回 main 早先删掉的内容，不是"已落地"）。
 - 成本控制：
   - main 一侧一次 `git log -p` 覆盖所有候选的 base 中最早的那个（`merge-base --octopus`），最多 500 个提交；
@@ -84,19 +85,19 @@
   - 不解析 git 的报错（可能被本地化）；
   - 带 `$`、反引号、通配符的参数跳过；带 `-D` / `--force` / `-r` 的段跳过；
   - 只保留删完后仍存在、不是默认分支、未检出、不是符号引用的分支。
-- 核心 §7 Git 句子（草案）：
+- 核心 §7 Git 句子（最终）：
   - 旧："…; if `-d` refuses, keep the branch and name it under open items, never `-D`."
-  - 新："…; if `-d` refuses, use `-D` only through the command a hook prints for a branch whose every commit it found on the main line, else keep the branch and name it under open items."
+  - 新："…; if `-d` refuses, run the `-D` the branch-prune hook printed for that branch (its work is on the main line byte for byte) exactly as printed; with none, keep the branch and name it under open items, never a `-D` of your own."
 - 取舍：
   - 判定放在 hook 而不是规则里，因为 gsd-lite 那次会话自己判断时用的是 `git cherry`（claudemd 那次只凭 cherry-pick 记录）；
   - hook 被关掉时没有命令，就回到保留的做法。
 
 ## 计划
 
-- [ ] S1：housekeeping 判定 + `refused` 子命令，先写失败的测试 — 覆盖 AC1 — 依赖：无 — 执行：主会话
-- [ ] S2：branch-prune.sh + hooks.json + hook 测试 — 覆盖 AC2 — 依赖：S1 — 执行：主会话
-- [ ] S3：核心句子、钉、规范版本、changelog、Sizing、文档 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
-- [ ] S4：离线对比 — 覆盖 AC4 — 依赖：S3 — 执行：主会话
+- [x] S1：housekeeping 判定 + `refused` 子命令，先写失败的测试 — 覆盖 AC1 — 依赖：无 — 执行：主会话
+- [x] S2：branch-prune.sh + hooks.json + hook 测试 — 覆盖 AC2 — 依赖：S1 — 执行：主会话
+- [x] S3：核心句子、钉、规范版本、changelog、Sizing、文档 — 覆盖 AC3 — 依赖：S2 — 执行：主会话
+- [x] S4：离线对比 — 覆盖 AC4 — 依赖：S3 — 执行：主会话
 - [ ] S5：按发版手册发布 0.116.0 — 覆盖 AC5 — 依赖：S1–S4 — 执行：主会话 + release-reviewer
 
 ## 决策与进展
@@ -117,7 +118,11 @@
 - `bash tests/hooks/contract.test.sh` → 通过（248/248；新增事件写进文档之前，C 项失败）
 - `node --test tests/scripts/spec-structure.test.js` → 通过（89/89；§7 Git 整行钉、节哈希、标题清单、Recent changes 哈希都已在读过 diff 后更新）
 - `node scripts/version-cascade-check.js` → 通过（v8.3 一致；Sizing 在 ±20B 内）；`node scripts/spec-coherence-audit.js --strict` → 通过（5/5，coreDelta=0，extendedDelta=0）
-- 真实数据重跑（实际实现 `refusedBranches`，按当时的 main）→ 通过：被拒后 `-D` 的 29 个里，27 个判为已落地，2 个保留；loop-testing 现存 2 个保留（32 个、1 个提交没有副本）；gsd-lite 的 2 个在 13:24 main 快进后判为已落地（`git cherry` 全为 `-`）；每个分支 128–1215 ms
+- 真实数据重跑（第一版实现 `refusedBranches`，按当时的 main）→ 通过：`-d` 会拒绝、后来用 `-D` 删掉的 29 个里，27 个判为已落地，2 个保留；loop-testing 现存 2 个保留（32 个、1 个提交没有副本）；gsd-lite 的 2 个在 13:24 main 快进后判为已落地（`git cherry` 全为 `-`）；每个分支 128–1215 ms
 - 离线对比 A（0.115.0）→ TC 0/5 删除 fix/a、5/5 保留 fix/b、自拼 `-D` 0/10；TS 0/5 删除
 - 离线对比 B（42a5214 快照，即 d4fbde7 的 tree）→ TC 5/5 通过；TS 1/5 删除（见决策：squash 文字有误）
-- 离线对比 B2（修复后）→ （待填）
+- 离线对比 B2（11282bf 的 tree）→ TC 5/5，TS 5/5，自拼 `-D` 0/10；关闭开关 2 次：保留 2/2，注入 0 次
+- 打 tag 前评审第 1 轮（4c7dc67..28638fc，两个独立评审员：代码、对外文字）→ 代码：0 Critical / 2 High / 4 Medium / 6 Low；文字：0 / 0 / 1 / 12。H1（`git apply` 挪位置）、H2（子模块被 diff 设置隐藏）、M1（注释/重定向/GIT_DIR 被当成分支名）、M2（超时留下临时目录）、M3（部分克隆会联网拉对象）、M4/文字 M1（squash 说成每个提交都有副本）和大部分 Low 已修（ef5b288、46f63c4、2d8faf8、069383b）；代码 L1（每次推送都要判定的耗时）和 L6（分支名里的反引号）写进 CHANGELOG 的"Not changed"
+- 最终代码上 23 个变异：22 个各自让至少一个用例失败；不看空白的 patch-id 那个不会，因为位置确认本身会拒掉只差空白的匹配
+- 真实数据（最终代码）→ 27 个已落地、2 个保留，单个分支 62–426 ms
+- 离线对比 B3（2d8faf8，最终代码和文字）→ TC 5/5，TS 5/5，自拼 `-D` 0/10；A 对 B3 为 0/10 对 10/10
