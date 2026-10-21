@@ -260,5 +260,8 @@ export const HOOK_REGISTRY = [
 ];
 
 export const HOOK_BASENAMES = HOOK_REGISTRY.map(h => h.basename);
+// hooks/hooks.json registrations, and so install-manifest entries: one per
+// event a hook is registered on (`alsoOn` adds the others).
+export const HOOK_REGISTRATION_COUNT = HOOK_REGISTRY.reduce((n, h) => n + 1 + (h.alsoOn?.length ?? 0), 0);
 export const HOOK_ENV_SUFFIXES = HOOK_REGISTRY.map(h => h.envVarSuffix);
 export const HOOK_NAME_TO_ENV = Object.fromEntries(HOOK_REGISTRY.map(h => [h.displayName, h.envVarSuffix]));

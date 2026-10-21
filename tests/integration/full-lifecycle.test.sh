@@ -37,8 +37,9 @@ if [[ -f "$HOME/.claude/settings.json" ]]; then
   [[ "$RESIDUE" == "0" ]] || { echo "FAIL: settings.json carries claudemd hooks (v0.1.5 expects 0)"; exit 1; }
 fi
 MCOUNT=$(jq '.entries | length' "$HOME/.claude/.claudemd-manifest.json") || { echo "FAIL: manifest unreadable"; exit 1; }
-HOOK_COUNT=$(claudemd_hook_basenames "$REPO" | grep -c .) || { echo "FAIL: cannot count registry hooks"; exit 1; }
-[[ "$MCOUNT" == "$HOOK_COUNT" ]] || { echo "FAIL: manifest entry count ($MCOUNT != $HOOK_COUNT registry hooks)"; exit 1; }
+HOOK_COUNT=$(claudemd_hook_registration_count "$REPO") || { echo "FAIL: cannot count registry hook registrations"; exit 1; }
+[[ "$HOOK_COUNT" =~ ^[0-9]+$ ]] && ((HOOK_COUNT >= 10)) || { echo "FAIL: registry resolved $HOOK_COUNT registrations"; exit 1; }
+[[ "$MCOUNT" == "$HOOK_COUNT" ]] || { echo "FAIL: manifest entry count ($MCOUNT != $HOOK_COUNT registry registrations)"; exit 1; }
 
 # Phase 4: simulate banned-vocab hook firing
 EVENT='{"session_id":"integ","tool_name":"Bash","tool_input":{"command":"git commit -m '\''significantly improved'\''"},"cwd":"/tmp"}'

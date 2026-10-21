@@ -147,7 +147,7 @@ if ((REFUSED)); then
       ((K > CAP)) && KEPT+=" (+$((K - CAP)) more)"
       MSG+=" Not on $ONTO: $KEPT. Keep these and name them under open items; do not force-delete them."
     fi
-    hook_record branch-prune branch-prune-refused "{\"landed\":$L,\"kept\":$K}" '' "$SESSION_ID" "$TOOL_USE_ID"
+    hook_record branch-prune branch-prune-refused-advisory "{\"landed\":$L,\"kept\":$K}" '' "$SESSION_ID" "$TOOL_USE_ID"
   fi
 fi
 

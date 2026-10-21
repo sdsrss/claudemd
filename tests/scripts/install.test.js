@@ -6,7 +6,7 @@ import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { install, acquireInstallLock } from '../../scripts/install.js';
-import { HOOK_BASENAMES } from '../../scripts/lib/hook-registry.js';
+import { HOOK_BASENAMES, HOOK_REGISTRATION_COUNT } from '../../scripts/lib/hook-registry.js';
 import { listBackups, restoreBackup } from '../../scripts/lib/backup.js';
 
 // Shared with production code: install.js evicts settings.json entries
@@ -219,7 +219,7 @@ test('installed.json manifest records entries', async () => {
   await install({ pluginRoot });
   const manifest = JSON.parse(fs.readFileSync(path.join(tmpHome, '.claude/.claudemd-manifest.json'), 'utf8'));
   assert.equal(manifest.version, '9.9.9-test');
-  assert.equal(manifest.entries.length, HOOK_BASENAMES.length);
+  assert.equal(manifest.entries.length, HOOK_REGISTRATION_COUNT);
   assert.ok(manifest.entries.every(e => typeof e.sha256 === 'string' && e.sha256.length === 64));
 });
 
@@ -240,7 +240,7 @@ test('CLI smoke: `node scripts/install.js` with no env + no args succeeds via se
   assert.ok(fs.existsSync(manifestPath), 'installed.json should be written');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.pluginRoot, REPO_ROOT);
-  assert.equal(manifest.entries.length, HOOK_BASENAMES.length);
+  assert.equal(manifest.entries.length, HOOK_REGISTRATION_COUNT);
 });
 
 test('logs directory and empty jsonl created', async () => {
