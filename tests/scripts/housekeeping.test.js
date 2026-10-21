@@ -1298,6 +1298,68 @@ test('refused / branches: a replace ref that hides a branch commit → kept, nam
   assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
 });
 
+// A replace ref that gives a branch commit main's larger change as its
+// content: patch ids read through it matched main's commit, though the
+// commit's own change is not that one (pre-tag review round 3 L1).
+test('refused: a replace ref that dresses a commit up as main’s copy → not an identical copy', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'topic');
+  commit(r, 't.txt', 'T\n');
+  const tip = git(r, 'rev-parse', 'HEAD');
+  git(r, 'checkout', '-q', 'main');
+  fs.writeFileSync(path.join(r, 't.txt'), 'T\n');
+  fs.writeFileSync(path.join(r, 'u.txt'), 'U\n');
+  git(r, 'add', 't.txt', 'u.txt');
+  git(r, 'commit', '-q', '-m', 'add t and u');
+  const lookalike = git(r, 'commit-tree', 'main^{tree}', '-p', 'main~1', '-m', 'edit t.txt');
+  git(r, 'replace', tip, lookalike);
+  const out = refusedBranches({ cwd: r, command: 'git branch -d topic' });
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept[0]?.reason, 'not-on-default');
+});
+
+// Grafts (.git/info/grafts, or a file GIT_GRAFT_FILE names) give a commit
+// other parents. The walk and the patch ids used them, the same-place check
+// in the throwaway repository did not: a commit grafted onto the fork point
+// carried the change of the commit it hid, which matched an identical edit to
+// the other identical block on main, and only the commit's own small change
+// was checked (pre-tag review round 3 H1).
+test('refused / branches: a graft that hides a branch commit → kept (info/grafts and GIT_GRAFT_FILE)', () => {
+  const r = clone();
+  const block = 'p\np\np\nbegin\nA\nB\nC\nend\n';
+  const withX = 'p\np\np\nbegin\nA\nX\nB\nC\nend\n';
+  commit(r, 'f.txt', block + block);
+  commit(r, 'g.txt', 'g\n');
+  const base = git(r, 'rev-parse', 'HEAD');
+  git(r, 'checkout', '-q', '-b', 'feat');
+  commit(r, 'f.txt', withX + block);
+  commit(r, 'g.txt', 'g\nZ\n');
+  const tip = git(r, 'rev-parse', 'HEAD');
+  git(r, 'branch', 'worktree-agent-f0123456789abcdef');
+  git(r, 'checkout', '-q', 'main');
+  fs.writeFileSync(path.join(r, 'f.txt'), block + withX);
+  fs.writeFileSync(path.join(r, 'g.txt'), 'g\nZ\n');
+  git(r, 'add', 'f.txt', 'g.txt');
+  git(r, 'commit', '-q', '-m', 'X in the second block, Z');
+  const grafts = path.join(root, 'grafts');
+  fs.writeFileSync(grafts, `${tip} ${base}\n`);
+  const judge = env => {
+    const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
+      input: 'git branch -d feat',
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    return JSON.parse(res.stdout);
+  };
+  const viaEnv = judge({ GIT_GRAFT_FILE: grafts });
+  assert.deepEqual(viaEnv.landed, []);
+  assert.equal(viaEnv.kept[0]?.reason, 'not-on-default');
+  fs.copyFileSync(grafts, path.join(r, '.git', 'info', 'grafts'));
+  assert.deepEqual(judge({}).landed, []);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+});
+
 test('refused: on main but -d refused because HEAD is elsewhere → landed on-main', () => {
   const r = clone();
   git(r, 'checkout', '-q', '-b', 'topic');

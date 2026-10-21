@@ -304,11 +304,12 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // merged one; the sha this report gives is what a caller compares the tip
 // with first, so a branch that moved since is not deleted.
 
-// --no-replace-objects: a replace ref swaps a commit's content and parents, so
-// one could hide a branch commit from `rev-list` and the branch read as
-// landed. The history walked here is the commits' own; patch ids read with
-// replacement only pick candidates, which the merge-tree check below then
-// compares as the real objects.
+// --no-replace-objects, here and in verbatimPatchIds: a replace ref swaps a
+// commit's content and parents, so one could hide a branch commit from
+// `rev-list` and the branch read as landed, or dress a commit up as main's
+// copy (pre-tag review round 3 L1). Grafts and a shallow boundary still give
+// a commit other parents; the same-place check takes each commit's parent from
+// this walk, so it checks the change its patch id was computed from.
 function gitIn(cwd) {
   return (...args) => {
     const r = spawnSync('git', ['--no-replace-objects', '-C', cwd, ...args], { encoding: 'utf8' });
@@ -391,7 +392,7 @@ function checkedOutBranches(git) {
 // a `diff.relative` setting cannot cut the diff down to the cwd's subtree.
 function verbatimPatchIds(top, args) {
   const opts = { encoding: 'utf8', maxBuffer: PATCH_MAX_BUFFER };
-  const out = spawnSync('git', ['-C', top, ...args], opts);
+  const out = spawnSync('git', ['--no-replace-objects', '-C', top, ...args], opts);
   if (out.status !== 0) return null;
   const ids = spawnSync('git', ['-C', top, 'patch-id', '--verbatim'], { ...opts, input: out.stdout });
   if (ids.status !== 0) return null;
@@ -545,7 +546,7 @@ function judgeLanded(git, top, defaultRef, shas) {
       verdicts.set(sha, { reason: 'too-far', missing: [] });
       continue;
     }
-    open.push({ sha, base, commits: own.map(p => p[0]), after: new Set(after) });
+    open.push({ sha, base, commits: own.map(p => p[0]), parents: new Map(own), after: new Set(after) });
   }
   if (open.length === 0) return verdicts;
   // One `git log -p` of the default branch covers every fork point; each
@@ -588,11 +589,14 @@ function matchBranch(o, mine, byId, top, defaultRef, inPlace) {
   // adds a line, removes it and adds it again has two adds, and one copy on
   // main stands for the first only (round 2 H1). An empty commit has no patch
   // id, so it counts as missing; so does a match whose change sits at another
-  // place.
+  // place. The change is the commit's diff from the parent the walk gave it,
+  // the one its patch id hashed: `${c}^` in the throwaway repository, which
+  // has no grafts, named the real parent, and of a commit grafted onto the
+  // fork point only its own change was checked (round 3 H1).
   const used = new Set();
   const copied = new Set();
   for (const c of [...o.commits].reverse()) {
-    const m = (byId.get(mine.get(c)) || []).find(m => !used.has(m) && inPlace(`${c}^`, c, m));
+    const m = (byId.get(mine.get(c)) || []).find(m => !used.has(m) && inPlace(o.parents.get(c), c, m));
     if (m) {
       used.add(m);
       copied.add(c);
