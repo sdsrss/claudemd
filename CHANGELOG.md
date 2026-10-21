@@ -31,9 +31,9 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - `tests/scripts/command-page-behaviour.test.js` gains a doctor case: it pins the new page paragraph and runs the flag twice in a sandbox HOME, checking the fields and the file the paragraph names. It fails on 0.113.4's page.
 - `tests/hooks/fail-open.test.sh` T24 and T24b: with a rate-limit marker dated a day ahead, a fail-open is recorded and the marker reset to now, and the next call within a minute is throttled; a marker 30 s ahead is stale too. Both fail without the `hook-common.sh` change.
 - `tests/scripts/uninstall.test.js`: the purge case also removes the file and its `.<pid>` temp from a moved state directory and keeps a user's `fail-open-ack.json.bak`.
-- @@CHECKS@@
+- On the tagged commit (code as in aac4226; the commits after it change tests and text): `npm run check` exits 0, the node suite 1617 of 1618 passed with 1 skipped and every shell suite passed. PR CI run 39552977297 on aac4226 passed all 7 jobs (static, and the test job on ubuntu and macOS with node 20, 22 and 24).
 
-@@REVIEW@@
+**Pre-tag review.** Two rounds by fresh reviewers on this design, after two on a draft that acknowledged a single moment, which this release replaced. Round 1 (a66c6c1..7a2b6c8): 0 Critical, 0 High, 2 Medium, 8 Low. The Mediums were a fail-open rate-limit marker dated in the future that held rows back (fixed in `hook-common.sh`, c412116) and a three-part match the tests did not pin for `ts` and `hook` (case added, 6d6b0fa); the Lows were text. Round 2 (7a2b6c8..aac4226): 0 Critical, 0 High, 0 Medium, 6 Low, all text or tests (cb07cf8). Left as found: `docs/RULE-HITS-SCHEMA.md` lists `transcript-missing` and `event-fields-missing` as could-not-evaluate, which the code has not done since 0.76.2.
 
 ## [0.113.4] - 2026-10-20
 
