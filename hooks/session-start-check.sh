@@ -125,34 +125,14 @@ ledger_banner() {
   local dir="$1"
   [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
 
-  # Newest by mtime: the glob, plus one platform_stat_mtime per candidate. Not
-  # `ls -t … | head -n 1`: `ls` output is split on lines, so a newest ledger
-  # named `a<newline>b-ledger.md` became the nonexistent `tasks/a` and the whole
-  # banner vanished (item 141b; the paused banner below left `ls` for the same
-  # reason). Not find -printf either: GNU-only, the macOS leg would pick nothing.
-  # Directories are skipped (`ls` listed a directory's contents after the
-  # files, never the directory); anything else the glob matched competes, and an
-  # unreadable winner still means no banner rather than an older ledger
-  # presented as the newest. Without the wrapper there is no order to pick by
-  # and no age to bound, so no banner either.
-  # The mtime is whole seconds, so two ledgers saved within one second tie; a
-  # tie keeps the first in glob order (`>` below), i.e. name ascending in the
-  # shell's collation — the tie-break `ls -t` applied. One wrapper call per
-  # ledger is two `stat` execs (it probes the GNU form first); the age check
-  # below reuses the winner's value.
-  command -v platform_stat_mtime >/dev/null 2>&1 || return 0
-  local f mt newest="" newest_mt=-1
-  for f in "$dir"/tasks/*-ledger.md; do
-    [[ -e "$f" || -L "$f" ]] || continue
-    [[ -d "$f" ]] && continue
-    mt=$(platform_stat_mtime "$f" 2>/dev/null)
-    [[ "$mt" =~ ^[0-9]+$ ]] || mt=-1
-    if [[ -z "$newest" ]] || (( mt > newest_mt )); then
-      newest="$f"
-      newest_mt=$mt
-    fi
-  done
-  [[ -n "$newest" && -r "$newest" ]] || return 0
+  # Newest by mtime, through hook_newest_ledger (hook-common.sh), the resolver
+  # ledger-staleness.sh calls too: the two arms name the same file. Its rules —
+  # glob not `ls -t`, ties, no pick without platform_stat_mtime — live there. An
+  # unreadable newest ledger means no banner rather than an older ledger
+  # presented as the newest, and the age check reuses the mtime it read.
+  hook_newest_ledger "$dir" || return 0
+  local newest="$HOOK_LEDGER" newest_mt="$HOOK_LEDGER_MTIME"
+  [[ -r "$newest" ]] || return 0
 
   local now age
   (( newest_mt >= 0 )) || return 0

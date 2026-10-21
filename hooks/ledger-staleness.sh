@@ -61,8 +61,8 @@
 #     in use in this project, and the hook has no opinion about that)
 #   - the newest ledger is older than
 #     CLAUDEMD_LEDGER_MAX_AGE_DAYS        -> never fires (a finished task).
-#     Skipped, not guessed, when platform_stat_mtime is unavailable, so on that
-#     path an old ledger can still draw the advisory.
+#     Without platform_stat_mtime no ledger is resolved at all, so that path
+#     never fires either.
 #   - no code-file Edit/Write in window   -> never fires, which keeps L0 /
 #     L1-copy / docs-only sessions out of it entirely
 #   - any Edit/Write on that ledger       -> never fires
@@ -109,8 +109,8 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null
 source "$LIB_DIR/hook-common.sh" || exit 0
 # platform.sh for platform_stat_mtime (BSD vs GNU `stat`). `|| true`: a missing
-# platform.sh must not take the hook down, and the age bound below is skipped
-# rather than guessed when the helper is absent.
+# platform.sh must not take the hook down; hook_newest_ledger then resolves no
+# ledger, so the hook stays silent rather than firing on an unbounded age.
 # shellcheck source=/dev/null
 source "$LIB_DIR/platform.sh" 2>/dev/null || true
 
@@ -130,29 +130,26 @@ EVT_CWD=$(hook_jq_field ledger-staleness "$EVENT" '.cwd // ""') || exit 0
 
 SESSION_ID=$(printf '%s' "$EVENT" | jq -r '.session_id // ""' 2>/dev/null)
 
-# Newest by mtime, same resolution as session-start-check.sh's injector — the
-# two arms must agree on WHICH ledger, or this one nags about a file the other
-# one never injects. `ls -t` over the glob rather than `find -printf`: the
-# latter is GNU-only and the macOS leg would silently pick nothing.
-# shellcheck disable=SC2012  # ordering by mtime is the point; names here are repo-controlled
-LS_LIST=$(ls -t "$EVT_CWD"/tasks/*-ledger.md 2>/dev/null)
-LEDGER=$(printf '%s\n' "$LS_LIST" | head -n 1)
-[[ -n "$LEDGER" && -r "$LEDGER" ]] || exit 0
-# How many candidates there were. `ls -t` picks the most recently TOUCHED one,
+# Newest by mtime, through hook_newest_ledger (hook-common.sh) — the resolver
+# session-start-check.sh's injector calls too. The two arms must agree on WHICH
+# ledger, or this one nags about a file the other one never injects. Its rules
+# (glob not `ls -t`, ties, no pick without platform_stat_mtime) live there.
+hook_newest_ledger "$EVT_CWD" || exit 0
+LEDGER="$HOOK_LEDGER"
+[[ -r "$LEDGER" ]] || exit 0
+# How many candidates there were. The pick is the most recently TOUCHED one,
 # which is not always the task the session's work belongs to — with two live
 # ledgers the advisory can name the wrong file. Rather than guess better, the
 # message says how many it chose between.
-LS_COUNT=$(printf '%s\n' "$LS_LIST" | grep -c . 2>/dev/null || true)
-[[ "$LS_COUNT" =~ ^[0-9]+$ ]] || LS_COUNT=1
+LS_COUNT="$HOOK_LEDGER_COUNT"
 
 LS_MAX_AGE_DAYS="${CLAUDEMD_LEDGER_MAX_AGE_DAYS:-14}"
 [[ "$LS_MAX_AGE_DAYS" =~ ^[0-9]+$ ]] || LS_MAX_AGE_DAYS=14
-if command -v platform_stat_mtime >/dev/null 2>&1; then
-  LS_MT=$(platform_stat_mtime "$LEDGER" 2>/dev/null) || exit 0
-  LS_NOW=$(date +%s 2>/dev/null) || exit 0
-  [[ "$LS_MT" =~ ^[0-9]+$ && "$LS_NOW" =~ ^[0-9]+$ ]] || exit 0
-  (( (LS_NOW - LS_MT) / 86400 <= LS_MAX_AGE_DAYS )) || exit 0
-fi
+LS_MT="$HOOK_LEDGER_MTIME"
+(( LS_MT >= 0 )) || exit 0
+LS_NOW=$(date +%s 2>/dev/null) || exit 0
+[[ "$LS_NOW" =~ ^[0-9]+$ ]] || exit 0
+(( (LS_NOW - LS_MT) / 86400 <= LS_MAX_AGE_DAYS )) || exit 0
 
 TRANSCRIPT_PATH=$(printf '%s' "$EVENT" | jq -r '.transcript_path // ""' 2>/dev/null)
 if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then

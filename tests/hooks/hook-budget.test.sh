@@ -186,7 +186,8 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync
 #
 # More than one of them, inside a tasks/ directory wider than the ledgers alone,
 # because both are what the hook walks: it resolves its subject with
-# `ls -t "$cwd"/tasks/*-ledger.md` — a glob over the whole directory — and prints
+# hook_newest_ledger — a glob over "$cwd"/tasks/*-ledger.md with one stat per
+# matching ledger — and prints
 # an extra line only when it chose between several candidates. One ledger timed
 # the one-candidate arm of both (v0.91.0 pre-ship review M7, residual form).
 # Sized above this maintainer's real tasks/ (45 entries, 1 ledger) for the same
@@ -195,7 +196,7 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync
 #
 # Eleven of the twelve are aged far past the hook's 14-day bound. That is the
 # production shape — finished tasks' ledgers linger — and it also makes the
-# `ls -t` head unambiguous: the current one is strictly newest, so no tie-break
+# newest-ledger pick unambiguous: the current one is strictly newest, so no tie-break
 # order decides which file the probe reaches (this file has already paid once
 # for letting readdir order pick a probe's subject, see the `head -n 50` note
 # above). The age bound reads the NEWEST candidate only, so the aged siblings
@@ -243,7 +244,7 @@ else
 fi
 
 # The same kind of premise for ledger-staleness: it resolves its subject with
-# `ls -t "$cwd"/tasks/*-ledger.md` and prints one extra line only when it chose
+# hook_newest_ledger over "$cwd"/tasks/*-ledger.md and prints one extra line only when it chose
 # between more than one candidate. With a single ledger on disk the probe times
 # the one-candidate arm of both and the gate says nothing about the other one
 # (v0.91.0 pre-ship review M7, residual form). Asserted rather than assumed,

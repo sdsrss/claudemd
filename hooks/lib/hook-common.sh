@@ -667,6 +667,49 @@ hook_install_sentinel_write() {
   return 0
 }
 
+# hook_newest_ledger DIR — the long-task ledger the G7 arms act on: the newest
+# DIR/tasks/*-ledger.md by mtime. ONE resolver for session-start-check.sh's
+# injector and ledger-staleness.sh's advisory, because the two must name the
+# same file, or the advisory nags about a ledger the injector never shows.
+#
+# Sets HOOK_LEDGER (the path), HOOK_LEDGER_MTIME (its epoch seconds, -1 when its
+# stat failed) and HOOK_LEDGER_COUNT (how many candidates it chose between), and
+# returns 1 with HOOK_LEDGER empty when nothing was picked. Globals rather than
+# stdout: a path can hold a newline, and a command substitution would also strip
+# a trailing one.
+#
+# - The glob, not `ls -t … | head -n 1`: `ls` output is split on lines, so a
+#   newest ledger named `a<newline>b-ledger.md` became the nonexistent `tasks/a`
+#   (item 141b). Not find -printf either: GNU-only.
+# - Directories are skipped (`ls` listed a directory's contents after the files,
+#   never the directory); anything else the glob matched competes. Readability
+#   is the caller's check, so an unreadable newest ledger stays the pick.
+# - One platform_stat_mtime per candidate, two `stat` execs each (it probes the
+#   GNU form first). Callers source platform.sh themselves; without it there is
+#   no order to pick by and no age to bound with, so nothing is picked.
+# - Whole seconds, so ledgers saved within one second tie; the strict `>` keeps
+#   the first in glob order, name ascending in the shell's collation.
+hook_newest_ledger() {
+  HOOK_LEDGER=""
+  HOOK_LEDGER_MTIME=-1
+  HOOK_LEDGER_COUNT=0
+  local dir="${1:-}" f mt
+  [[ -n "$dir" ]] || return 1
+  command -v platform_stat_mtime >/dev/null 2>&1 || return 1
+  for f in "$dir"/tasks/*-ledger.md; do
+    [[ -e "$f" || -L "$f" ]] || continue
+    [[ -d "$f" ]] && continue
+    HOOK_LEDGER_COUNT=$((HOOK_LEDGER_COUNT + 1))
+    mt=$(platform_stat_mtime "$f" 2>/dev/null)
+    [[ "$mt" =~ ^[0-9]+$ ]] || mt=-1
+    if [[ -z "$HOOK_LEDGER" ]] || (( mt > HOOK_LEDGER_MTIME )); then
+      HOOK_LEDGER="$f"
+      HOOK_LEDGER_MTIME=$mt
+    fi
+  done
+  [[ -n "$HOOK_LEDGER" ]]
+}
+
 # Records the root Claude Code actually loaded this plugin from.
 #
 # This is the one bit no other mechanism carries. CC expands ${CLAUDE_PLUGIN_ROOT}

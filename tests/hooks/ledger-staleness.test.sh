@@ -372,6 +372,107 @@ else
   ng "10c: resolution does not follow mtime: $OUT"
 fi
 
+# --- Cases 10d-10h: the two arms resolve through ONE function ----------------
+# Both hooks call hook_newest_ledger (hooks/lib/hook-common.sh). Each case puts
+# the same tasks/ in front of both and checks they name the same file:
+# ledger-staleness by the basename in its rule-hits row, session-start by the
+# Decisions marker it injects. Fixed mtimes in 2020, so the age window is
+# widened for both; only the pick decides.
+SS_HOOK="$HERE/../../hooks/session-start-check.sh"
+PAR="$TMP_HOME/parity"
+par_ledger() { printf '## Decisions\n\n- D1: %s\n\n## Next\n\nn\n' "$2" > "$PAR/tasks/$1"; }
+ss_ctx() {
+  CLAUDEMD_LEDGER_MAX_AGE_DAYS=99999 bash "$SS_HOOK" <<<"{\"session_id\":\"par\",\"source\":\"compact\",\"cwd\":\"$PAR\"}" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+ls_par() { reset_log; (export CLAUDEMD_LEDGER_MAX_AGE_DAYS=99999; run_hook "$PAR"); }
+ls_row_is() { # BASENAME COUNT — the advisory row names BASENAME, chosen among COUNT
+  jq -e --arg b "$1" --argjson c "$2" \
+    'select(.hook=="ledger-staleness" and .event=="ledger-stale-advisory" and .extra.ledger==$b and .extra.ledgers==$c)' \
+    "$HOME/.claude/logs/claudemd.jsonl" >/dev/null 2>&1
+}
+{
+  row_edit /p/src/a.js
+  row_text "work"
+} > "$TRANSCRIPT"
+
+# 10d (item 141b): a newest ledger with a newline in its name. `ls -t` split it
+# into `…/tasks/a` and `b-ledger.md`, the first does not exist, and the advisory
+# went silent while session-start injected the real file.
+mkdir -p "$PAR/tasks"
+NLB="a"$'\n'"b-ledger.md"
+par_ledger old-ledger.md PAR-OLD
+par_ledger "$NLB" PAR-NL
+touch -t 202001010000 "$PAR/tasks/old-ledger.md"
+touch -t 202001020000 "$PAR/tasks/$NLB"
+OUT=$(ls_par)
+SS=$(ss_ctx)
+if ls_row_is "$NLB" 2 && [[ "$OUT" == *"$PAR/tasks/$NLB"* && "$OUT" == *"most recently modified of 2 ledgers"* ]] \
+   && [[ "$SS" == *"PAR-NL"* && "$SS" != *"PAR-OLD"* ]]; then
+  ok "10d: a newline-named newest ledger is the one both arms name, chosen among 2"
+else
+  ng "10d: arms disagree or lost the newline-named ledger: staleness=$OUT | row=$(cat "$HOME/.claude/logs/claudemd.jsonl" 2>/dev/null) | session-start=$SS"
+fi
+# Control: with that file gone both name the older one, so it was not picked
+# above, rather than unpickable.
+rm -f "$PAR/tasks/$NLB"
+OUT=$(ls_par)
+SS=$(ss_ctx)
+if ls_row_is old-ledger.md 1 && [[ "$SS" == *"PAR-OLD"* ]]; then
+  ok "10e: control — without it both arms name old-ledger.md"
+else
+  ng "10e: control failed: staleness=$OUT | session-start=$SS"
+fi
+
+# 10f: two ledgers in the same second, half a second apart. platform_stat_mtime
+# reads whole seconds, so they tie and the first name in glob order wins; `ls -t`
+# compared nanoseconds and named zzz while session-start named aaa. Sub-second
+# mtimes through node, because `touch -t` has no fraction field on either BSD or
+# GNU and their `-d` syntaxes differ.
+rm -rf "$PAR"
+mkdir -p "$PAR/tasks"
+par_ledger aaa-ledger.md PAR-AAA
+par_ledger zzz-ledger.md PAR-ZZZ
+node -e 'const fs = require("fs"); const [d] = process.argv.slice(1);
+  fs.utimesSync(d + "/aaa-ledger.md", 1577836800.1, 1577836800.1);
+  fs.utimesSync(d + "/zzz-ledger.md", 1577836800.6, 1577836800.6);' "$PAR/tasks"
+OUT=$(ls_par)
+SS=$(ss_ctx)
+if ls_row_is aaa-ledger.md 2 && [[ "$SS" == *"PAR-AAA"* && "$SS" != *"PAR-ZZZ"* ]]; then
+  ok "10f: a same-second tie goes to the first name in glob order, in both arms"
+else
+  ng "10f: tie resolved differently: staleness=$OUT | session-start=$SS"
+fi
+# Control: one whole second newer, and zzz is what both name.
+touch -t 202001010001 "$PAR/tasks/zzz-ledger.md"
+OUT=$(ls_par)
+SS=$(ss_ctx)
+if ls_row_is zzz-ledger.md 2 && [[ "$SS" == *"PAR-ZZZ"* && "$SS" != *"PAR-AAA"* ]]; then
+  ok "10g: control — a strictly newer ledger wins in both arms"
+else
+  ng "10g: control failed: staleness=$OUT | session-start=$SS"
+fi
+rm -rf "$PAR"
+
+# 10h: without platform_stat_mtime there is no order to pick by and no age to
+# bound, so no ledger is resolved and the advisory stays silent. The `ls -t`
+# resolver still picked one and skipped the age bound. The copy's platform.sh
+# sources cleanly and defines nothing (the fail-open suite's truncated shape).
+STUB_LS="$TMP_HOME/stubhooks"
+mkdir -p "$STUB_LS"
+cp -R "$HERE/../../hooks/." "$STUB_LS/"
+printf '# truncated mid-definition\nplatform_' > "$STUB_LS/lib/platform.sh"
+write_ledger
+reset_log
+OUT=$(jq -cn --arg c "$PROJ" --arg t "$TRANSCRIPT" '{hook_event_name:"Stop",session_id:"ls1",cwd:$c,transcript_path:$t}' \
+  | bash "$STUB_LS/ledger-staleness.sh" 2>&1)
+if [[ -z "$OUT" && "$(log_rows)" == "0" ]]; then
+  ok "10h: no mtime wrapper → no ledger resolved, no advisory"
+else
+  ng "10h: fired without platform_stat_mtime: $OUT (rows $(log_rows))"
+fi
+rm -rf "$STUB_LS"
+
 # --- Case 11: the code-extension list, exercised past .js --------------------
 # Every firing case used .js, so cutting the rest of the list out of the regex
 # left the suite green (pre-ship review). A Python or Go session going silent
