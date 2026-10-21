@@ -383,6 +383,8 @@ export async function status({ verbose = false } = {}) {
         displayName: h.displayName,
         envVar,
         event: h.hookEvent,
+        // The other events it is registered on (branch-prune: PostToolUseFailure).
+        alsoOn: (h.alsoOn || []).map(a => a.hookEvent),
         matcher: h.matcher,
         effective: isOn(envVar),
         persisted: persistedOn(envVar),

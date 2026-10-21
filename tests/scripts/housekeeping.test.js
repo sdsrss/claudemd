@@ -738,6 +738,103 @@ test('branches: a landed branch stays landed under a hostile git config, judged 
   assert.deepEqual(names(classifyBranches({ cwd: path.join(r, 'sub') }).landed), [wa]);
 });
 
+// The same-place check once applied the branch's diff to the matching
+// commit's parent with `git apply`, which moves a hunk to wherever its context
+// still matches: main changing block 1 to something else and block 2 to the
+// branch's value read as landed (0.116.0 pre-tag review H1).
+test('branches: an edit that main made to the other identical block, after changing this one, is not landed', () => {
+  const r = clone();
+  const blk = v => `a1\na2\na3\nVALUE=${v}\na4\na5\na6\n`;
+  commit(r, 'f.txt', `head\n${blk('X')}mid\n${blk('X')}`);
+  const wa = 'worktree-agent-e2123456789abcdef';
+  git(r, 'checkout', '-q', '-b', wa);
+  commit(r, 'f.txt', `head\n${blk('Y')}mid\n${blk('X')}`);
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'f.txt', `head\n${blk('Z')}mid\n${blk('X')}`);
+  commit(r, 'f.txt', `head\n${blk('Z')}mid\n${blk('Y')}`);
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+  assert.deepEqual(names(refusedBranches({ cwd: r, command: `git branch -d ${wa}` }).landed), []);
+});
+
+// A submodule pointer the diff does not show: diff.submodule=log, or
+// `ignore = all` in .gitmodules, left it out of both patch ids (review H2).
+test('branches: a moved submodule pointer that the diff settings hide is not landed', () => {
+  for (const hide of ['config', 'gitmodules']) {
+    fs.rmSync(path.join(root, 'remote.git'), { recursive: true, force: true });
+    fs.rmSync(path.join(root, 'seed'), { recursive: true, force: true });
+    fs.rmSync(path.join(root, 'repo'), { recursive: true, force: true });
+    const r = clone();
+    const before = '0123456789abcdef0123456789abcdef01234567';
+    git(r, 'update-index', '--add', '--cacheinfo', `160000,${before},sub`);
+    if (hide === 'gitmodules') {
+      fs.writeFileSync(
+        path.join(r, '.gitmodules'),
+        '[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n\tignore = all\n'
+      );
+      git(r, 'add', '.gitmodules');
+    }
+    git(r, 'commit', '-q', '-m', 'add sub');
+    const wa = 'worktree-agent-f2123456789abcdef';
+    git(r, 'checkout', '-q', '-b', wa);
+    fs.writeFileSync(path.join(r, 'a.txt'), 'a\nb\n');
+    git(r, 'add', 'a.txt');
+    git(r, 'update-index', '--cacheinfo', '160000,89abcdef0123456789abcdef0123456789abcdef,sub');
+    git(r, 'commit', '-q', '-m', 'edit a, move sub');
+    git(r, 'checkout', '-q', 'main');
+    commit(r, 'other.txt', 'other\n');
+    commit(r, 'a.txt', 'a\nb\n');
+    if (hide === 'config') git(r, 'config', 'diff.submodule', 'log');
+    assert.deepEqual(names(classifyBranches({ cwd: r }).landed), [], hide);
+  }
+});
+
+// Judging a partial clone would fetch the missing blobs from the remote,
+// from inside a hook (review M3): it is not judged.
+test('branches: a partial clone is not judged and fetches nothing', () => {
+  const src = path.join(root, 'src');
+  fs.mkdirSync(src);
+  git(src, 'init', '-q', '-b', 'main');
+  git(src, 'config', 'uploadpack.allowFilter', 'true');
+  commit(src, 'a.txt', 'a\n');
+  git(src, 'checkout', '-q', '-b', 'feat');
+  commit(src, 'f.txt', 'f\n');
+  git(src, 'checkout', '-q', 'main');
+  commit(src, 'other.txt', 'other\n');
+  git(src, 'cherry-pick', 'feat');
+  const r = path.join(root, 'partial');
+  git(root, 'clone', '-q', '--no-checkout', '--filter=blob:none', `file://${src}`, r);
+  git(r, 'branch', 'feat', 'origin/feat');
+  const packs = () => fs.readdirSync(path.join(r, '.git', 'objects', 'pack')).length;
+  const before = packs();
+  const out = refusedBranches({ cwd: r, command: 'git branch -d feat' });
+  assert.deepEqual(names(out.landed), []);
+  assert.equal(out.kept[0]?.reason, 'partial-clone');
+  assert.equal(packs(), before, 'no object fetched');
+});
+
+// The throwaway object directory is removed after a run; one a killed run
+// left more than 10 minutes ago is reaped by the next (review M2).
+test('branches: no claudemd-landed directory stays behind, and a stale one is reaped', () => {
+  const tmp = path.join(root, 'tmp');
+  fs.mkdirSync(tmp);
+  const stale = path.join(tmp, 'claudemd-landed.AbC123');
+  const fresh = path.join(tmp, 'claudemd-landed.XyZ789');
+  for (const d of [stale, fresh]) fs.mkdirSync(path.join(d, 'objects'), { recursive: true });
+  const old = Date.now() / 1000 - 3600;
+  fs.utimesSync(stale, old, old);
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = tmp;
+  try {
+    assert.deepEqual(names(classifyBranches({ cwd: r }).landed), ['feat']);
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved;
+  }
+  assert.deepEqual(fs.readdirSync(tmp), ['claudemd-landed.XyZ789']);
+});
+
 test('branches: landed, then reverted on main → still landed (user decision 2026-10-21)', () => {
   const r = clone();
   landAndDeleteRemote(r, 'rv', 'pick');
@@ -839,12 +936,31 @@ test('refused: branchDeleteTargets reads names from git branch -d / --delete seg
     'git log --oneline main..feat',
     'git --git-dir=/x branch -d feat',
     'git -C "$R" branch -d feat',
+    'GIT_DIR=/other/.git git branch -d feat',
   ]) {
     assert.deepEqual(branchDeleteTargets(notOne), [], notOne);
   }
   // A name the shell would expand is not knowable from the text.
   assert.deepEqual(branchDeleteTargets('git branch -d "$b" feat-* `x` ok'), [{ dir: null, names: ['ok'] }]);
-  assert.deepEqual(branchDeleteTargets('cd /r && GIT_TRACE=0 git branch -d a\ngit branch -d b'), [
+  // After a `cd`, a git without an absolute -C acts on another directory than
+  // the one the hook judges in: nothing (review text L4).
+  assert.deepEqual(branchDeleteTargets('cd /other && git branch -d feat'), []);
+  assert.deepEqual(branchDeleteTargets('pushd sub; git branch -d feat'), []);
+  assert.deepEqual(branchDeleteTargets('cd /x && git -C /abs branch -d feat'), [
+    { dir: '/abs', names: ['feat'] },
+  ]);
+  assert.deepEqual(branchDeleteTargets('git branch -d feat; cd /x'), [{ dir: null, names: ['feat'] }]);
+  // A comment, a redirect target and a here-doc delimiter are not names (review M1).
+  for (const cmd of [
+    'git branch -d feat  # merged, release stays',
+    'git branch -d feat 2> logs',
+    'git branch -d feat >out',
+    'git branch -d feat 2>&1',
+    'git branch -d feat <<EOF',
+  ]) {
+    assert.deepEqual(branchDeleteTargets(cmd), [{ dir: null, names: ['feat'] }], cmd);
+  }
+  assert.deepEqual(branchDeleteTargets('LC_ALL=C git branch -d a\ngit branch -d b'), [
     { dir: null, names: ['a'] },
     { dir: null, names: ['b'] },
   ]);
@@ -907,6 +1023,14 @@ test('refused: on main but -d refused because HEAD is elsewhere → landed on-ma
   assert.equal(out.landed[0].how, 'on-main');
 });
 
+test('refused: a revision expression is not a branch name (review L3)', () => {
+  const r = clone();
+  landAndDeleteRemote(r, 'feat', 'pick');
+  const out = refusedBranches({ cwd: r, command: 'git branch -d feat^0 feat~0' });
+  assert.deepEqual(out.landed, []);
+  assert.deepEqual(out.kept, []);
+});
+
 test('refused: deleted, default, checked-out, symbolic and unknown names are left out', () => {
   const r = clone();
   landAndDeleteRemote(r, 'gone1', 'pick');
@@ -924,6 +1048,28 @@ test('refused: git -C <dir> judges that repository, resolved from the cwd', () =
   const out = refusedBranches({ cwd: root, command: 'git -C repo branch -d feat' });
   assert.deepEqual(names(out.landed), ['feat']);
   assert.equal(out.landed[0].repo, r);
+});
+
+test('refused: at most 20 named branches are judged; unjudged counts the rest (review text L6)', () => {
+  const r = clone();
+  const base = git(r, 'rev-parse', 'HEAD');
+  const tree = git(r, 'rev-parse', 'HEAD^{tree}');
+  const refs = [];
+  for (let i = 0; i < 22; i++) {
+    const c = spawnSync('git', ['-C', r, 'commit-tree', tree, '-p', base, '-m', `n ${i}`], {
+      encoding: 'utf8',
+      env: GIT_ENV,
+    });
+    refs.push(`create refs/heads/n${String(i).padStart(2, '0')} ${c.stdout.trim()}\n`);
+  }
+  assert.equal(
+    spawnSync('git', ['-C', r, 'update-ref', '--stdin'], { input: refs.join(''), env: GIT_ENV }).status,
+    0
+  );
+  const names22 = Array.from({ length: 22 }, (_, i) => `n${String(i).padStart(2, '0')}`);
+  const out = refusedBranches({ cwd: r, command: `git branch -d ${names22.join(' ')}` });
+  assert.equal(out.landed.length + out.kept.length, 20);
+  assert.equal(out.unjudged, 2);
 });
 
 test('refused: a rebase in progress skips the run', () => {

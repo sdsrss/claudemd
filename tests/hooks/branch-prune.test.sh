@@ -360,6 +360,23 @@ CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2
 [[ "$CTX" == *": sq (its whole change equals commit ${SQ:0:12} there, a squash)."* && "$CTX" != *"each of its"* ]] &&
   ok "11j a squash is named as one, with the commit it equals" || ng "11j (ctx: $CTX)"
 
+# Case 11k: a partial clone is not judged, and the line says why instead of
+# blaming the git version (0.116.0 review M3, L2/L8).
+rm -rf "${SANDBOX:?}/psrc" "${SANDBOX:?}/partial"
+(
+  mkdir -p "$SANDBOX/psrc" && cd "$SANDBOX/psrc" || exit 1
+  git init -q -b main && git config uploadpack.allowFilter true
+  echo a >a && git add a && git commit -q -m a
+  git checkout -q -b feat && echo f >f && git add f && git commit -q -m f
+  git checkout -q main && echo o >o && git add o && git commit -q -m o && git cherry-pick feat >/dev/null
+)
+git clone -q --no-checkout --filter=blob:none "file://$SANDBOX/psrc" "$SANDBOX/partial"
+git -C "$SANDBOX/partial" branch -q feat origin/feat
+OUT=$(fevt 'git branch -d feat' bp-11k "$SANDBOX/partial" | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"Not on main: feat (the repository is a partial clone, and comparing would fetch from its remote)."* && "$CTX" != *"Delete them with"* ]] &&
+  ok "11k a partial clone is kept with its reason" || ng "11k (ctx: $CTX)"
+
 # Case 12: after a pull, a [gone] branch that was rebase-merged on the remote
 # is listed as landed with the checked -D command, beside the merged one -d
 # deletes; the branch with no upstream stays unlisted.

@@ -10,16 +10,18 @@
 #    merged branches left by earlier sessions.
 # 2. Spec v8.3.0: `git branch -d` refuses a branch whose work landed as other
 #    commits (a rebase merge, a cherry-pick, a squash), so those were left to
-#    the user, who force-deleted 29 such branches in one week, every one asked
-#    about (tasks/specs/landed-branch-cleanup.md). Such a `landed` branch —
-#    every commit has a byte-identical copy on the default branch after the
-#    fork point (`git patch-id --verbatim`) — is listed by (1) when its remote
-#    branch was deleted or it is worktree-agent-*, with a checked `git branch
-#    -D` command; and after any `git branch -d` command (both events: one that
-#    exits 0 can still have left a branch), every branch it named that is still
-#    there gets a verdict: landed, with that command, or kept, with the commits
-#    that have no copy, for the session to name under open items. Core §7 lets
-#    a session use -D only through this command.
+#    the user: in one week 29 branches -d refuses were deleted with -D
+#    (tasks/specs/landed-branch-cleanup.md). Such a `landed` branch — its work
+#    is on the default branch byte for byte, after the fork point and at the
+#    same place: a copy of each commit (`git patch-id --verbatim`), one squash
+#    commit equal to its whole change, or its own tip — is listed by (1)
+#    when its remote branch was deleted or it is worktree-agent-*, with a
+#    checked `git branch -D` command; and after any `git branch -d` command
+#    (both events: one that exits 0 can still have left a branch), every
+#    branch it named that is still there gets a verdict: landed, with that
+#    command, or kept, with the commits that have no copy, for the session to
+#    name under open items. Core §7 lets a session use -D only through this
+#    command.
 #
 # Why: nothing ever reminded anyone. On 2026-09-22 two repos held 15 local
 # branches besides main: 8 were `worktree-agent-*` names left by Claude Code's
@@ -55,9 +57,9 @@
 #
 # Known limits: the trigger reads the command TEXT, so a commit message that
 # mentions `git pull` fires it; the listing inspects the event's cwd, not a
-# repo named by `git -C` or a `cd` (a -d's `-C` is followed); a -d inside a
-# here-doc body reads as one; a branch name the shell would expand ($, a glob)
-# is not judged.
+# repo named by `git -C` or a `cd` (a -d's `-C` is followed, and a -d after a
+# `cd` without an absolute `-C` is not judged); a -d inside a here-doc body
+# reads as one; a branch name the shell would expand ($, a glob) is not judged.
 #
 # Kill-switches:
 #   DISABLE_BRANCH_PRUNE_HOOK=1 — this hook
@@ -128,6 +130,8 @@ if ((REFUSED)); then
   if [[ "$L" =~ ^[0-9]+$ && "$K" =~ ^[0-9]+$ ]] && ((L + K > 0)); then
     ONTO=$(printf '%s' "$RES" | jq -r '[.landed[].onto, .kept[].onto] | unique | if length == 1 then .[0] else "the default branch" end')
     MSG="\`git branch -d\` left $((L + K)) branch(es) in place."
+    U=$(printf '%s' "$RES" | jq -r '.unjudged // 0' 2>/dev/null)
+    [[ "$U" =~ ^[0-9]+$ ]] && ((U > 0)) && MSG+=" $U more it named were not judged (at most 20 per command)."
     if ((L > 0)); then
       NAMES=$(printf '%s' "$RES" | jq -r --argjson c "$CAP" "$LNAMES_JQ")
       LCMD=$(printf '%s' "$RES" | jq -r --arg cwd "$CWD" --argjson c "$CAP" "$DCMD_JQ")
@@ -143,7 +147,8 @@ if ((REFUSED)); then
         elif .reason == "merge-commits" then "it has merge commits"
         elif .reason == "too-far" then "it forked more than 500 commits back"
         elif .reason == "unrelated" then "it shares no history with it"
-        else "it could not be compared; git 2.39 or later is needed" end) + ")"] | join(", ")')
+        elif .reason == "partial-clone" then "the repository is a partial clone, and comparing would fetch from its remote"
+        else "it could not be compared: git 2.40 or later is needed, or a git command failed" end) + ")"] | join(", ")')
       ((K > CAP)) && KEPT+=" (+$((K - CAP)) more)"
       MSG+=" Not on $ONTO: $KEPT. Keep these and name them under open items; do not force-delete them."
     fi

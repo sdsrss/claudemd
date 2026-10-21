@@ -242,6 +242,9 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   for (const h of r.verbose.killSwitches.perHook) {
     assert.ok(registryNames.has(h.displayName), `perHook lists unknown hook ${h.displayName}`);
   }
+  // A hook registered on a second event says so (branch-prune, 0.116.0).
+  const bp = r.verbose.killSwitches.perHook.find(h => h.displayName === 'branch-prune');
+  assert.deepEqual([bp.event, bp.alsoOn], ['PostToolUse', ['PostToolUseFailure']]);
   const sample = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
   assert.ok(sample, 'banned-vocab hook must appear in perHook');
   assert.equal(sample.envVar, 'DISABLE_BANNED_VOCAB_HOOK');

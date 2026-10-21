@@ -313,8 +313,18 @@ const MAIN_WINDOW = 500;
 const PATCH_MAX_BUFFER = 256 * 1024 * 1024;
 // One set of options on both sides, so a user's diff config cannot make the
 // same change read differently: no colour, no external or textconv driver,
-// full blob ids (a binary change hashes by them), no rename pairing.
-const DIFF_OPTS = ['--no-color', '--no-ext-diff', '--no-textconv', '--full-index', '--no-renames'];
+// full blob ids (a binary change hashes by them), no rename pairing, and every
+// submodule pointer shown as such (diff.submodule=log, diff.ignoreSubmodules
+// or `ignore = all` in .gitmodules hid a moved pointer: 0.116.0 review H2).
+const DIFF_OPTS = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--full-index',
+  '--no-renames',
+  '--ignore-submodules=none',
+  '--submodule=short',
+];
 const LOG_OPTS = ['-p', ...DIFF_OPTS, '--no-merges', '--no-show-signature', '--format=commit %H'];
 const EMPTY = () => ({
   defaultBranch: null,
@@ -380,49 +390,80 @@ function verbatimPatchIds(top, args) {
 }
 
 // patch-id ignores line numbers, so the same hunk with the same context at
-// another place in a file has the same id. A match counts only when the
-// branch's change, applied to the parent of the matching commit on the default
-// branch, gives exactly that commit's tree: then it is the same change at the
-// same place. Run in a throwaway index and object directory, so the repository
-// gets nothing written; `--whitespace=nowarn` and plumbing keep a user's
-// apply.whitespace or diff settings out of it.
+// another place in a file has the same id. A match counts only when it is the
+// same change at the same place: a three-way merge of the branch's change onto
+// the matching commit, with the change's own base as merge base, is clean and
+// leaves that commit's tree as it is. An identical edit elsewhere conflicts or
+// adds to the tree; a submodule pointer the diff hid shows in the tree. The
+// first build applied the diff with `git apply`, which moves a hunk to any
+// place its context matches (0.116.0 review H1). `--merge-base` needs git 2.40;
+// an older git fails here, and the branch is not landed.
+//
+// merge-tree writes the trees and blobs of a result that differs; they go to a
+// throwaway object directory, removed after the run. A run killed at the
+// hook's timeout cannot remove it, so each run first reaps this user's
+// directories of that name older than 10 minutes (review M2), as does
+// /claudemd-clean-residue.
+const LANDED_TMP = /^claudemd-landed\.[A-Za-z0-9]{6}$/;
+const LANDED_TMP_STALE_MS = 10 * MINUTE;
+
+function reapStaleLandedTmp(root, now = Date.now()) {
+  let entries;
+  try {
+    entries = fs.readdirSync(root);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!LANDED_TMP.test(name)) continue;
+    const full = path.join(root, name);
+    try {
+      const st = fs.lstatSync(full);
+      if (st.isDirectory() && st.uid === process.getuid() && now - st.mtimeMs > LANDED_TMP_STALE_MS)
+        fs.rmSync(full, { recursive: true, force: true });
+    } catch {
+      // another run removed it first
+    }
+  }
+}
+
 function makeInPlace(top) {
   const objects = gitIn(top)('rev-parse', '--path-format=absolute', '--git-path', 'objects');
   let tmp = null;
   const env = () => {
     if (tmp === null) {
-      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed-'));
+      reapStaleLandedTmp(os.tmpdir());
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-landed.'));
       // git refuses a GIT_OBJECT_DIRECTORY that does not exist ("not a git repository").
       fs.mkdirSync(path.join(tmp, 'objects'));
     }
     return {
       ...process.env,
-      GIT_INDEX_FILE: path.join(tmp, 'index'),
       GIT_OBJECT_DIRECTORY: path.join(tmp, 'objects'),
       GIT_ALTERNATE_OBJECT_DIRECTORIES: objects,
+      GIT_NO_LAZY_FETCH: '1',
     };
   };
-  const run = (args, input) =>
-    spawnSync('git', ['-C', top, ...args], {
-      encoding: 'utf8',
-      env: env(),
-      input,
-      maxBuffer: PATCH_MAX_BUFFER,
-    });
+  const run = args => spawnSync('git', ['-C', top, ...args], { encoding: 'utf8', env: env() });
   // [from, to] is the branch's change; onto the matching commit.
   const inPlace = (from, to, onto) => {
     if (!objects) return false;
-    const patch = run(['diff', ...DIFF_OPTS, '--binary', '--src-prefix=a/', '--dst-prefix=b/', from, to]);
-    if (patch.status !== 0) return false;
-    if (run(['read-tree', `${onto}^`]).status !== 0) return false;
-    if (patch.stdout && run(['apply', '--cached', '--whitespace=nowarn', '-p1'], patch.stdout).status !== 0)
-      return false;
-    return run(['diff-index', '--cached', '--quiet', onto, '--']).status === 0;
+    const merged = run(['merge-tree', '--write-tree', '--no-messages', `--merge-base=${from}`, onto, to]);
+    if (merged.status !== 0) return false;
+    const tree = run(['rev-parse', '--verify', '--quiet', `${onto}^{tree}`]);
+    return tree.status === 0 && merged.stdout.split('\n')[0] === tree.stdout.trim();
   };
   const done = () => {
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   };
   return { inPlace, done };
+}
+
+// A partial clone lacks blobs, and diffing would fetch them from the remote,
+// from inside a hook (review M3): such a repository is not judged.
+function isPartialClone(git) {
+  if (git('config', '--get', 'extensions.partialclone')) return true;
+  return /\strue$/m.test(git('config', '--get-regexp', '^remote\\..*\\.promisor$') || '');
 }
 
 // Each sha → { how: 'on-main' | 'per-commit' | 'squash' } when its work is on
@@ -431,9 +472,14 @@ function makeInPlace(top) {
 function judgeLanded(git, top, defaultRef, shas) {
   const verdicts = new Map();
   const open = [];
+  const partial = isPartialClone(git);
   for (const sha of shas) {
     if (git('merge-base', '--is-ancestor', sha, defaultRef) !== null) {
       verdicts.set(sha, { how: 'on-main' });
+      continue;
+    }
+    if (partial) {
+      verdicts.set(sha, { reason: 'partial-clone', missing: [] });
       continue;
     }
     const base = git('merge-base', sha, defaultRef);
@@ -586,18 +632,23 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
 // The words of a shell command, cut into simple commands at ; & | ( ) and
 // newlines outside quotes. Quotes are removed; a word the shell would expand
 // ($, a backtick, a glob or brace character, a leading ~, an unclosed quote)
-// is marked `dynamic`, since its value is not in the text.
+// is marked `dynamic`, since its value is not in the text. A comment, a
+// redirection's operator and target, and a here-doc delimiter are not words
+// (review M1: `git branch -d feat  # release` judged `release`).
 function shellSegments(text) {
   const segments = [];
   let words = [];
   let cur = null;
+  let redirectTarget = false;
   const word = () => (cur ??= { text: '', dynamic: false });
   const endWord = () => {
-    if (cur) words.push(cur);
+    if (cur && redirectTarget) redirectTarget = false;
+    else if (cur) words.push(cur);
     cur = null;
   };
   const endSegment = () => {
     endWord();
+    redirectTarget = false;
     if (words.length > 0) segments.push(words);
     words = [];
   };
@@ -628,6 +679,14 @@ function shellSegments(text) {
       else if (i + 1 < text.length) word().text += text[++i];
     } else if (ch === ' ' || ch === '\t') {
       endWord();
+    } else if (ch === '#' && cur === null) {
+      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
+    } else if (ch === '<' || ch === '>') {
+      // A file-descriptor number right before the operator is part of it.
+      if (cur && !cur.dynamic && /^[0-9]+$/.test(cur.text)) cur = null;
+      else endWord();
+      while ('<>&|'.includes(text[i + 1] ?? '') && text[i + 1] !== undefined) i++;
+      redirectTarget = true;
     } else if ('\n;&|()'.includes(ch)) {
       endSegment();
     } else {
@@ -650,13 +709,20 @@ const GIT_FLAG_OPTS = new Set(['--no-pager', '-P', '--no-optional-locks', '--no-
 // the shell would expand is dropped.
 export function branchDeleteTargets(command) {
   const out = [];
+  // After a `cd`, `pushd` or `popd`, a git without an absolute -C acts in a
+  // directory the hook does not know (review text L4).
+  let moved = false;
   for (const words of shellSegments(String(command ?? ''))) {
     let i = 0;
-    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i].text)) i++;
-    const git = words[i];
-    if (!git || git.dynamic || (git.text !== 'git' && !git.text.endsWith('/git'))) continue;
-    let dir = null;
     let ok = true;
+    // An assignment before the command; a GIT_* one (GIT_DIR, GIT_WORK_TREE, …)
+    // can point git at another repository.
+    for (; i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i].text); i++)
+      if (words[i].text.startsWith('GIT_')) ok = false;
+    const git = words[i];
+    if (['cd', 'pushd', 'popd'].includes(git?.text)) moved = true;
+    if (!ok || !git || git.dynamic || (git.text !== 'git' && !git.text.endsWith('/git'))) continue;
+    let dir = null;
     for (i++; ok && i < words.length && words[i].text.startsWith('-'); i++) {
       const w = words[i].text;
       if (w === '-C') {
@@ -666,7 +732,7 @@ export function branchDeleteTargets(command) {
       } else if (w === '-c') i++;
       else if (!GIT_FLAG_OPTS.has(w)) ok = false;
     }
-    if (!ok || words[i]?.text !== 'branch') continue;
+    if (!ok || words[i]?.text !== 'branch' || (moved && !(dir !== null && path.isAbsolute(dir)))) continue;
     let del = false;
     let refuse = false;
     let opts = true;
@@ -694,6 +760,9 @@ export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
   const landed = [];
   const kept = [];
   let skipped = null;
+  // At most MAX_JUDGED names per command, as in the list (review text L6).
+  let budget = MAX_JUDGED;
+  let unjudged = 0;
   const seen = new Set();
   for (const t of branchDeleteTargets(command)) {
     const repo = t.dir === null ? cwd : path.resolve(cwd, t.dir);
@@ -706,14 +775,27 @@ export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
       continue;
     }
     const checkedOut = checkedOutBranches(git);
+    // Only an existing branch's own name: `feat^0` resolves as a revision but
+    // names no branch (review L3).
+    const branches = new Map(
+      (git('for-each-ref', '--format=%(refname)%09%(objectname)%09%(symref)', 'refs/heads') || '')
+        .split('\n')
+        .filter(Boolean)
+        .map(l => l.split('\t'))
+        .filter(([, , symref]) => !symref)
+        .map(([ref, sha]) => [ref.slice('refs/heads/'.length), sha])
+    );
     const named = [];
     for (const name of t.names) {
       const key = `${repo}\0${name}`;
-      if (seen.has(key) || name === defaultBranch || checkedOut.has(name)) continue;
+      if (seen.has(key) || name === defaultBranch || checkedOut.has(name) || !branches.has(name)) continue;
       seen.add(key);
-      if (git('symbolic-ref', '--quiet', `refs/heads/${name}`) !== null) continue;
-      const sha = git('rev-parse', '--verify', '--quiet', `refs/heads/${name}^{commit}`);
-      if (sha) named.push({ name, sha });
+      if (budget === 0) {
+        unjudged++;
+        continue;
+      }
+      budget--;
+      named.push({ name, sha: branches.get(name) });
     }
     if (named.length === 0) continue;
     const top = git('rev-parse', '--show-toplevel');
@@ -747,7 +829,7 @@ export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
       });
     }
   }
-  return { landed, kept, skipped };
+  return { landed, kept, skipped, unjudged };
 }
 
 if (invokedAsMain(import.meta.url)) {
