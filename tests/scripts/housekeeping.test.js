@@ -598,7 +598,7 @@ test('branches: upstream gone, rebase-merged (each commit re-applied on main) �
   assert.deepEqual(names(c.deletable), []);
   assert.deepEqual(names(c.goneUnmerged), []);
   assert.deepEqual(c.landed, [
-    { name: 'feat', sha: git(r, 'rev-parse', 'feat'), why: 'gone', how: 'per-commit' },
+    { name: 'feat', sha: git(r, 'rev-parse', 'feat'), why: 'gone', how: 'per-commit', commits: 1 },
   ]);
 });
 
@@ -619,6 +619,8 @@ test('branches: upstream gone, squash-merged (two commits, one squash) → lande
   assert.deepEqual(names(c.goneUnmerged), []);
   assert.deepEqual(names(c.landed), ['sq']);
   assert.equal(c.landed[0].how, 'squash');
+  // The commit on main that equals the branch's whole change, so a reader can check it.
+  assert.equal(c.landed[0].via, git(r, 'rev-parse', 'main'));
 });
 
 test('branches: a commit whose content changed in the pick → not landed (goneUnmerged)', () => {
@@ -813,7 +815,14 @@ test('refused: a cherry-picked branch with no upstream that -d refused → lande
   const out = refusedBranches({ cwd: r, command: 'git branch -d fix/x' });
   assert.deepEqual(out.kept, []);
   assert.deepEqual(out.landed, [
-    { repo: r, name: 'fix/x', sha: git(r, 'rev-parse', 'fix/x'), onto: 'main', how: 'per-commit' },
+    {
+      repo: r,
+      name: 'fix/x',
+      sha: git(r, 'rev-parse', 'fix/x'),
+      onto: 'main',
+      how: 'per-commit',
+      commits: 1,
+    },
   ]);
 });
 

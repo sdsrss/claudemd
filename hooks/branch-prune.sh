@@ -114,6 +114,11 @@ CAP=10
 # git branch -D` per branch, joined with `;`. Built by jq's @sh, never by
 # interpolation (case 7 / 11h below).
 DCMD_JQ='[.landed[:$c][] | "[ \"$(git -C \((.repo // $cwd) | @sh) rev-parse -q --verify \("refs/heads/" + .name | @sh))\" = \(.sha | @sh) ] && git -C \((.repo // $cwd) | @sh) branch -D -- \(.name | @sh)"] | join("; ")'
+# Each landed branch with what its work is on the default branch as: copies of
+# its commits, one squash commit, or its own tip. The first A/B said "every
+# commit has one there" of a squash too; 4 of 5 sessions checked that, found
+# it false and ran nothing.
+LNAMES_JQ='[.landed[:$c][] | .name + " (" + (if .how == "per-commit" then "each of its \(.commits) commit(s) has an identical copy there" elif .how == "squash" then "its whole change equals commit \(.via[0:12]) there, a squash" else "its tip is on it" end) + ")"] | join(", ")'
 MSG=""
 
 if ((REFUSED)); then
@@ -124,11 +129,11 @@ if ((REFUSED)); then
     ONTO=$(printf '%s' "$RES" | jq -r '[.landed[].onto, .kept[].onto] | unique | if length == 1 then .[0] else "the default branch" end')
     MSG="\`git branch -d\` left $((L + K)) branch(es) in place."
     if ((L > 0)); then
-      NAMES=$(printf '%s' "$RES" | jq -r --argjson c "$CAP" '[.landed[:$c][].name] | join(", ")')
+      NAMES=$(printf '%s' "$RES" | jq -r --argjson c "$CAP" "$LNAMES_JQ")
       LCMD=$(printf '%s' "$RES" | jq -r --arg cwd "$CWD" --argjson c "$CAP" "$DCMD_JQ")
       MORE=""
       ((L > CAP)) && MORE=" (+$((L - CAP)) more; the command covers the $CAP listed)"
-      MSG+=" $L of them are on $ONTO as byte-identical copies (every commit has one there, by \`git patch-id --verbatim\`, or the tip is on it): $NAMES$MORE. Delete them with \`$LCMD\` — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
+      MSG+=" $L of them have their work on $ONTO byte for byte (\`git patch-id --verbatim\`): $NAMES$MORE. Delete them with \`$LCMD\` — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
     fi
     if ((K > 0)); then
       KEPT=$(printf '%s' "$RES" | jq -r --argjson c "$CAP" '[.kept[:$c][] | .name + " (" + (
@@ -189,12 +194,12 @@ if ((LIST)); then
         LISTMSG="$N local branch(es) are on $DEF and their remote branch was deleted, or are worktree-agent-* on it: $NAMES$MORE. They are merged: delete them with \`$CMD\` (leave out any the project keeps), run with $DEF checked out — -d re-checks that each is merged (into its upstream if it has one, else HEAD) and not checked out anywhere, and refuses otherwise.$REST"
       fi
       if ((L > 0)); then
-        NAMES=$(printf '%s' "$OUT" | jq -r --argjson c "$CAP" '[.landed[:$c][].name] | join(", ")')
+        NAMES=$(printf '%s' "$OUT" | jq -r --argjson c "$CAP" "$LNAMES_JQ")
         LCMD=$(printf '%s' "$OUT" | jq -r --arg cwd "$CWD" --argjson c "$CAP" "$DCMD_JQ")
         MORE=""
         ((L > CAP)) && MORE=" (+$((L - CAP)) more; the command covers the $CAP listed)"
         [[ -n "$LISTMSG" ]] && LISTMSG+=" "
-        LISTMSG+="$L local branch(es) have every commit on $DEF as a byte-identical copy (a rebase merge, a cherry-pick or a squash; \`git patch-id --verbatim\`) and their remote branch was deleted, or are worktree-agent-*: $NAMES$MORE. \`git branch -d\` refuses these. Delete them with \`$LCMD\` (leave out any the project keeps) — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
+        LISTMSG+="$L local branch(es) have their work on $DEF byte for byte (\`git patch-id --verbatim\`) and their remote branch was deleted, or are worktree-agent-*: $NAMES$MORE. \`git branch -d\` refuses these. Delete them with \`$LCMD\` (leave out any the project keeps) — each part runs \`git branch -D\` only while that branch's tip is still the commit judged here."
       fi
       [[ -n "$MSG" ]] && MSG+=" "
       MSG+="$LISTMSG"

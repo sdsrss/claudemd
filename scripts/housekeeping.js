@@ -48,11 +48,12 @@ branches  REPORT (never delete) the local branches that are safe to delete:
 refused   Judge the branches a \`git branch -d\` command left in place: the
           names in its \`git [-C DIR] branch -d|--delete\` segments (read from
           stdin) that still exist, are not the default branch, a worktree
-          checkout or a symbolic ref. Each is \`landed\` (as above, or
-          \`on-main\` when its tip is on the default branch and -d compared it
-          with something else) or \`kept\`, with up to 3 of the commits that
-          have no copy on the default branch (\`missingCount\` counts them
-          all). Never deletes.
+          checkout or a symbolic ref. Each is \`landed\` (as above, with
+          \`how\`: \`per-commit\` and the number of \`commits\`, \`squash\` and
+          the commit it equals, \`via\`, or \`on-main\` when its tip is on the
+          default branch and -d compared it with something else) or
+          \`kept\`, with up to 3 of the commits that have no copy on the
+          default branch (\`missingCount\` counts them all). Never deletes.
 
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
@@ -377,7 +378,8 @@ function verbatimPatchIds(top, args) {
 }
 
 // Each sha → { how: 'on-main' | 'per-commit' | 'squash' } when its work is on
-// defaultRef, else { reason, missing } (missing: the commits with no copy).
+// defaultRef (with `commits`, how many were matched, or `via`, the commit equal
+// to the whole change), else { reason, missing } (the commits with no copy).
 function judgeLanded(git, top, defaultRef, shas) {
   const verdicts = new Map();
   const open = [];
@@ -427,12 +429,13 @@ function judgeLanded(git, top, defaultRef, shas) {
     // An empty commit has no patch id, so it counts as missing.
     const missing = o.commits.filter(c => !onMain.has(mine.get(c)));
     if (missing.length === 0) {
-      verdicts.set(o.sha, { how: 'per-commit' });
+      verdicts.set(o.sha, { how: 'per-commit', commits: o.commits.length });
       continue;
     }
     const whole = verbatimPatchIds(top, ['diff', ...DIFF_OPTS, o.base, o.sha]);
     const wholeId = whole && [...whole.values()][0];
-    if (wholeId && onMain.has(wholeId)) verdicts.set(o.sha, { how: 'squash' });
+    const via = wholeId && [...main].find(([c, id]) => id === wholeId && o.after.has(c))?.[0];
+    if (via) verdicts.set(o.sha, { how: 'squash', via });
     else verdicts.set(o.sha, { reason: 'not-on-default', missing });
   }
   return verdicts;
@@ -505,8 +508,8 @@ export function classifyBranches({ cwd = process.cwd() } = {}) {
   const landed = [];
   const goneUnmerged = [];
   for (const b of toJudge) {
-    const how = verdicts.get(b.sha)?.how;
-    if (how) landed.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent', how });
+    const v = verdicts.get(b.sha);
+    if (v?.how) landed.push({ name: b.name, sha: b.sha, why: b.gone ? 'gone' : 'worktree-agent', ...v });
     else if (b.gone) goneUnmerged.push({ name: b.name, sha: b.sha });
   }
   return {
@@ -663,7 +666,7 @@ export function refusedBranches({ cwd = process.cwd(), command = '' } = {}) {
     for (const b of named) {
       const v = verdicts.get(b.sha);
       if (v.how) {
-        landed.push({ repo, name: b.name, sha: b.sha, onto: defaultBranch, how: v.how });
+        landed.push({ repo, name: b.name, sha: b.sha, onto: defaultBranch, ...v });
         continue;
       }
       const shown = v.missing.slice(0, 3);
