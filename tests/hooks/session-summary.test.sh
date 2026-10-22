@@ -314,9 +314,11 @@ NOW_TS=$(jq -nr 'now | todate')
 rm -f "$SUMMARY" "$REF"
 echo "$EVENT" | PATH="$TMP_HOME/nodate:$PATH" bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
 D15A=$(jq -r '"\(.window) \(.denies)"' "$SUMMARY" 2>/dev/null)
-# With a ref an hour old: the turn window, not 24 h from 1970.
+# With a ref an hour old: the turn window, not 24 h from 1970. strftime gives
+# UTC digits and `touch -t` reads local time, so it runs under TZ=UTC0: west of
+# UTC the ref landed in the future and the window held no row.
 rm -f "$SUMMARY"
-touch -t "$(jq -nr 'now - 3600 | strftime("%Y%m%d%H%M.%S")')" "$REF"
+TZ=UTC0 touch -t "$(jq -nr 'now - 3600 | strftime("%Y%m%d%H%M.%S")')" "$REF"
 echo "$EVENT" | PATH="$TMP_HOME/nodate:$PATH" bash "$SUMMARY_HOOK" >/dev/null 2>&1 || true
 D15B=$(jq -r '"\(.window) \(.denies)"' "$SUMMARY" 2>/dev/null)
 if [[ "$D15A" == "24h 1" && "$D15B" == "turn 1" ]]; then
