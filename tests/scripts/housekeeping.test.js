@@ -1455,7 +1455,10 @@ test('refused / branches: a graft on the default branch side → kept as grafts 
 });
 
 // A git before 2.31 has no `rev-parse --path-format`, so it cannot say where
-// the graft file is: even a tip already on main is not judged.
+// the graft file is: even a tip already on main is not judged. Such a git
+// prints the option back and goes on, exit 0 (checked on a built 2.30.9); a
+// mock that exited 129 passed while the real one still read as landed
+// (pre-tag review H1).
 test('refused: a git that cannot name the graft file → kept as not compared', () => {
   const r = clone();
   git(r, 'checkout', '-q', '-b', 'topic');
@@ -1468,9 +1471,10 @@ test('refused: a git that cannot name the graft file → kept as not compared', 
   fs.mkdirSync(bin);
   fs.writeFileSync(
     path.join(bin, 'git'),
-    `#!/bin/sh\nfor a in "$@"; do case "$a" in --path-format=*) echo "error: unknown option" >&2; exit 129;; esac; done\nexec '${realGit}' "$@"\n`,
+    `#!/bin/sh\nfor a in "$@"; do shift; case "$a" in --path-format=*) echo "$a";; *) set -- "$@" "$a";; esac; done\nexec '${realGit}' "$@"\n`,
     { mode: 0o755 }
   );
+  fs.writeFileSync(path.join(r, '.git', 'info', 'grafts'), '');
   const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
     input: 'git branch -d topic',
     encoding: 'utf8',

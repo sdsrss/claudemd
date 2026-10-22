@@ -535,8 +535,11 @@ function judgeLanded(git, top, defaultRef, shas) {
   // other parents in every walk: one on the default branch's side made a
   // branch commit its ancestor while no tree there held its change, and the
   // branch read as landed (round 4 L1). Such a repository is not judged; with
-  // no path for the file (a git before 2.31) the branch is not compared.
-  const grafts = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  // no path for the file the branch is not compared. A git before 2.31 prints
+  // the --path-format it does not know back, then a relative path, exit 0
+  // (review H1): only an absolute path is an answer.
+  const out = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  const grafts = out && path.isAbsolute(out) ? out : null;
   if (grafts === null || fs.existsSync(grafts)) {
     for (const sha of shas) verdicts.set(sha, { reason: grafts ? 'grafts' : 'compare-failed', missing: [] });
     return verdicts;
