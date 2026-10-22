@@ -74,7 +74,7 @@
   - 二进制按 blob id 比；权限变化计入 patch-id（沙箱已验证）；子模块指针始终显示（`--ignore-submodules=none --submodule=short`）。
   - 位置确认（评审第 1 轮 H1 之后）：patch-id 不看行号，所以每个匹配都要再做一次三方合并：`git merge-tree --write-tree --merge-base=<改动的基础> <main 上对应的提交> <分支提交>`，要求无冲突，并且结果 tree 等于那个对应提交的 tree。最初用的 `git apply` 会把补丁挪到上下文能对上的别处，已弃用。合并在临时裸仓库 `claudemd-landed.XXXXXX/repo.git` 里运行：通过 alternates 借用原仓库的对象，去掉所有 `GIT_*` 环境变量，不读全局、系统和仓库配置，`-c core.attributesFile=/dev/null`，所以不读任何属性文件、不运行 merge driver（第 2 轮 M1、M2）。merge-tree 退出码大于 1 时判为 `compare-failed`，而不是“缺提交”（第 2 轮 M3）。临时目录运行后删除；超时被杀留下的，下次运行清理 10 分钟以前的，`clean-residue` 也会清理。
   - git < 2.39 没有 `--verbatim`，< 2.40 没有 `merge-tree --merge-base` → 不判。部分克隆不判（会从远端拉对象）；`remote.*.promisor` 按布尔值读，`yes`/`1` 也算（git 2.53 的部分克隆只写这一项）。
-  - 历史视图（第 3 轮之后）：遍历历史、读 patch-id 都加 `--no-replace-objects`；位置确认用 `rev-list --parents` 给出的父提交（含 grafts），不用临时仓库里解析出的 `${c}^`。grafts 不能关掉：默认分支一侧的 graft 把分支提交接成 main 的祖先时，这个提交按 git 的看法就在 main 的历史里（`git log`、`git branch -d` 都这么算），即使 main 的哪棵 tree 里都没有它的改动（第 4 轮 F1，留作已知情况，写进 CHANGELOG "Not changed"）。
+  - 历史视图（第 3 轮之后）：遍历历史、读 patch-id 都加 `--no-replace-objects`；位置确认用 `rev-list --parents` 给出的父提交（含 grafts），不用临时仓库里解析出的 `${c}^`。grafts 不能关掉：默认分支一侧的 graft 把分支提交接成 main 的祖先时，这个提交按 git 的看法就在 main 的历史里（`git log`、`git branch -d` 都这么算），即使 main 的哪棵 tree 里都没有它的改动（第 4 轮 F1）。0.116.0 留作已知情况；0.116.1 起有 graft 文件的仓库一律不判定（理由 `grafts`，见决策 2026-10-22）。
   - 保留时只给理由、不列提交的情况：`merge-commits`、`too-far`、`partial-clone`、`unrelated`、`shallow`（浅克隆里找不到和默认分支共同的提交：分叉点在边界外，或本来就无关）、`no-default-branch`（origin/HEAD 指向本地不存在的分支，什么都不判）、`compare-failed`（merge-tree 失败，或临时仓库建不起来；其余照常）、`patch-id-failed`。
 - 只认 `base..D`：分叉点之前的 main 提交不算（分支重新加回 main 早先删掉的内容，不是"已落地"）。
 - 成本控制：
@@ -146,6 +146,12 @@
   - 不在本次做：`session-summary` Case 15 在非 UTC 时区失败（0.115.0 就有，与本次改动无关），留作遗留项。
 - 2026-10-21 打 tag 前评审第 4 轮（d453478..2cb1da2）→ 0 Critical / 0 High / 0 Medium / 5 Low，结论"没有阻塞"。逐条核对后：F1（默认分支一侧的 graft 把分支提交接成 main 的祖先，分支判为 landed）复现属实，代码不改，写进 CHANGELOG "Not changed"（理由见方案"历史视图"）；F2–F5 是文字，已修（3156bb9），claim-drift 又找到 ARCHITECTURE、RULE-HITS-SCHEMA 两处同样的说法（494852d）；占位符已填（be71eb6）。文字修复不再派新一轮评审（发版手册：文字类 Low 只做 claim-drift）。
 - 2026-10-21 发版：main 快进到 be71eb6，annotated tag v0.116.0，GitHub Release 已建，PR #16 显示已合并；本地 `release/v0.116.0` 用 -d 删除，`next-release` 指到 main。第 4 轮评审员的 worktree（干净）用 `git worktree remove` 删除，分支 `worktree-agent-ae9ec2de2902c127c` 用 -d 删除。
+
+- 2026-10-22 用户："剩余的工作你深入思考，给出科学准确的建议，然后按你的建议执行，做完了发版"。逐项：
+  - F1（默认分支一侧的 graft）：改为有 graft 文件（`git rev-parse --path-format=absolute --git-path info/grafts` 指向的文件存在，含 `GIT_GRAFT_FILE`、linked worktree）的仓库不判定，理由 `grafts`；git 2.31 之前没有 `--path-format`，说不出文件在哪，按 `compare-failed` 保留（0.116.0 在那里还会给 `on-main`）。理由：这个改动只会把 landed 变成保留，不会多出 landed；浅克隆（git 内部同样靠改写父提交实现）已经不判定，替换引用不跟随，grafts 是最后一个会改父提交、判定还跟着走的机制；本机 15 个仓库里 0 个有 graft 文件，代价只是这种仓库退回 0.115.0 的行为。68129eb，先写失败用例。
+  - 计时伪影：根因找到。真实数据脚本用 `git clone` 复制本地仓库，`git clone` 把克隆里的 `origin/HEAD` 指向源仓库当时检出的分支，而 housekeeping 从 `origin/HEAD` 取默认分支。gsd-lite 10-21 17:30Z 起检出 `fix/0.17.2`，21:11Z 起换成 release/0.17.2 等几个分支，23:11Z 才回到 main；7c51d7e、d04c3b2、第 4 轮、066b64b 的几次运行都在这段时间里（保存下来的四份输出在 18:46Z、20:29Z、20:58Z（两份），都是 `fix/0.17.2`），于是 gsd-lite 各行按当时检出的分支判定，docs/prompt-audit-shipped 就成了 landed；claudemd 那几行按 `release/v0.116.0` 判定（22:18Z 才切回 main）；daagu 一直在 master。CHANGELOG 引的 066b64b 那次（85–642 ms）没有保存输出，round4 那份是 85–580 ms。两组对照：源仓库检出 main → kept，检出 `fix/0.17.2` → landed per-commit，克隆里固定 `origin/HEAD` 后两种都是 kept。修好的脚本是 `tasks/landed-branch-cleanup/rerun.mjs`（固定 `origin/HEAD`，每行打印判定所用的分支和提交）。重跑：29 个 `-D` 行判定与第 4 轮相同（27 landed / 2 kept），0.116.0 代码 3 次每个分支 32–265 ms，68129eb 上 40–267 ms。0.116.0 CHANGELOG 里"each recreated in a clone at the default branch of its deletion time"那句对这几次运行不成立，0.116.1 CHANGELOG 写了更正。另外两行 `-d` 的"读成不是祖先"是另一回事：会话记录里的时间是工具调用开始的时间，同一条命令里 `checkout main && pull` 的 reflog 在它之后（gsd-lite：18:46:15.314Z 对 18:46:20Z、18:46:22Z）。
+  - `session-summary` Case 15：jq 的 `strftime` 给的是 UTC 数字，`touch -t` 按本地时间读，西半球时区下参照文件落在未来，窗口里没有行，不写 summary。测试改为 `TZ=UTC0 touch -t`（69fa66c），5 个时区和 bash 3.2.57 下 15/15。
+  - 暴露 T0：本机装的仍是 0.115.0，等用户 `/claudemd-refresh` 并重启。日志里已有 22 行 `hook_version` 0.116.0（10-21 15:35Z 起），全部来自 scratchpad 里的探针仓库，不是暴露；记录 T0 时要取安装时间之后的第一行。
 
 ## 验证记录
 
