@@ -536,8 +536,10 @@ function judgeLanded(git, top, defaultRef, shas) {
   // branch commit its ancestor while no tree there held its change, and the
   // branch read as landed (round 4 L1). Such a repository is not judged; with
   // no path for the file the branch is not compared. A git before 2.31 prints
-  // the --path-format it does not know back, then a relative path, exit 0
-  // (review H1): only an absolute path is an answer.
+  // the --path-format it does not know back as its first line, then the path
+  // (absolute from a linked worktree), exit 0 (review H1): only output that
+  // is an absolute path from its first character is an answer, never a line
+  // taken from it.
   const out = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
   const grafts = out && path.isAbsolute(out) ? out : null;
   if (grafts === null || fs.existsSync(grafts)) {
