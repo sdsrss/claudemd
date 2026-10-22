@@ -44,7 +44,7 @@ branches  REPORT (never delete) the local branches that are safe to delete:
           not back at an earlier commit's tree; and that commit is the same
           change at the same place (a three-way merge of the change onto it,
           git 2.40+, run with no config or attributes, leaves it as it is). A
-          partial clone is not judged.
+          partial clone or a repository with grafts is not judged.
           \`git branch -d\` refuses these, so deleting them takes \`git
           branch -D\`. Judges at most 20 such candidates, counting the rest
           in \`unjudged\`, and none whose fork point is more than 500 commits
