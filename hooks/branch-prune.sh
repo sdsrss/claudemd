@@ -20,9 +20,9 @@
 #    (both events: one that exits 0 can still have left a branch), every
 #    branch it named that is still there gets a verdict: landed, with that
 #    command, or kept, with the commits that have no copy or the reason it was
-#    not compared (a shallow or partial clone, no local default branch, merge
-#    commits, …), for the session to name under open items. Core §7 lets a
-#    session use -D only through this command.
+#    not compared (a shallow or partial clone, grafts, no local default
+#    branch, merge commits, …), for the session to name under open items.
+#    Core §7 lets a session use -D only through this command.
 #
 # Why: nothing ever reminded anyone. On 2026-09-22 two repos held 15 local
 # branches besides main: 8 were `worktree-agent-*` names left by Claude Code's
@@ -151,6 +151,7 @@ if ((REFUSED)); then
         elif .reason == "shallow" then "the clone is shallow and holds no commit it shares with it"
         elif .reason == "no-default-branch" then "there is no local \(.onto) branch to compare it with"
         elif .reason == "partial-clone" then "the repository is a partial clone, and comparing would fetch from its remote"
+        elif .reason == "grafts" then "the repository has grafts (info/grafts or GIT_GRAFT_FILE), which give commits other parents"
         else "it could not be compared: git 2.40 or later is needed, a git command failed, or no temp directory could be made" end) + ")"] | join(", ")')
       ((K > CAP)) && KEPT+=" (+$((K - CAP)) more)"
       MSG+=" Not on $ONTO: $KEPT. Keep these and name them under open items; do not force-delete them."

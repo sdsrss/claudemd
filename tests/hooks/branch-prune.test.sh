@@ -415,6 +415,17 @@ CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2
 [[ "$CTX" == *"Not on main: old (the clone is shallow and holds no commit it shares with it)."* ]] &&
   ok "11n a shallow clone short of the fork point is named as the reason" || ng "11n (ctx: $CTX)"
 
+# Case 11o: a repository with grafts is not judged, even the cherry-picked
+# branch: a graft on main's side can make a branch commit its ancestor with no
+# tree there holding the change (pre-tag review round 4 L1).
+pick_repo
+printf '%s %s\n' "$(git -C "$REPO" rev-parse main)" "$(git -C "$REPO" rev-parse main~1)" >"$REPO/.git/info/grafts"
+OUT=$(fevt 'git branch -d fix/pick' bp-11o | bash "$HOOK" 2>/dev/null)
+CTX=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+[[ "$CTX" == *"Not on main: fix/pick (the repository has grafts (info/grafts or GIT_GRAFT_FILE), which give commits other parents)."* &&
+  "$CTX" != *"Delete them with"* ]] &&
+  ok "11o a repository with grafts is kept with its reason" || ng "11o (ctx: $CTX)"
+
 # Case 12: after a pull, a [gone] branch that was rebase-merged on the remote
 # is listed as landed with the checked -D command, beside the merged one -d
 # deletes; the branch with no upstream stays unlisted.

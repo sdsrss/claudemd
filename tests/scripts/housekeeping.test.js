@@ -1405,10 +1405,81 @@ test('refused / branches: a graft that hides a branch commit → kept (info/graf
   };
   const viaEnv = judge({ GIT_GRAFT_FILE: grafts });
   assert.deepEqual(viaEnv.landed, []);
-  assert.equal(viaEnv.kept[0]?.reason, 'not-on-default');
+  assert.equal(viaEnv.kept[0]?.reason, 'grafts');
   fs.copyFileSync(grafts, path.join(r, '.git', 'info', 'grafts'));
   assert.deepEqual(judge({}).landed, []);
   assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+});
+
+// A graft on the default branch's side (pre-tag review round 4 L1): main's
+// first commit after the fork point grafted onto the branch's first commit
+// made that commit an ancestor of main, so the walk left it out though no tree
+// on main holds its file; the branch's second commit has a copy on main, and
+// the branch read as landed. A repository with grafts is not judged.
+test('refused / branches: a graft on the default branch side → kept as grafts (info/grafts and GIT_GRAFT_FILE)', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'feat');
+  commit(r, 'x.txt', 'x\n');
+  const x = git(r, 'rev-parse', 'HEAD');
+  commit(r, 'y.txt', 'y\n');
+  git(r, 'branch', 'worktree-agent-f0123456789abcdef');
+  git(r, 'checkout', '-q', 'main');
+  commit(r, 'm.txt', 'm\n');
+  const m = git(r, 'rev-parse', 'HEAD');
+  commit(r, 'y.txt', 'y\n');
+  const grafts = path.join(root, 'grafts');
+  fs.writeFileSync(grafts, `${m} ${x}\n`);
+  const judge = env => {
+    const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
+      input: 'git branch -d feat',
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    return JSON.parse(res.stdout);
+  };
+  const viaEnv = judge({ GIT_GRAFT_FILE: grafts });
+  assert.deepEqual(viaEnv.landed, []);
+  assert.equal(viaEnv.kept[0]?.reason, 'grafts');
+  fs.copyFileSync(grafts, path.join(r, '.git', 'info', 'grafts'));
+  const viaFile = judge({});
+  assert.deepEqual(viaFile.landed, []);
+  assert.equal(viaFile.kept[0]?.reason, 'grafts');
+  assert.deepEqual(names(classifyBranches({ cwd: r }).landed), []);
+  // Control: without the graft, x.txt has no copy on main.
+  fs.rmSync(path.join(r, '.git', 'info', 'grafts'));
+  assert.deepEqual(
+    judge({}).kept[0]?.unmatched.map(u => u.sha),
+    [x.slice(0, 7)]
+  );
+});
+
+// A git before 2.31 has no `rev-parse --path-format`, so it cannot say where
+// the graft file is: even a tip already on main is not judged.
+test('refused: a git that cannot name the graft file → kept as not compared', () => {
+  const r = clone();
+  git(r, 'checkout', '-q', '-b', 'topic');
+  commit(r, 't.txt', 't\n');
+  git(r, 'checkout', '-q', 'main');
+  git(r, 'merge', '-q', '--ff-only', 'topic');
+  git(r, 'checkout', '-q', '-b', 'elsewhere', 'main~1');
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = path.join(root, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(
+    path.join(bin, 'git'),
+    `#!/bin/sh\nfor a in "$@"; do case "$a" in --path-format=*) echo "error: unknown option" >&2; exit 129;; esac; done\nexec '${realGit}' "$@"\n`,
+    { mode: 0o755 }
+  );
+  const res = spawnSync(process.execPath, [SCRIPT, 'refused', `--cwd=${r}`], {
+    input: 'git branch -d topic',
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(res.status, 0, res.stderr);
+  const out = JSON.parse(res.stdout);
+  assert.deepEqual(out.landed, []);
+  assert.equal(out.kept[0]?.reason, 'compare-failed');
 });
 
 test('refused: on main but -d refused because HEAD is elsewhere → landed on-main', () => {

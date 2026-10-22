@@ -65,8 +65,9 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
           them all), or a reason such as \`compare-failed\` when the
           comparison could not be made, \`shallow\` when a shallow clone
           holds no commit it shares with the default branch (it stops
-          before the fork point, or the branch is unrelated), or
-          \`no-default-branch\` when the default branch has no local copy.
+          before the fork point, or the branch is unrelated),
+          \`no-default-branch\` when the default branch has no local copy,
+          or \`grafts\` when the repository has grafts.
           Never deletes.
 
 Options:
@@ -311,9 +312,9 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // --no-replace-objects, here and in verbatimPatchIds: a replace ref swaps a
 // commit's content and parents, so one could hide a branch commit from
 // `rev-list` and the branch read as landed, or dress a commit up as main's
-// copy (pre-tag review round 3 L1). Grafts and a shallow boundary still give
-// a commit other parents; the same-place check takes each commit's parent from
-// this walk, so it checks the change its patch id was computed from.
+// copy (pre-tag review round 3 L1). A repository with grafts is not judged
+// (judgeLanded); the same-place check takes each commit's parent from this
+// walk, so it checks the change its patch id was computed from.
 function gitIn(cwd) {
   return (...args) => {
     const r = spawnSync('git', ['--no-replace-objects', '-C', cwd, ...args], { encoding: 'utf8' });
@@ -528,6 +529,16 @@ function judgeLanded(git, top, defaultRef, shas) {
   // for every branch, which read as unrelated history (round 4).
   if (git('rev-parse', '--verify', '--quiet', defaultRef) === null) {
     for (const sha of shas) verdicts.set(sha, { reason: 'no-default-branch', missing: [] });
+    return verdicts;
+  }
+  // A graft (.git/info/grafts, or the file GIT_GRAFT_FILE names) gives commits
+  // other parents in every walk: one on the default branch's side made a
+  // branch commit its ancestor while no tree there held its change, and the
+  // branch read as landed (round 4 L1). Such a repository is not judged; with
+  // no path for the file (a git before 2.31) the branch is not compared.
+  const grafts = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  if (grafts === null || fs.existsSync(grafts)) {
+    for (const sha of shas) verdicts.set(sha, { reason: grafts ? 'grafts' : 'compare-failed', missing: [] });
     return verdicts;
   }
   const open = [];
