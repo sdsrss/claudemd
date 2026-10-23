@@ -8,6 +8,20 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.116.2] - 2026-10-23
+
+**The §8 gate splits a command into segments once instead of three times: 8 fewer processes on each Bash call that is not read-only, with the same verdicts and the same output; spec unchanged (v8.3.0).** `pre-bash-safety-check.sh` runs three checks over a command's segments, for `rm`, for package runners (npx and the like) and for remote runners (deno, pip, cargo, go, nix), and each of them called `s8_split_segments`, which starts four `sed`s, on `SANITIZED_CMD`, which does not change after the escape tokens are stripped. The rm check now keeps its split as `CMD_SEGMENTS` and the other two read it (1ea7aa4). The remote-runner loop used to read the split straight from a process substitution, with any trailing empty lines; it now reads `CMD_SEGMENTS` through `printf '%s\n'`, as the other two loops do, and it skips empty segments, so it reads the same segments in the same order.
+
+**Processes per Bash tool call**, counted with a logging shim on PATH in front of 35 common tools (bash 5.3.9, this machine): the gate alone 46 → 38 for `ls /tmp >/dev/null` and for `git commit -m '…'`, 53 → 45 for `rm -rf "${D:?}/x"`; the four PreToolUse:Bash hooks together 63 → 55, 96 → 88 and 70 → 62. A read-only command (`git log --oneline -1`) starts 4 before and after, one `jq` per hook. Time was not measured.
+
+**Replay.** Every unique Bash command in this machine's transcripts, through 0.116.1's hooks (`git archive d0d2a80 hooks`) and this release's: all 106,433 under bash 5.3.9, each allowed or denied as before (102,130 and 4,303), with the same stdout bytes and exit code; under bash 3.2.57, the 27,620 that name `rm`, a package runner or a remote runner, the same way (23,318 allowed, 4,302 denied, the same stdout bytes and exit code).
+
+**Tests.**
+- `tests/hooks/pre-bash-safety.test.sh`: a `sed` first on PATH counts the calls given `s8_split_segments`' expression as a whole argument (the curl-sh check's own split, which keeps `|`, has a longer expression and is not counted). An allowed command and a denied one are each split once; on 0.116.1's hook both rows fail with 3 splits, and a count of 0 fails as an unreached shim.
+- On the tagged commit (code as in 1ea7aa4): `npm run check` exits 0, the node suite 1686 of 1688 passed with 2 skipped and every shell suite passed; `pre-bash-safety.test.sh` passes 1214 of 1214, also with SIGPIPE ignored; the bash 3.2.57 runtime gate passes 44 of 44 suites; `npm run smoke` passes 2 of 2. @@CI@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.116.1] - 2026-10-21
 
 **A repository with grafts gets no landed verdict; spec unchanged (v8.3.0).** In a repository with grafts (`.git/info/grafts`, or the file `GIT_GRAFT_FILE` names), a graft on the default branch's side that made a branch commit one of its ancestors took that commit out of 0.116.0's comparison, though no tree on the default branch held its change: with the branch's other commits copied there, the branch read as landed and branch-prune printed its `git branch -D` command. 0.116.0 listed this under "Not changed". Every git command follows grafts, and `--no-replace-objects` does not turn them off, so such a repository is no longer judged: each branch `-d` refused is kept, as in 0.115.0, and named with the reason. Grafts are deprecated in git: reading a graft file prints a hint that support "will be removed in a future Git version" and to run `git replace --convert-graft-file`, and the replace refs that writes are already not followed here. None of the 15 repositories on the maintainer's machine has a graft file.
