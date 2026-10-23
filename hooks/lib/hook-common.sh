@@ -338,7 +338,7 @@ _hook_trim_into() {
 #   tool calls raise still carry the parent `session_id`. So the gate opened the
 #   parent transcript, found no Read, and denied a file the subagent had just
 #   opened — and the deny's remedy, "Read it and retry", is unreachable from
-#   inside a subagent, which is the first half of this header. §EXT §12 requires
+#   inside a subagent. §EXT §12 requires
 #   a fresh subagent to review before every tag, so that deny sat on the ship
 #   path: three of them in the round-17 audit session alone, against a reviewer
 #   that had read both matching files.

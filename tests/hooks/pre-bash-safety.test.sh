@@ -1115,13 +1115,13 @@ rm -f "$md_fix" "$md_fix.out"
 # The command is split into segments once per run of the hook.
 # s8_split_segments starts four seds; until 0.116.2 the rm, npx and
 # remote-runner checks each split the same SANITIZED_CMD, 8 seds more per run
-# (46 programs started for `ls /tmp >/dev/null`, 38 since). unwrap_indirect
-# ran its nine rewrites as nine seds until 0.116.3 and runs them as one now. A
-# sed first on PATH logs one tag per call it recognises: `split` when an
-# argument is the split's own expression (the curl-sh check's split, which
-# keeps `|`, has a longer one), `unwrap` when an argument carries one of
-# unwrap_indirect's command-word anchors. A count of 0 means the shim was not
-# the sed the hook ran.
+# (46 programs started for `ls /tmp >/dev/null` in 0.116.1, 38 in 0.116.2).
+# unwrap_indirect ran its nine rewrites as nine seds until 0.116.3 and runs
+# them as one now (30 programs). A sed first on PATH logs one tag per call it
+# recognises: `split` when an argument is the split's own expression (the
+# curl-sh check's split, which keeps `|`, has a longer one), `unwrap` when an
+# argument carries one of unwrap_indirect's command-word anchors. A count of 0
+# means the shim was not the sed the hook ran.
 split_bin=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 # shellcheck disable=SC2016  # the shim expands $a, $t and $@ itself
 printf '%s\n' '#!/usr/bin/env bash' \
