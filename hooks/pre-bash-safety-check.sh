@@ -769,6 +769,8 @@ s8_wrap_optarg() {
 # Byte-identical to the rm/npx gates' formerly-inline split. `&&`/`||` collapse
 # first (multi-char), then single-char `; & | ( ) backtick`. NOT used by the
 # curl-sh gate (which needs a pipe-continuation join and must keep `|` joins).
+# Called once per command (four seds): the rm, npx and remote-runner checks all
+# read CMD_SEGMENTS.
 s8_split_segments() {
   # F28: protect a `&` that belongs to a REDIRECTION operator (`3>&1`, `2>&1`,
   # `<&-`) before the char-class split, then restore it. Without this the split
@@ -988,7 +990,9 @@ if :; then
   # Use SANITIZED_CMD (multi-line) not SANITIZED_CMD_FLAT — original newlines
   # ARE natural command terminators; the FLAT version collapses them, joining
   # otherwise-independent commands and breaking per-segment iteration.
-  RM_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
+  # SANITIZED_CMD does not change after this point, so the npx and
+  # remote-runner checks below read this same split.
+  CMD_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
   while IFS= read -r segment; do
     # Trim leading/trailing whitespace.
     trimmed="${segment#"${segment%%[![:space:]]*}"}"
@@ -1613,7 +1617,7 @@ if :; then
         ;;
     esac
     done  # F22 per-target loop
-  done < <(printf '%s\n' "$RM_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
+  done < <(printf '%s\n' "$CMD_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 fi
 
 if (( bypass_rm == 1 )); then
@@ -1684,7 +1688,6 @@ npx_seg=""
 # examined as before, or skipped as a repeat of an earlier segment with the same
 # runner, package and --no-install flag, which gets the same verdict.
 NPX_RUNNERS=(); NPX_SEGS=()
-NPX_SEGMENTS=$(s8_split_segments "$SANITIZED_CMD")
 while IFS= read -r nseg; do
   nseg="${nseg#"${nseg%%[![:space:]]*}"}"; nseg="${nseg%"${nseg##*[![:space:]]}"}"
   [[ -n "$nseg" ]] || continue
@@ -1717,7 +1720,7 @@ while IFS= read -r nseg; do
     NPX_RUNNERS+=("$(printf '%s' "$seg_canon" | grep -oE "$NPX_CMD_REGEX" | head -n1 | sed -E 's/[[:space:]]+$//')")
     NPX_SEGS+=("$seg_canon")
   fi
-done < <(printf '%s\n' "$NPX_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
+done < <(printf '%s\n' "$CMD_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 
 _npx_i=0
 _npx_bypass_rows=0
@@ -1927,7 +1930,7 @@ while IFS= read -r rseg; do
     REMOTE_RUN_DENY="nix runs a remote flake reference"; REMOTE_RUN_RULE="nix-remote-flakeref"
   fi
   [[ -n "$REMOTE_RUN_DENY" ]] && break
-done < <(s8_split_segments "$SANITIZED_CMD")
+done < <(printf '%s\n' "$CMD_SEGMENTS")  # not a here-string: see sanitize_cmd (D#214)
 
 if [[ -n "$REMOTE_RUN_DENY" ]]; then
   if echo "$CMD" | grep -qF '[allow-npx-unpinned]'; then

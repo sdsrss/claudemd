@@ -1079,6 +1079,40 @@ md_decision=$(jq -r '.hookSpecificOutput.permissionDecision // "allow"' < "$md_f
 echo "note: a ${#md_cmd}-byte markdown heredoc ($(( $(printf '%s' "$md_cmd" | wc -l) + 1 )) lines) decided ${md_decision:-allow} in ${md_best:-?} s (best of 3; hook timeout ${seg_limit:-?} s)"
 rm -f "$md_fix" "$md_fix.out"
 
+# The command is split into segments once. s8_split_segments starts four seds,
+# and the rm, npx and remote-runner checks each split the same SANITIZED_CMD
+# again: 8 of the 46 processes the hook started for `ls /tmp >/dev/null`. A sed
+# first on PATH logs each call given the split's own expression as a whole
+# argument (the curl-sh check's split, which keeps `|`, has a longer one); a
+# count of 0 means the shim was not the sed the hook ran.
+split_bin=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+# shellcheck disable=SC2016  # the shim expands $a and $@ itself
+printf '%s\n' '#!/usr/bin/env bash' \
+  'for a in "$@"; do [[ "$a" == '\''s/&&/\n/g; s/\|\|/\n/g'\'' ]] && printf "split\n" >> "$SPLIT_LOG"; done' \
+  "exec $(command -v sed) \"\$@\"" > "$split_bin/sed"
+chmod +x "$split_bin/sed"
+run_split_case() {
+  local note="$1" cmd="$2" fix n
+  fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+  printf '%s' "$cmd" | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.}}' > "$fix"
+  : > "$split_bin/log"
+  SPLIT_LOG="$split_bin/log" PATH="$split_bin:$PATH" bash "$HOOK" < "$fix" >/dev/null 2>&1
+  rm -f "$fix"
+  n=$(grep -c . "$split_bin/log" 2>/dev/null || true)
+  if [[ "${n:-0}" == 1 ]]; then
+    echo "PASS: split once: $note"; PASS=$((PASS + 1))
+  elif [[ "${n:-0}" == 0 ]]; then
+    echo "FAIL [split-once-reach]: $note — the sed shim saw no split, so this row tests nothing"
+    FAIL=$((FAIL + 1))
+  else
+    echo "FAIL [split-once]: $note — the command was split $n times, expected 1"
+    FAIL=$((FAIL + 1))
+  fi
+}
+run_split_case "ordinary command (allow)" 'ls /tmp >/dev/null'
+run_split_case "rm of an unvalidated variable (deny)" 'rm -rf $X/y'
+rm -rf "${split_bin:?}"
+
 # Residual counts come from the labels, never from prose (R1(a)): quote this
 # line, not a number typed into a release note.
 echo "Residuals: xfn=$XFN xfp=$XFP (known false negatives / false positives, each asserted)"
