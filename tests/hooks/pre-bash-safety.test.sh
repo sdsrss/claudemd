@@ -1079,9 +1079,10 @@ md_decision=$(jq -r '.hookSpecificOutput.permissionDecision // "allow"' < "$md_f
 echo "note: a ${#md_cmd}-byte markdown heredoc ($(( $(printf '%s' "$md_cmd" | wc -l) + 1 )) lines) decided ${md_decision:-allow} in ${md_best:-?} s (best of 3; hook timeout ${seg_limit:-?} s)"
 rm -f "$md_fix" "$md_fix.out"
 
-# The command is split into segments once. s8_split_segments starts four seds,
-# and the rm, npx and remote-runner checks each split the same SANITIZED_CMD
-# again: 8 of the 46 processes the hook started for `ls /tmp >/dev/null`. A sed
+# The command is split into segments once per run of the hook.
+# s8_split_segments starts four seds; until 0.116.2 the rm, npx and
+# remote-runner checks each split the same SANITIZED_CMD, 8 seds more per run
+# (46 programs started for `ls /tmp >/dev/null`, 38 since). A sed
 # first on PATH logs each call given the split's own expression as a whole
 # argument (the curl-sh check's split, which keeps `|`, has a longer one); a
 # count of 0 means the shim was not the sed the hook ran.

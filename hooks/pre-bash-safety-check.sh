@@ -769,8 +769,8 @@ s8_wrap_optarg() {
 # Byte-identical to the rm/npx gates' formerly-inline split. `&&`/`||` collapse
 # first (multi-char), then single-char `; & | ( ) backtick`. NOT used by the
 # curl-sh gate (which needs a pipe-continuation join and must keep `|` joins).
-# Called once per command (four seds): the rm, npx and remote-runner checks all
-# read CMD_SEGMENTS.
+# Called once per run of this hook (four seds; the comment pass is a second
+# run): the rm, npx and remote-runner checks all read CMD_SEGMENTS.
 s8_split_segments() {
   # F28: protect a `&` that belongs to a REDIRECTION operator (`3>&1`, `2>&1`,
   # `<&-`) before the char-class split, then restore it. Without this the split
