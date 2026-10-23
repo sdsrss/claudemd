@@ -304,11 +304,11 @@ _hook_trim_into() {
 #
 #   What that costs is NOT uniform, and the comment here used to price it as
 #   though it were: "a redundant hint, or a deny the agent can answer by
-#   opening the file". That second half holds only where a transcript exists.
-#   A subagent's tool calls are not written to one, so the answer the deny
-#   asks for cannot be produced from inside the subagent and the remedy it
-#   prints is unreachable there (round-16 audit 6.1/6.2, still open — see
-#   memory-read-check.sh's deny text, which offers exactly that remedy).
+#   opening the file". That second half holds only where the read can be
+#   seen. A subagent's own reads are in the session's sidechain files, which
+#   this predicate searches too (SIDECHAINS below: round-17 HK-H1, 0.92.0,
+#   which closed round-16 audit 6.1/6.2 here). memory-read-check.sh fails open
+#   before asking when the transcript file is missing.
 #
 #   The test anchors on a tool-input `file_path` FIELD, never a bare path
 #   substring, and this is why the predicate has one home. Both spellings are
