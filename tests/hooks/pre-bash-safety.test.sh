@@ -1082,36 +1082,46 @@ rm -f "$md_fix" "$md_fix.out"
 # The command is split into segments once per run of the hook.
 # s8_split_segments starts four seds; until 0.116.2 the rm, npx and
 # remote-runner checks each split the same SANITIZED_CMD, 8 seds more per run
-# (46 programs started for `ls /tmp >/dev/null`, 38 since). A sed
-# first on PATH logs each call given the split's own expression as a whole
-# argument (the curl-sh check's split, which keeps `|`, has a longer one); a
-# count of 0 means the shim was not the sed the hook ran.
+# (46 programs started for `ls /tmp >/dev/null`, 38 since). unwrap_indirect
+# ran its nine rewrites as nine seds until 0.116.3 and runs them as one now. A
+# sed first on PATH logs one tag per call it recognises: `split` when an
+# argument is the split's own expression (the curl-sh check's split, which
+# keeps `|`, has a longer one), `unwrap` when an argument carries one of
+# unwrap_indirect's command-word anchors. A count of 0 means the shim was not
+# the sed the hook ran.
 split_bin=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
-# shellcheck disable=SC2016  # the shim expands $a and $@ itself
+# shellcheck disable=SC2016  # the shim expands $a, $t and $@ itself
 printf '%s\n' '#!/usr/bin/env bash' \
-  'for a in "$@"; do [[ "$a" == '\''s/&&/\n/g; s/\|\|/\n/g'\'' ]] && printf "split\n" >> "$SPLIT_LOG"; done' \
+  't=' \
+  'for a in "$@"; do' \
+  '  [[ "$a" == '\''s/&&/\n/g; s/\|\|/\n/g'\'' ]] && t=split' \
+  '  case "$a" in *'\''(])(bash|sh|zsh|dash|ksh|ash)('\''*|*'\''(])su('\''*|*'\''(])ssh('\''*|*'\''(])eval['\''*) t=unwrap ;; esac' \
+  'done' \
+  '[[ -n "$t" ]] && printf "%s\n" "$t" >> "$SPLIT_LOG"' \
   "exec $(command -v sed) \"\$@\"" > "$split_bin/sed"
 chmod +x "$split_bin/sed"
-run_split_case() {
-  local note="$1" cmd="$2" fix n
+run_split_case() {  # TAG NOTE CMD — the hook makes exactly one sed call tagged TAG
+  local tag="$1" note="$2" cmd="$3" fix n
   fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
   printf '%s' "$cmd" | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.}}' > "$fix"
   : > "$split_bin/log"
   SPLIT_LOG="$split_bin/log" PATH="$split_bin:$PATH" bash "$HOOK" < "$fix" >/dev/null 2>&1
   rm -f "$fix"
-  n=$(grep -c . "$split_bin/log" 2>/dev/null || true)
+  n=$(grep -c "^$tag\$" "$split_bin/log" 2>/dev/null || true)
   if [[ "${n:-0}" == 1 ]]; then
-    echo "PASS: split once: $note"; PASS=$((PASS + 1))
+    echo "PASS: $tag once: $note"; PASS=$((PASS + 1))
   elif [[ "${n:-0}" == 0 ]]; then
-    echo "FAIL [split-once-reach]: $note — the sed shim saw no split, so this row tests nothing"
+    echo "FAIL [$tag-once-reach]: $note — the sed shim saw no $tag call, so this row tests nothing"
     FAIL=$((FAIL + 1))
   else
-    echo "FAIL [split-once]: $note — the command was split $n times, expected 1"
+    echo "FAIL [$tag-once]: $note — $n sed calls tagged $tag, expected 1"
     FAIL=$((FAIL + 1))
   fi
 }
-run_split_case "ordinary command (allow)" 'ls /tmp >/dev/null'
-run_split_case "rm of an unvalidated variable (deny)" 'rm -rf $X/y'
+run_split_case split "ordinary command (allow)" 'ls /tmp >/dev/null'
+run_split_case split "rm of an unvalidated variable (deny)" 'rm -rf $X/y'
+run_split_case unwrap "ordinary command (allow)" 'ls /tmp >/dev/null'
+run_split_case unwrap "bash -c around an rm of an unvalidated variable (deny)" "bash -c 'rm -rf \$X/y'"
 rm -rf "${split_bin:?}"
 
 # Residual counts come from the labels, never from prose (R1(a)): quote this

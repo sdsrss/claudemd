@@ -430,7 +430,10 @@ canon_cmd_words() {
 # so `cmd && bash -c '...'` and `$(bash -c '...')` both match, but
 # `echo "bash -c 'rm -rf $X'"` (where the bash sits behind `"`) does not.
 unwrap_indirect() {
-  local s="$1"
+  # One sed applies the rewrites below in order (nine seds until 0.116.3). Each
+  # is a one-line s///g whose replacement adds no newline, so applying them in
+  # turn to each line gives what the chain of nine gave.
+  local -a ex=()
   # `-c` is matched as a flag BUNDLE ending in (or containing) `c`, optionally
   # preceded by other flag tokens: `bash -c`, `bash -lc`, `bash -xc`,
   # `sh -lc`, `bash --norc -c`, `bash -x -c` all run the next arg as a shell
@@ -445,8 +448,8 @@ unwrap_indirect() {
   # class rather than the one instance. Each name is separator-anchored
   # (`(^|[[:space:];&|\`(])`) so it never matches inside a longer word
   # (`dashboard`, `stash`). csh/tcsh excluded — different `-c` quoting + rare.
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])(bash|sh|zsh|dash|ksh|ash)([[:space:]]+-[a-zA-Z-]+)*[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
   # `su [-flag arg | -] [user] -c 'cmd'` hands cmd to a shell exactly as
   # `sh -c` does. The flag body is `*` not `+` so the login-shell shorthand's
   # bare `-` (`su - deploy -c`) is a flag too — spelling it `-[a-zA-Z-]+`
@@ -458,12 +461,12 @@ unwrap_indirect() {
   # data, so they are exposed the same way (0.79.0 pre-tag review H1: the
   # command-position anchor below reads a quoted token as data by design, and
   # would otherwise let a reverse shell through either wrapper).
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\5 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\5 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+'([^']*)'/\\1; \\5 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])su([[:space:]]+-[a-zA-Z-]*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?)*([[:space:]]+[^-'\"[:space:]][^[:space:]]*)?[[:space:]]+-c[[:space:]]+\"([^\"]*)\"/\\1; \\5 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+'([^']*)'/\\1; \\4 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])ssh([[:space:]]+-[a-zA-Z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+[^-[:space:]'\"][^[:space:]]*[[:space:]]+\"([^\"]*)\"/\\1; \\4 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])eval[[:space:]]+'([^']*)'/\\1; \\2 ;/g")
+  ex+=(-e "s/(^|[[:space:];&|\`(])eval[[:space:]]+\"([^\"]*)\"/\\1; \\2 ;/g")
   # Unquoted eval form: `eval rm -rf $X` — bash collapses the words with
   # spaces and evaluates the result, so this is execution-equivalent to
   # `eval "rm -rf $X"`. Without this rule, the quoted-only unwrap above is
@@ -473,8 +476,8 @@ unwrap_indirect() {
   # char of the inner must not be `'`/`"` (quoted forms above already
   # handled) so a same-line `eval "..."` further down the buffer is not
   # double-unwrapped.
-  s=$(printf '%s' "$s" | sed -E "s/(^|[[:space:];&|\`(])eval[[:space:]]+([^'\"[:space:];&|][^;&|]*)/\\1; \\2 ;/g")
-  printf '%s' "$s"
+  ex+=(-e "s/(^|[[:space:];&|\`(])eval[[:space:]]+([^'\"[:space:];&|][^;&|]*)/\\1; \\2 ;/g")
+  printf '%s' "$1" | sed -E "${ex[@]}"
 }
 
 # EVENT_CWD: per spec §8 NPX rule, the lockfile/local resolution check needs
