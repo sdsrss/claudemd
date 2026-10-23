@@ -172,10 +172,16 @@ hook_read_bash_fields() {
     # branch on and regex-match these values, and `hook_is_readonly_bash`
     # rejects a command carrying a newline — so a trailing "\n" surviving here
     # would drop `ls\n` off the fast-path it took before this refactor. Restore
-    # the command-substitution semantics exactly. Each iteration removes one
-    # byte from a finite string, so both loops terminate.
+    # the command-substitution semantics exactly. Each iteration of the
+    # tool-name loop removes one byte from a finite string, so it terminates.
+    # The command does not loop: each iteration copied and matched the whole
+    # command, so time grew with the square of the trailing newlines' number
+    # (40,000: about 15 s, past the hook's timeout). One is removed in place,
+    # which covers every real command seen ending in a newline; any more go
+    # through `$(…)` itself, one fork, one pass.
     while [[ "$HOOK_TOOL_NAME" == *$'\n' ]]; do HOOK_TOOL_NAME="${HOOK_TOOL_NAME%$'\n'}"; done
-    while [[ "$HOOK_CMD" == *$'\n' ]]; do HOOK_CMD="${HOOK_CMD%$'\n'}"; done
+    HOOK_CMD="${HOOK_CMD%$'\n'}"
+    if [[ "$HOOK_CMD" == *$'\n' ]]; then HOOK_CMD=$(printf '%s' "$HOOK_CMD"); fi
     return 0
   fi
   if jq -n . >/dev/null 2>&1; then

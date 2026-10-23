@@ -1052,6 +1052,39 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# Gate time on a command that ends in many newlines (E3). hook_read_bash_fields
+# strips trailing newlines, as $(…) did, and until 0.116.3 removed them one per
+# loop iteration, each iteration copying and matching the whole command: time
+# grew with the square of their number, and 70,000 behind a remote-runner
+# install took about 50 s (0.116.2 pre-tag review). Same limit and best of three
+# as the row above.
+tnl_cmd='rm -rf $X/y'
+for ((i = 0; i < 40000; i++)); do tnl_cmd+=$'\n'; done
+tnl_fix=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+printf '%s' "$tnl_cmd" | jq -Rsc '{session_id:"t",tool_name:"Bash",tool_input:{command:.}}' > "$tnl_fix"
+tnl_best=""
+for _try in 1 2 3; do
+  TIMEFORMAT='%R'
+  tnl_secs=$( { time bash "$HOOK" < "$tnl_fix" > "$tnl_fix.out" 2>/dev/null; } 2>&1 )
+  [[ "$tnl_secs" =~ ^[0-9]+\.[0-9]+$ ]] || continue
+  if [[ -z "$tnl_best" ]] || awk -v a="$tnl_secs" -v b="$tnl_best" 'BEGIN { exit !(a < b) }'; then tnl_best="$tnl_secs"; fi
+  awk -v a="$tnl_best" -v l="${seg_limit:-0}" 'BEGIN { exit !(a < l) }' && break
+done
+tnl_decision=$(jq -r .hookSpecificOutput.permissionDecision < "$tnl_fix.out" 2>/dev/null)
+rm -f "$tnl_fix" "$tnl_fix.out"
+if [[ "$tnl_decision" != deny ]]; then
+  echo "FAIL [trailing-newline-time]: the rm was not denied (got '${tnl_decision}')"
+  FAIL=$((FAIL + 1))
+elif [[ -z "$seg_limit" || -z "$tnl_best" ]]; then
+  echo "FAIL [trailing-newline-time]: could not read the hooks.json timeout ('${seg_limit}') or the elapsed time ('${tnl_best}')"
+  FAIL=$((FAIL + 1))
+elif awk -v a="$tnl_best" -v l="$seg_limit" 'BEGIN { exit !(a < l) }'; then
+  echo "PASS: 40,000 trailing newlines decided in ${tnl_best} s, inside the ${seg_limit} s hook timeout"; PASS=$((PASS + 1))
+else
+  echo "FAIL [trailing-newline-time]: 40,000 trailing newlines took ${tnl_best} s (best of 3); hooks.json kills this hook at ${seg_limit} s and a killed hook passes"
+  FAIL=$((FAIL + 1))
+fi
+
 # Gate time on a markdown document written through a heredoc, the shape of the
 # most-segmented real commands here (the largest: 22 KB, 348 lines, 582
 # backticks, 196 pipes, 211 parentheses, 35 `#`, so the comment-quote pass runs

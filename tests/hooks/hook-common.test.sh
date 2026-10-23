@@ -39,6 +39,26 @@ run_case "read_event stdin" '{"foo":1}' \
 run_case "read_event empty" "" \
   "echo '' | bash -c 'source $LIB; hook_read_event' 2>/dev/null"
 
+# hook_read_bash_fields keeps $(…)'s semantics for the command: every trailing
+# newline goes, the inner ones stay. Pins the result, whichever way the
+# stripping is done.
+rbf_case() {  # NAME COMMAND EXPECTED-HOOK_CMD
+  local got
+  # shellcheck disable=SC2016  # the inner shell expands these
+  got=$(jq -cn --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}' \
+    | WANT="$3" bash -c 'source "$1"; hook_read_bash_fields t "$(cat)" && [[ "$HOOK_CMD" == "$WANT" ]] && echo SAME || echo "DIFF:${#HOOK_CMD}"' _ "$LIB")
+  if [[ "$got" == SAME ]]; then
+    echo "PASS: read_bash_fields $1"
+  else
+    echo "FAIL: read_bash_fields $1 (got $got)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+rbf_case "no trailing newline" 'ls' 'ls'
+rbf_case "one trailing newline goes" $'ls\n' 'ls'
+rbf_case "every trailing newline goes" $'ls\n\n\n' 'ls'
+rbf_case "inner newlines stay" $'a\n\nb\n\n' $'a\n\nb'
+
 # hook_deny
 run_case "deny emits json" "deny" \
   "bash -c 'source $LIB; hook_deny test-hook \"reason text\"' | jq -r .hookSpecificOutput.permissionDecision"
