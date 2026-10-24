@@ -110,6 +110,6 @@ the hooks under a root agent.
 
 ## Triage 2026-10-24
 
-**Still open (on purpose).** Its trigger has not fired (`/.claude` does not exist on this machine). Re-running derivation (2) finds 16 of 27 hooks with their own `$HOME` writes; only pre-bash-safety-check and tmp-sweep carry a top-level HOME guard.
+**Still open (on purpose).** Its trigger has not fired (`/.claude` does not exist on this machine). Re-running derivation (2) finds 16 of 27 hooks with their own `$HOME` writes; only tmp-sweep (`hooks/tmp-sweep.sh:42`) and deferred-notice (`hooks/deferred-notice.sh:33`) carry a top-level HOME guard (corrected by the 0.116.5 pre-tag review; this line first named pre-bash-safety-check, which has none).
 
 Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.
