@@ -267,7 +267,7 @@ P2 那 1 次提及，是 code-graph-mcp 会话里"技能列表里没有 `ship` �
   | mattpocock-skills | 2,567 | 11 |
   | gstack | 53 | 1（只有路由器） |
 
-- **gstack**：`~/.claude/skills/gstack/` 下有 browse、ship、review 等子目录，但它们是嵌套的，没有注册进清单。规范里点名的 19 个 gstack 子技能（15 个写成 `gs:/…`，4 个写成 `/careful` 一类的简写）都无法直接调用。
+- **gstack**：`~/.claude/skills/gstack/` 下有 browse、ship、review 等子目录（2026-10-17 卸载 gstack 后这个目录已不存在），但它们是嵌套的，没有注册进清单。规范里点名的 19 个 gstack 子技能（15 个写成 `gs:/…`，4 个写成 `/careful` 一类的简写）都无法直接调用。
 - **mattpocock-skills**：规范里写的四个"只许用户调用"的技能（to-spec、to-tickets、implement、wayfinder），在插件自己的 frontmatter 里已经是 `disable-model-invocation: true`，模型本来就看不到它们。
 - **superpowers 6.4.1**：`hooks/session-start` 在 `startup|clear|compact` 时注入 `using-superpowers/SKILL.md`（3,192 B）加一层外壳。脚本里没有关闭它的环境变量。
 - **功能重叠**：
@@ -688,4 +688,12 @@ python3 -I $D/analyze.py      # P1/P2 tables in §3.2
 ```bash
 python3 -I $D/skill_scan_p3.py   # set SELF first; writes skill_sessions_p3.jsonl
 python3 -I $D/analyze_p3.py      # groups by the spec version each session loaded
+```
+
+## 附录 C：doc-check
+
+`node scripts/doc-check.mjs docs/spec-model-capability-review-2026-10-15.md --allow-untracked-missing` 读下面这个块。§3.4 那一行引用的目录在 gstack 卸载后已不存在，那一行是当时状态的记录，所以不查它的路径。
+
+```doc-check
+skip-line: 卸载 gstack 后这个目录已不存在
 ```
