@@ -222,3 +222,9 @@ with three candidates is not obviously worth its own maintenance.
 **Next batch-review**: 2026-09-23, OR after 20 L2+ tasks, whichever first. If the repo is in
 maintenance by then (see `docs/audit/audit-2026-08-22-02-convergence.md`), the 20-task trigger will
 not fire and the date governs.
+
+## Triage 2026-10-24
+
+**Decision pending.** Parallel-path promoted (v6.11.10); the macOS and Sizing items closed; model-tiering obsolete. Open for the maintainer: promote the shared-symbol edit guard (its repro bar was met, 4 against 3, at the 08-24 batch review), or close it as covered by core "Export-surface edit → impact analysis first".
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

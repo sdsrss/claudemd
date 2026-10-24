@@ -50,3 +50,9 @@ two-tab cache race; README/CHANGELOG "no node spawn" cost-model mismatch (the hi
 
 ## Recommended path (pending user decision)
 Redesign the SessionStart integration to **background the detection + emit the hint next session** (the existing `session-summary` → `last-session-summary.json` pattern) — this kills the entire hot-path class (#1/#2/#7/#8) because the sync part becomes a ms-class statefile read. Then fix the isolated detector bugs (#3/#4/#6/#9/#10/#11/#13/#14) with tests, add cache subproject-key + TTL (#5), document #12/#15. Re-review before ship. Full findings JSON: `~/.claude/tmp/.../tasks/wzwlqh4sr.output` (session-scoped).
+
+## Triage 2026-10-24
+
+**Closed.** Shipped command-only in 0.24.0/0.24.1; the detector fixes are in scripts/design-detect.js.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

@@ -42,3 +42,9 @@ Tests: `install.test.js` +3 (refusal with no-mutation asserts / forced rollback 
 ## Verify command
 
 Covered by `tests/hooks/session-start.test.sh` case 18 + `tests/scripts/install.test.js` downgrade-guard tests (sandbox HOME, manifest newer than root, assert no spawn / refusal + spec and manifest untouched).
+
+## Triage 2026-10-24
+
+**Closed.** Shipped in 0.36.0 (downgrade guard in install.js, stale-root gates, doctor `plugin cache:staleness`); the cache now holds only 0.113.3–0.116.4.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

@@ -231,3 +231,9 @@ docs/记忆功能优化路线图-2026-07-18.md     docs/防火墙智能化融合
   这一条同时修 §10-V 和 §7-bugfix-anchor 的同类 FP。
 - **P3**：`npm install` 参数位解析要剥掉重定向 token；`settings.json` 只认 `$HOME/.claude/`。
 - **不建议**：在修完前继续采集。当前四条 rate 全部无效。
+
+## 分拣 2026-10-24
+
+**部分关闭。** §10-V 清洗修复、turn-yield 前提、六个检测器的关闭都已发布（0.54.0 / 规范 v6.21.1）；UTC 文件命名已修（R11-33）。仍开：§10-V 和 §11-turn-yield 一直没有重新标注（scripts/sampling-audit.js 的 CALIBRATION 里 `precision: null`）；双引号区段的想法没有决定。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

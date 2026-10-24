@@ -235,3 +235,9 @@ core = **24467/25000（headroom 533B，97.87%）**（v6.20.0 −389 tiering 删�
 3. 25000 - current - N = 删除后 headroom，若 < 200 字节考虑额外删
 4. 跑选定 candidate 的 Verify gate
 5. 一并写进 `## Recent changes` Sizing 行 + CHANGELOG `[move]` 或 `[delete]` 条目
+
+## 分拣 2026-10-24
+
+**已过时。** 规范 v8.0.0 的重写删掉了 C7–C12 的全部对象；C1/C3/C5/C6 已用掉，C2 关闭，C4 作废。core 现为 23,422 / 25,000 字节。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

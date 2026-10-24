@@ -82,3 +82,9 @@ harness emit mktemp-shaped scratch paths, NOT loosening the gate.
 - perf-baseline hermetic test reads the live log line-count (L5) — flaky only under a
   concurrent writing session; accept until it actually flakes in CI (it runs sandboxed HOME
   there).
+
+## Triage 2026-10-24
+
+**Mixed.** Closed: the doctor demote label and safety-class exemption, the mid-spine hook removal, the overwrite guard (0.57.0), the UTC fix (R11-33), the version-sync session key, the perf-baseline race (R10-12); M4 obsolete; slash-command telemetry and the MEMORY.md byte cap not done by decision (0.57.0). The §8 shapes are registered as F28–F30. Open: L8, scenario-style command descriptions (model-visible, L3, maintainer's call); rm-rf-var deny friction stays on the harness side by this note's own direction.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

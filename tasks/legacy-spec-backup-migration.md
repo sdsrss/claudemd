@@ -48,3 +48,9 @@ P1-1（0.68.3）给 `update.js` 分了 `spec-backup-` 命名空间，但只对**
 - `looksLikeSpec` 抽成单源，`install.js` 与 `findLegacySpecBackups` 共用，两处不会再各写一份。
 - `findLegacySpecBackups()` —— 只读，报告，带同目录文件名。
 - `dirSize` / `listBackups` 的容错（delta review HIGH-1）：一个悬空 symlink 曾经能让 `install` / `doctor` / `uninstall` / `update` 全部抛异常。
+
+## 分拣 2026-10-24
+
+**部分关闭。** 不迁移是设计（install.js），prune 跳过 legacy 目录。待维护者决定：`CLAUDEMD_SPEC_ACTION=restore` 仍取最新的备份，在 0.68.3 之前的布局上可能是只有规范的 legacy 目录（沙箱复现：2026-06 的规范备份盖掉了使用者 2026-03 的个人文件）。跳过规范形状的目录又会漏掉本笔记说的 v0.23.11 之前那种形状，所以要先选一种。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

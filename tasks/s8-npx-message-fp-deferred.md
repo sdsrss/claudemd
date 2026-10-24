@@ -67,3 +67,9 @@ wrapper-npx deny rows. Land only when both are green.
 
 Commit messages describing `npx <word>` with a `$` in the body: use single quotes
 (`-m '…npx vitest…'`, no expansion) or the `[allow-npx-unpinned]` token.
+
+## Triage 2026-10-24
+
+**Closed.** Shipped in 0.47.0: both prose commit messages allow and `env npx` denies. Its accepted `xargs npx` gap is registered as F29 in docs/S8-RESIDUALS.md.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

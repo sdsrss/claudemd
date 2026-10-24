@@ -135,3 +135,9 @@ not the text bash executes**, and every guard in the file is a claim about that 
 - `IFS` as a word-splitting vector against the rm token loop (`IFS=/; rm -rf $SP/build`) —
   the reviewer flagged it as NOT-PROBED. Unknown whether a crafted `IFS` can shift which
   token becomes `rm_target`.
+
+## Triage 2026-10-24
+
+**Mixed.** D1/D2 shipped in 0.48.1; `IFS=/; rm -rf $SP/build` and `trap 'S=' DEBUG` now deny. The indirect-name rebind and the fake heredoc with a repeated tag still allow, accepted in hook comments; now registered in docs/S8-RESIDUALS.md as F32 and F33.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

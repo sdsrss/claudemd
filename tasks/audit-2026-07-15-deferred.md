@@ -41,3 +41,9 @@
   0 verdict 变化；fresh-subagent 复核用 worktree 跑真·pre-refactor hook 差分 64 探针
   全同；hook 套件 365→366（+parity）；FN 对抗矩阵 12 例全 deny。
 - 前置：§8 curl-sh parity（0.49.1 已收敛）是此方向的第一步。
+
+## 分拣 2026-10-24
+
+**已关闭。** 第 1、2 项 0.50.0 已发布（ci.yml 在 `v*.*.*` tag 上运行），第 3 项 0.51.0。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

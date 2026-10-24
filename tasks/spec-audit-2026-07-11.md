@@ -97,3 +97,9 @@
 - 2026-08-09（追加，2026-07-15 提示词审核）：banned-vocab bypass 构成复查——14d bypass 13 / deny 9（59%），doctor 30d 口径 deny 16 / bypass 14（47%，其 healthy 带内）。§13.3 10% 门只管 advisory→enforce 晋升，此规则已 enforce；复查目的是判 bypass 主体是 FP（探针/引用语境）还是规则过严，再定是否动作。数据源：`audit.js --days=N` banned-vocab 段 + `extra.bypass_reason`。
 - 下一次 spec 批次：执行 C 类修正 + 视需要消费 C5/C6。
 - reference_banned_vocab_examples.md 已 ship 48d：§10-V extended 块（~700B）压缩 gate 可评估（extended 侧，非 core）。
+
+## 分拣 2026-10-24
+
+**部分关闭。** 已发布或已决定：#1–#6、#8、#10、C2、C5、C6、R1、R2 和 08-09 的日程项；#9 过时（§0.1 已移出 core）。仍开：#7，既无 `src/` 也无 workspace 的仓库怎么算 Module（core §1.5，L3 规范改动，由维护者决定）；R3 / D#65 无法核对（延后项编号已被复用）。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

@@ -21,3 +21,9 @@ Reproduce: Read the memory file, then IMMEDIATELY (same turn) run a trigger comm
 ## Fix sketch (if confirmed as flush lag)
 
 Retry the transcript grep once after a short sleep, or accept a same-turn `[mem] PreToolUse recall` marker as Read evidence. Do NOT widen fail-open — deny→bypass already self-corrects at cost of one round-trip.
+
+## Triage 2026-10-24
+
+**Obsolete.** The other causes were fixed (subagent sidechain reads 0.92.0, Bash `cat` reads b51a2e0); the gated call is already in the transcript at PreToolUse (hook-common.sh comment). 3 bypasses since 09-05, all on 09-06 under 0.76.1.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

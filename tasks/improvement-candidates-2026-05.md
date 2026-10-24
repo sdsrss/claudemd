@@ -80,3 +80,9 @@ Source: user audit dated 2026-05-24, session 25/05 ultrathink analysis of "claud
 - Promotion to action: any candidate gaining a concrete user-visible trigger (e.g. P1 audit data shows misclassification, P4 MEMORY.md crosses 50 lines).
 - Drop criteria: no movement in 6 months → archive.
 - 2026-07-10 (v0.32.3 pre-tag review, Low, deferred): `spec/hard-rules.json:2` `_doc` still says "§13.1 quarterly demote (rules with 0 hits in 90d)" — canonical window is 30d (core §0.1 → OPERATOR.md §13.1). Doc-comment drift only; fold into next batch patch that touches hard-rules.json.
+
+## Triage 2026-10-24
+
+**Mixed.** P5 closed, P6 shipped (0.21.6), the hard-rules.json `_doc` drift fixed, P2 covered by 0.30.0's promote-to-durable. P1: trigger not met (1 of 4 large projects over 70% `feedback_*`). P4: trigger met (58-line index) but the doctor 12 KB budget (0.35.0) took the sub-index's place; no decision says so.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

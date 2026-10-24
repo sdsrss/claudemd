@@ -41,3 +41,9 @@ logSpan 124d、`insufficientData=false`。官方口径无候选,两项的前提�
 ## 同批执行的压缩(已 ship)
 
 spec v6.21.2:§EXT §10-V 五行 `**Banned …**` 枚举外置 → `hooks/banned-vocab.patterns`(机械门,未动)+ `reference_banned_vocab_examples.md`(prose 查表);core §10 quick-check 未动,指针改指 patterns 文件;`banned-vocab-canonical.json` 同步(pattern 行翻 in_spec=false,10 条 spec-only/pattern-null 行退役,drift-1..7 全绿)。
+
+## 分拣 2026-10-24
+
+**已关闭。** 08-24 决定保留拒绝；重开需要连续两个窗口旁路率超过 50%。实测 0/18（09-24..10-24）。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

@@ -50,3 +50,9 @@
 - R3（audit cross-project 归一化）: 维持 parked。
 - R6（路由表 vs harness 原生 Agent）: 本窗口无真实冲突。
 - memory-read-check bypass 9/19=47%: reason 分布 ≥4/9 为手测探针（"sandbox test" 类）→ 真实比率 ~26%，带内，维持现状。
+
+## 分拣 2026-10-24
+
+**部分关闭。** F1（v0.23.23）、F2、F3（runbook 的打 tag 前评审）、F4、F5.1（规范 v6.21.2）已关闭。F5.2：§13.1 复查节奏又一次过期（上次 08-16），2026-10-24 已复查并更新日期。F6：08-24 已决定；之后的非所有者 star 见 npm-download-attribution 的分拣。R1–R6：来源不在仓库也不在记忆目录里。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

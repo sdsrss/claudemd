@@ -96,3 +96,9 @@ P1-2 把 `DATA_RE` 派生的对象集从 8 个扩到 11 个，每个配 6,000 �
 
 - `feedback_gate_scope_must_cover_its_subject` —— 同一根因族。
 - 0.68.3 另一条同族（HIGH-2，remote 命令拼写）已修：门改成从源码反查调用拼写。
+
+## 分拣 2026-10-24
+
+**部分关闭。** 差分 reach 一节已发布；session-summary 的误归因 0.70.0 已修（4b9f028）。仍开：区分"读了数据"和"全部读完"（tests/hooks/hook-budget.test.sh 写着 "Not built"），是维护者一侧的测试强度缺口。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

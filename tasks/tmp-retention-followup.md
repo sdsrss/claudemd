@@ -17,3 +17,9 @@ Extend `/claudemd-clean-residue` (command + consent, dry-run default — same sh
 ## Status: SHIPPED in v0.33.0 (2026-07-10, fc7be39)
 
 Implemented exactly as the candidate above (command+consent, dry-run default). Extra hardening found in self-review: pre-existing CLI `--apply` tests inherited the real `~/.claude/tmp` as default target — all test spawns now pin `CLAUDEMD_CLAUDE_TMP_DIR` to a fixture (V3).
+
+## Triage 2026-10-24
+
+**Closed.** Shipped in 0.33.0 (fc7be39).
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

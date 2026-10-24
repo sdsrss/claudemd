@@ -51,3 +51,9 @@
 3. **FN-2 残留**(`eval "$(curl)"` 命令替换形)+ **FN-3 残留**(`xargs rm` stdin 模型、`timeout -s KILL 5 rm` option-arg 形)——都低频,若要闭合需单独小心。
 4. **收敛判断**: 两个高危大项(npx 家族 fetch-execute、curl|sh)+ 常见 wrapper 已闭合。剩余全是低频长尾,FP 风险递增而真实危险递减——是收益递减区。建议**停在这里**,剩余项待真实命中(不是假想)再逐个做,别为长尾持续加码 §8 核心(正是 #1 诊断风险"维护跑步机")。
 5. 全部按 internal-freeze 攒批发版(§8 是 live enforcement,但这些是加固不是回归,无紧急性)。已修的 FN-1/FN-2/FN-3 是非 release commit,随 07-10 §10-V 批次发。
+
+## 分拣 2026-10-24
+
+**部分关闭。** FN-1/2/3 v0.23.23 已发布，FN-4 的其余部分 0.81.0（accb70c）；FN-2/FN-3 的残留现在会拒。仍放行、现已登记进 docs/S8-RESIDUALS.md 的：FN-5（rm 目标是命令替换）为 F31，`xargs rm` 为 F29，字面 `/` 目标为 F35。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

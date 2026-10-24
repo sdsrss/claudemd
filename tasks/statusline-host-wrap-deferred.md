@@ -63,3 +63,9 @@ independent Minors, each re-confirmed against the code:
 wiring (`psCandidates` field). **Fixed in working tree (pending release):** #3 (multi-supersede
 data loss) + #2 relative-order (absolute-index still open, cosmetic). **Remaining for a future
 patch:** #5 (orphan renderer) + the whole-branch-review dry-run-foreign wart + coverage gaps above.
+
+## Triage 2026-10-24
+
+**Still open.** Host-wrap is not built and its trigger (a user report) has not fired (0 issues). Still present: the dry-run wart (scripts/lib/statusline.js returns `foreign` before it checks `dryRun`), #5 the orphan renderer (`not-ours` never unlinks it), and the four coverage gaps listed above. Each is under 20 lines.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

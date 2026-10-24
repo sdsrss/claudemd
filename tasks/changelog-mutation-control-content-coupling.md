@@ -47,3 +47,9 @@ unnecessary rather than load-bearing.
 
 Smaller than the sentence v0.87.0 wrote to satisfy the marker, and it ends a class
 rather than an instance.
+
+## Triage 2026-10-24
+
+**Closed.** The full fix shipped in 0.89.0 (78661c7).
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

@@ -44,3 +44,9 @@ boundary limitation Path 2 has; left as-is (escape hatch: `[allow-banned-vocab]`
 ## Verify command
 
 `npm test` (all green: transcript-vocab-scan 14/14, lint.test.js 58/58, full suite pass).
+
+## Triage 2026-10-24
+
+**Closed.** Shipped in 0.26.2 (2ba7e52), reworked in 8a60d86; a bare `robust-retry` still fires, accepted with the escape token.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.

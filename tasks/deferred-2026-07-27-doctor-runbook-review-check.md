@@ -16,3 +16,9 @@
 - 沿用 doctor 现有 cross-layer memory maintenance check 家族的输出格式。
 
 **不做的**:自动改写 runbook;hook 层 deny(prose 匹配 FP 风险,且 doctor 已够——这不是每 turn 都要拦的事)。
+
+## 分拣 2026-10-24
+
+**已关闭。** 0.61.0 已发布（scripts/lib/runbook-review-check.js，doctor 的 `runbook-review-step`）。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

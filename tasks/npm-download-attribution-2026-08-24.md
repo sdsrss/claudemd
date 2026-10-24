@@ -73,3 +73,9 @@ gh repo view --json stargazerCount,forkCount,watchers,issues
 
 注：`api.npmjs.org` 不在本机 Claude Code 沙箱网络白名单内（`registry.npmjs.org` 在），
 查询需免沙箱执行或用 `/sandbox` 加入允许列表。
+
+## 分拣 2026-10-24
+
+**待决定。** 按 npm 数据结论仍成立（每次发布后突增，09-24..10-23 有 8 天零下载），但本笔记自己的一个复评触发条件已满足：第三个 star 来自所有者以外的账号（2026-10-01）。是否复评由维护者决定。
+
+两个只读子代理按 HEAD 8e71e6c（v0.116.4）逐项核对；§8 形状、restore 路径和 statusline 几项由主会话复跑。

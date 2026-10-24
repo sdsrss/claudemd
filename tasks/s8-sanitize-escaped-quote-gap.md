@@ -194,3 +194,9 @@ an escaped-quote inline argument. Used successfully in the v0.47.1 ship.
 Tracked in `tasks/s8-false-negative-audit-2026-07-03.md`: `xargs rm` (target on
 stdin), option-with-argument wrappers (`sudo -u svc rm`, `timeout -s KILL 5 rm`),
 `eval "$(curl …)"`, `find -delete`.
+
+## Triage 2026-10-24
+
+**Mixed.** The headline fold was reverted and is accepted as F5. The escape-pair unquote and the backtick fix shipped in 0.82.0; option-argument wrappers, `eval "$(curl)"` and `find -delete` now deny. `xargs rm` still allows and is now registered as F29.
+
+Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.
