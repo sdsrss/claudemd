@@ -8,6 +8,37 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.116.5] - 2026-10-24
+
+**`version-cascade-check` checks README's pinned `claudemd-cli` version; eight §8 residual families registered, with no verdict changes; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, two shipped files change: `scripts/version-cascade-check.js` and `spec/hard-rules.json`, where only the review dates move.
+
+**README pin** (5d646db). README's GitHub Actions example runs `npx --yes claudemd-cli@X.Y.Z lint --stdin` on every commit of a pull request. The example arrived in 0.115.0 already pinned to 0.113.4 and kept that pin through 0.116.4, six releases, while the lint ruleset moved under it. `runPluginSemverCheck` now treats each `claudemd-cli@X.Y.Z` in `README.md` as a site of its own, named by its line, beside the six manifest sites; a README with no pin adds none. The example now pins this release, and `docs/ADDING-NEW-HOOK.md` and `docs/ROLLBACK.md` no longer say "six".
+
+**§8 residual families F28–F35** (90d2afd). `docs/S8-RESIDUALS.md` lists the shapes the §8 gate is known to allow and has accepted, so that a review files each once. A triage of old task notes found eight families the gate allows that no row listed. They are registered under that file's review rule 4, not patched, each with `xfn` corpus rows and controls:
+- F28: a quoted runner name, `"bash" -c '…'`, is not unwrapped; the unquoted form is.
+- F29: commands run by `xargs`, such as `cat list | xargs rm -rf`, a fetched script given to `xargs bash`, and `xargs npx unpinned-pkg`.
+- F30: a fetch fed to a shell through a here-string, `sh <<< "$(curl …)"`.
+- F31: an rm target that is a command substitution, `rm -rf $(cat list)`.
+- F32: a command word taken from a variable, `R=rm; $R -rf "$Y"`, and mktemp provenance revoked through an indirect name (`unset "$T"`, `printf -v "$T"`, `declare -n`).
+- F33: `$((1<<n))` read as a heredoc opener and closed by a later line `n`.
+- F34: fetch-and-run in a `case` arm. The rm and npx checks deny the same shape. The 2026-09-08 decision to change the four fetch anchors only on a listed trigger stands.
+- F35: a literal `/` target, `rm -rf /` and `find / -delete`. The gate checks unvalidated variables, and its deny text says a literal path passes; GNU rm refuses a recursive `/` by default, `find / -delete` has no such guard.
+
+Over the 110,056 unique Bash commands in this machine's transcripts, the only task-work hits are 6 `xargs rm` cleanups (4 `find … -print0 | xargs -0 -r rm -rf --` under literal paths, one `ls | grep -v … | xargs -r rm -f --` inside `"${SP:?}"`, one `xargs -r -d '\n' rm -f -- < <list file>`) and 8 loops that `unset "$v"` environment names beside a mktemp-sourced rm. All 14 are allowed, and a deny for either family would have stopped them. Every other match is a probe, test text or prose.
+
+**§13.1 review dates** (f502b78). The 26 HARD rules' `last_demote_review` stood at 2026-08-16 (25 rules) and 2026-09-07 (1), 69 and 47 days against the 28-day cadence `hard-rules-audit` and `spec/OPERATOR.md` §13.1 set. The review ran on the 30-day window over a 49-day log. Its one candidate, `§7-user-global-state`, is kept: `residue-audit` writes a row only when residue grows past its threshold, so no rows in the window is that alarm's steady state, and the rule is also self-enforced. No rule is demoted and no rule text changes; all 26 dates read 2026-10-24.
+
+**Documents.** The 36 notes under `tasks/` that doctor's `tasks-review-cadence` listed as untouched for 30+ days each end with a dated triage section (8489493): 12 closed, 5 obsolete, 12 partly closed, 5 waiting on a maintainer decision, 2 open, one of them on purpose. 26 of them are tracked.
+
+**Not changed.** `CLAUDEMD_SPEC_ACTION=restore` still restores the newest personal-namespace backup. On a machine that ran `/claudemd-update` before 0.68.3, that can be a spec-only backup rather than the user's own `CLAUDE.md`. `/claudemd-doctor`'s `backup-namespace-legacy` row names such directories. Skipping them would also skip the pre-0.23.11 backups that hold the user's files next to a spec-shaped `CLAUDE.md` (`tasks/legacy-spec-backup-migration.md`), so the choice is left open.
+
+**Tests.**
+- `tests/scripts/version-cascade-check.test.js`: one case. Two README pins, one stale, fail; one matching pin passes and adds one site; an unpinned mention adds none. It failed before the change ("a stale README pin must fail"), and the two real-repo cases went red on README's 0.113.4 until the pin moved.
+- `tests/fixtures/bash-safety/corpus.tsv`: 35 rows for F28–F35: 25 `xfn`, and 1 `pass` and 9 `deny` controls. With all 35 labels inverted, all 35 fail.
+- @@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.116.4] - 2026-10-23
 
 **`doc-check` resolves a `§`-reference to the document's own numbered heading; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, one shipped file changes: `scripts/doc-check.mjs`.
