@@ -36,7 +36,7 @@ later serve different code to marketplace consumers. Per failure point:
 
 ## Push landed, CI red, tag NOT pushed
 Forward-fix (hotfix commit), or revert **and bump**: `git revert <sha>`, raise the patch
-version through all six version sites (`npm run version-check` verifies), commit, tag, push
+version through every version site (`npm run version-check` lists and verifies them), commit, tag, push
 the tag.
 
 **A bare `git revert <sha> && git push` does not reach anyone who already synced**, which

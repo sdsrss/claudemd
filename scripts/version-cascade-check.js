@@ -75,8 +75,9 @@ Pre-tag guard. Verifies three invariants:
      counts of spec/CLAUDE.md, spec/CLAUDE-extended.md, spec/OPERATOR.md
      within ±20B (the recursive-rewrite drift envelope).
   3. Plugin semver agrees across package.json, both package-lock.json sites,
-     .claude-plugin/plugin.json and both .claude-plugin/marketplace.json sites
-     — a PATCH-level check the v6.X comparison in (1) structurally cannot make.
+     .claude-plugin/plugin.json, both .claude-plugin/marketplace.json sites
+     and every claudemd-cli@X.Y.Z pin in README.md — a PATCH-level check the
+     v6.X comparison in (1) structurally cannot make.
 
 Options:
   --json       Emit JSON instead of human-readable.
@@ -147,6 +148,20 @@ export function runPluginSemverCheck({ root }) {
       value: market?.plugins?.[0]?.version ?? null,
     },
   ];
+  // README's CI example pins `claudemd-cli@X.Y.Z`; nothing bumped it: 0.113.4
+  // stood there from 0.115.0 through 0.116.4. One site per pin, so a README without one
+  // adds none.
+  let readme = '';
+  try {
+    readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  } catch {
+    // no README, no pins
+  }
+  readme.split('\n').forEach((line, i) => {
+    for (const m of line.matchAll(/claudemd-cli@(\d+\.\d+\.\d+)/g)) {
+      sites.push({ file: 'README.md', path: `claudemd-cli@ (line ${i + 1})`, value: m[1] });
+    }
+  });
   // package.json is the reference: it is what install.js stamps into the manifest.
   const expected = sites[0].value;
   const ok = expected != null && sites.every(s => s.value === expected);
@@ -333,7 +348,7 @@ if (invokedAsMain(import.meta.url)) {
       );
     } else {
       if (!semverResult.ok) {
-        process.stderr.write(`version-cascade-check: plugin semver disagrees across manifests:\n`);
+        process.stderr.write(`version-cascade-check: plugin semver disagrees across its sites:\n`);
         for (const s of semverResult.sites) {
           process.stderr.write(
             `  ${s.value === semverResult.expected ? ' ' : '✗'} ${s.file}#${s.path} = ${s.value}\n`

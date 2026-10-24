@@ -481,8 +481,44 @@ test('pluginSemver: missing package.json fails loudly, does not skip', () => {
   }
 });
 
-test('pluginSemver: the real repo agrees across all six sites', () => {
+test('pluginSemver: the real repo agrees across every site', () => {
   const root = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
   const r = runPluginSemverCheck({ root });
   assert.equal(r.ok, true, `real repo semver drift: ${JSON.stringify(r.sites)}`);
+});
+
+// README's GitHub Actions example pins `npx --yes claudemd-cli@X.Y.Z`. Nothing
+// bumped it: 0.113.4 stood there from 0.115.0 through 0.116.4 while the ruleset
+// moved under it. Each pin is a site of its own, so a release bumps it with
+// the manifests; a README with no pin adds no site.
+test('pluginSemver: each README claudemd-cli pin is a site, named by line', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
+  try {
+    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
+    fs.writeFileSync(
+      path.join(d, 'README.md'),
+      'intro\n  run: npx --yes claudemd-cli@1.2.3 lint --stdin\n\n`npx claudemd-cli@1.1.0 audit x`\n'
+    );
+    const r = runPluginSemverCheck({ root: d });
+    assert.equal(r.ok, false, 'a stale README pin must fail');
+    const pins = r.sites.filter(s => s.file === 'README.md');
+    assert.deepEqual(
+      pins.map(s => [s.path, s.value]),
+      [
+        ['claudemd-cli@ (line 2)', '1.2.3'],
+        ['claudemd-cli@ (line 4)', '1.1.0'],
+      ]
+    );
+    assert.equal(r.sites.length, 8);
+
+    fs.writeFileSync(path.join(d, 'README.md'), 'npx --yes claudemd-cli@1.2.3 lint --stdin\n');
+    const ok = runPluginSemverCheck({ root: d });
+    assert.equal(ok.ok, true, `matching pin must pass: ${JSON.stringify(ok.sites)}`);
+    assert.equal(ok.sites.length, 7);
+
+    fs.writeFileSync(path.join(d, 'README.md'), 'npx --yes claudemd-cli lint --stdin\n');
+    assert.equal(runPluginSemverCheck({ root: d }).sites.length, 6, 'an unpinned mention is not a site');
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
 });
