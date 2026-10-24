@@ -116,7 +116,39 @@ test('doc-check: an unresolvable §-anchor fails', () => {
   const root = makeRepo();
   try {
     const r = run(root, CLEAN.replace('§2.1', '§2.9'));
-    assert.deepEqual(r.problems, ['§2.9 not found in spec sources']);
+    assert.deepEqual(r.problems, ['§2.9 not found in spec sources or the document headings']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// An analysis cites its own numbered sections (`见 §9.4`, `§3.6 的表`) as often
+// as it cites the spec, and every such reference failed: 7 of the 7 anchor
+// problems docs/spec-model-capability-review-2026-10-15.md reported were its
+// own headings. A heading resolves only the number it carries; a body line
+// that starts with the same number defines nothing.
+test('doc-check: a §-ref to one of the document own numbered headings resolves, and says so', () => {
+  const doc = '## 3. 证据\n\n### 9.4 中期数\n\n见 §9.4 与 §3，规范见 §7。\n';
+  const r = checkAnchors(doc, ['§7']);
+  assert.deepEqual(r.problems, []);
+  assert.equal(r.total, 3);
+  assert.equal(r.internal, 2);
+  // Same reference, heading gone: it fails again.
+  assert.deepEqual(checkAnchors(doc.replace('### 9.4 中期数', '### 9.3 中期数'), ['§7']).problems, [
+    '§9.4 not found in spec sources or the document headings',
+  ]);
+  // A number at the start of a body line is not a heading.
+  assert.deepEqual(checkAnchors('9.4 中期数\n\n见 §9.4。\n', []).problems, [
+    '§9.4 not found in spec sources or the document headings',
+  ]);
+  const root = makeRepo();
+  try {
+    const own = run(root, CLEAN.replace('## 7 Roadmap', '## 7 Roadmap\n\nSee §3 and §7.'));
+    assert.deepEqual(own.problems, []);
+    assert.match(
+      own.lines.join('\n'),
+      /anchors: 6 distinct §-refs resolved against 4 spec source\(s\); 1 by the document's own headings/
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

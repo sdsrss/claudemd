@@ -29,7 +29,8 @@ const USAGE = `Usage: node scripts/doc-check.mjs <doc.md> [--allow-untracked-mis
 Mechanical self-check for a long-form markdown document. Five checks:
 
   paths     every backtick-quoted repo path and ~/.claude path exists
-  anchors   every §-anchor resolves in one of the spec sources
+  anchors   every §-anchor resolves in one of the spec sources or is one
+            of the document's own numbered headings ("### 9.4 …")
   g-refs    every G<n> reference has a matching "### G<n>" heading
   ratios    every inline "A/B ... P%" recomputes, plus ratio: config lines
   stale     retracted claims (stale: config lines) appear only where allowed
@@ -212,9 +213,16 @@ export function checkPaths(text, opts) {
 }
 
 /**
- * Check 2 — every §-anchor the document cites exists in one of the spec sources.
+ * Check 2 — every §-anchor the document cites exists in one of the spec sources
+ * or is one of the document's own numbered headings (`## 3.`, `### 9.4 …`).
  * `§EXT`, `§iron-law-2` and `§8.V3` are all anchors here: the id is whatever
  * follows the sign, minus trailing sentence punctuation.
+ *
+ * An analysis cites its own sections as §9.4 as often as it cites the spec, and
+ * before the headings counted every such reference failed. The cost: a spec
+ * anchor that is renamed while the document has a heading with the same number
+ * still resolves. `internal` counts the ids only a heading resolved, so the
+ * report shows how many references rest on that.
  */
 export function checkAnchors(text, sources) {
   const problems = [];
@@ -223,9 +231,16 @@ export function checkAnchors(text, sources) {
     const id = m[1].replace(/[.-]+$/, '');
     if (id) ids.add(id);
   }
-  for (const id of ids)
-    if (!sources.some(s => s.includes('§' + id))) problems.push(`§${id} not found in spec sources`);
-  return { problems, total: ids.size };
+  const headings = new Set(
+    [...text.matchAll(/^#{1,6}[ \t]+(?:§[ \t]*)?(\d+(?:\.\d+)*)\.?(?=\s|$)/gm)].map(m => m[1])
+  );
+  let internal = 0;
+  for (const id of ids) {
+    if (sources.some(s => s.includes('§' + id))) continue;
+    if (headings.has(id)) internal++;
+    else problems.push(`§${id} not found in spec sources or the document headings`);
+  }
+  return { problems, total: ids.size, internal };
 }
 
 /**
@@ -357,7 +372,10 @@ export function docCheck(docPath, { root = REPO_ROOT, allowUntrackedMissing = fa
 
   const a = checkAnchors(text, sources);
   problems.push(...a.problems);
-  out.push(`anchors: ${a.total} distinct §-refs resolved against ${sources.length} spec source(s)`);
+  out.push(
+    `anchors: ${a.total} distinct §-refs resolved against ${sources.length} spec source(s)` +
+      (a.internal ? `; ${a.internal} by the document's own headings` : '')
+  );
 
   const g = checkGRefs(text);
   problems.push(...g.problems);
