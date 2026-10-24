@@ -123,9 +123,9 @@ test('doc-check: an unresolvable §-anchor fails', () => {
 });
 
 // An analysis cites its own numbered sections (`见 §9.4`, `§3.6 的表`) as often
-// as it cites the spec, and every such reference failed: 7 of the 7 anchor
-// problems docs/spec-model-capability-review-2026-10-15.md reported were its
-// own headings. A heading resolves only the number it carries; a body line
+// as it cites the spec, and every such reference failed: all 8 anchor problems
+// docs/spec-model-capability-review-2026-10-15.md reported on 2026-10-23 were
+// its own headings. A heading resolves only the number it carries; a body line
 // that starts with the same number defines nothing.
 test('doc-check: a §-ref to one of the document own numbered headings resolves, and says so', () => {
   const doc = '## 3. 证据\n\n### 9.4 中期数\n\n见 §9.4 与 §3，规范见 §7。\n';

@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.116.4] - 2026-10-23
+
+**`doc-check` resolves a `§`-reference to the document's own numbered heading; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, one shipped file changes: `scripts/doc-check.mjs`.
+
+**Anchors** (ce2abcb). `scripts/doc-check.mjs`, the self-check for long-form analysis documents, looked a `§`-reference up only in the spec sources (`spec/CLAUDE.md`, `spec/CLAUDE-extended.md`, `spec/hard-rules.json`, `scripts/sampling-audit.js`), so a document that cites its own sections failed once per such reference: the 8 anchor problems `docs/spec-model-capability-review-2026-10-15.md` reported once this release's §9.5 was in were all its own headings (`§3.2`, `§3.6`, `§3.7`, `§7.3` and `§9.1`–`§9.4`; 6 on 0.116.3's text). A heading line such as `## 3.` or `### 9.4 …` now defines its number; a body line that starts with the number defines nothing. A spec anchor renamed while the document has a heading with the same number still resolves, so the `anchors:` line now says how many references only a heading resolved (`; N by the document's own headings`), and a failure reads `not found in spec sources or the document headings`.
+
+**Documents.**
+- `docs/S8-RESIDUALS.md`, E3 (d) (385a152): located. The slow step is the inner `${x##*[![:space:]]}` of the trailing-whitespace trim each segment gets in the rm loop and in the npx loop; its time grows about with k × (n − k/2) for a segment of n characters that ends in k blanks (bash 5.3.9, this expansion alone: 0.30 / 1.16 / 4.67 s for n ≈ k = 2,500 / 5,000 / 10,000). Blanks at the start or in the middle of a segment are not slow. Not fixed, as (b) and (c) were not (D#275): over 108,612 real commands the n × k bound peaks at 848,340, against about 1.6 × 10⁷ for the 3 s hook timeout, and the 8 commands with the highest bound run the whole gate in 0.06–0.10 s.
+- `docs/S8-RESIDUALS.md`, F27 (385a152): the two fetch-execute / reverse-shell denies logged since 0.89.0, found again by their `tool_use_id` and replayed on the current gate (both still denied), are both gate-testing text in this repository: one is Pattern 3b on a quoted heredoc line, the other the `/dev/tcp` check.
+- `docs/spec-model-capability-review-2026-10-15.md`, §9.5 (cbc223a): the K6+K9 ablation is dropped, because at 20 runs per arm a drop from 100% to 80% is detected 37% of the time; the skill-usage re-scan due on 10-29 waits instead until 62 release-word sessions have run, about 11-08. Appendix C gives the document a doc-check block, and it passes its own check (acc6e08). The additions are dated by the local day (44f3d25).
+
+**Tests.**
+- `tests/scripts/doc-check.test.js`: one case. A reference to the document's own `### 9.4` and `## 3.` headings resolves and is counted; renumber the heading, or leave the number only at the start of a body line, and it fails. It and the updated message assertion failed on 0.116.3's `doc-check.mjs` (2 of 19). In a copy, three mutants (body lines count as headings; every id resolves; nothing is counted) each fail it.
+- @@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.116.3] - 2026-10-23
 
 **The §8 gate starts 8 fewer `sed`s per run, and a command that ends in many newlines is parsed in one pass instead of in time that grew with their square; the same verdicts, stdout and exit codes on every replayed real command; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, two shipped files change: `hooks/pre-bash-safety-check.sh` and `hooks/lib/hook-common.sh`.
