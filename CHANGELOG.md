@@ -21,9 +21,9 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 **Tests.**
 - `tests/scripts/doc-check.test.js`: one case. A reference to the document's own `### 9.4` and `## 3.` headings resolves and is counted; renumber the heading, or leave the number only at the start of a body line, and it fails. It and the updated message assertion failed on 0.116.3's `doc-check.mjs` (2 of 19). In a copy, three mutants (body lines count as headings; every id resolves; nothing is counted) each fail it.
-- @@CHECKS@@
+- On the tagged commit (it differs from a625dab only in this entry): `npm run check` exits 0, the node suite 1687 of 1689 passed with 2 skipped and every shell suite passed; `npm run smoke` passes 2 of 2. PR CI: 7 of 7 jobs green on d0fc9a3 (run 40069021690) and on a625dab (run 40070376340).
 
-**Pre-tag review.** @@REVIEW@@
+**Pre-tag review.** One round by a fresh reviewer (c97f595..d0fc9a3): 0 Critical, 0 High, 1 Medium, 6 Low. The Medium and five Lows were repaired in text and tests (a625dab); the sixth Low is a published commit message. M1: this entry and the E3 row said blanks at the start of a segment are not slow; 40,000 take 4.32 s, past the timeout, as stated above now. L1: the n × k bound missed blanks before `#`, `(`, `)` and a backtick, so it was not an upper bound; the bound above is a command's length times its longest blank run. L3: a `#` line inside a fenced code block reads as a heading, now stated above and in the JSDoc. L4: the test now also pins that a heading resolves exactly its own number and may carry the sign; the three mutants the reviewer found passing it now fail it. L5: the E3 row's description of the linear rewrite now names its all-blank branch and that it leaves leading runs slow. L6: `docs/spec-optimization-roadmap-2026-09-21.md` says `§` always means the spec there, which doc-check no longer enforces for the numbers the roadmap uses as headings; it now says so. L2, not changed: ce2abcb's message says "all 7 anchor problems" where 8 is right, and 385a152's says leading runs are not slow (M1); both are published as written. The repair is text and test only (the one change in `scripts/doc-check.mjs` is its JSDoc), so it got a claim-drift pass instead of a second review.
 
 ## [0.116.3] - 2026-10-23
 
