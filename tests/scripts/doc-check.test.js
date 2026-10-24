@@ -138,9 +138,14 @@ test('doc-check: a §-ref to one of the document own numbered headings resolves,
     '§9.4 not found in spec sources or the document headings',
   ]);
   // A number at the start of a body line is not a heading.
-  assert.deepEqual(checkAnchors('9.4 中期数\n\n见 §9.4。\n', []).problems, [
-    '§9.4 not found in spec sources or the document headings',
-  ]);
+  const miss = ['§9.4 not found in spec sources or the document headings'];
+  assert.deepEqual(checkAnchors('9.4 中期数\n\n见 §9.4。\n', []).problems, miss);
+  // A heading resolves exactly its own number: `## 9.` is not §9.4, and
+  // `## 9.4x` (the number runs into other text) defines nothing.
+  assert.deepEqual(checkAnchors('## 9. 总\n\n见 §9.4。\n', []).problems, miss);
+  assert.deepEqual(checkAnchors('## 9.4x 标题\n\n见 §9.4。\n', []).problems, miss);
+  // A heading may carry the sign itself.
+  assert.deepEqual(checkAnchors('### §9.4 中期数\n\n见 §9.4。\n', []).problems, []);
   const root = makeRepo();
   try {
     const own = run(root, CLEAN.replace('## 7 Roadmap', '## 7 Roadmap\n\nSee §3 and §7.'));

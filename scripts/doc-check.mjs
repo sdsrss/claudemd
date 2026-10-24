@@ -222,7 +222,8 @@ export function checkPaths(text, opts) {
  * before the headings counted every such reference failed. The cost: a spec
  * anchor that is renamed while the document has a heading with the same number
  * still resolves. `internal` counts the ids only a heading resolved, so the
- * report shows how many references rest on that.
+ * report shows how many references rest on that. As in checkGRefs, a `#` line
+ * inside a fenced code block reads as a heading.
  */
 export function checkAnchors(text, sources) {
   const problems = [];
