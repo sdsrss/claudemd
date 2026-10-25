@@ -1,6 +1,6 @@
 # restore 跳过只装着规范的备份
 
-状态：进行中（2026-10-24）
+状态：进行中
 
 ## 背景与目标
 
@@ -23,6 +23,12 @@
 
 - 判据复用 `findLegacySpecBackups()`：它对个人命名空间里每个 `CLAUDE.md` 规范形状的目录给出 `siblings`。只装着规范 = `siblings` 为空，且 `CLAUDE.md` 用 `lstat` 看是普通文件（符号链接是 dotfiles 使用者自己的安排，不跳过）。
 - 选择：按时间从新到旧，取第一个不是"只装着规范"的备份；一个都没有时取最新的一份（与 0.116.5 相同）。被跳过的是比选中那份更新的目录。
+
+## 计划
+
+- [x] S1：测试（红）：两条路径各一个跳过用例、CLI 用例；对照用例；doctor 文案用例
+- [x] S2：实现 `scripts/uninstall.js` 的选择、两条路径的 `skippedSpecOnly`、stderr 行；doctor 文案与注释；README、`--help`
+- [ ] S3：发 0.116.6（`npm run check`、PR CI、打 tag 前评审、tag、GitHub Release、npm）
 
 ## 决策与进展
 
