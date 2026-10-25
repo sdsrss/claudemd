@@ -198,6 +198,92 @@ test('R15: restore still works after a default uninstall removed the manifest', 
   assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'prior-version\n');
 });
 
+// Before 0.68.3, /claudemd-update wrote its spec backups into the personal
+// namespace too, so on such a machine the newest `backup-` dir can hold only an
+// old spec while the user's own CLAUDE.md sits in an older one
+// (tasks/specs/restore-skip-spec-only.md).
+const SPEC_TEXT = '# AI-CODING-SPEC v6.12.0 — Core\nold spec\n';
+function backupDir(stamp, files) {
+  const d = path.join(tmpHome, `.claude/backup-${stamp}`);
+  fs.mkdirSync(d);
+  for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(d, name), body);
+  return d;
+}
+
+for (const [label, before] of [
+  ['with the manifest', async () => {}],
+  ['after a default uninstall removed the manifest', () => uninstall({ specAction: 'keep' })],
+]) {
+  test(`restore skips a newer backup that holds only a spec-shaped CLAUDE.md (${label})`, async () => {
+    backupDir('20260301T000000Z', { 'CLAUDE.md': 'personal\n' });
+    const specOnly = backupDir('20260601T000000Z', { 'CLAUDE.md': SPEC_TEXT });
+    await before();
+    const res = await uninstall({ specAction: 'restore' });
+    assert.equal(res.specAction, 'restore');
+    assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'personal\n');
+    assert.deepEqual(res.skippedSpecOnly, [specOnly]);
+    assert.equal(
+      fs.readFileSync(path.join(specOnly, 'CLAUDE.md'), 'utf8'),
+      SPEC_TEXT,
+      'the skipped dir is left as it was'
+    );
+  });
+}
+
+test('restore does not skip a spec-shaped backup that holds anything else, a link, or no spec', async () => {
+  const cases = [
+    ['a sibling file', d => fs.writeFileSync(path.join(d, 'notes.md'), 'mine\n'), SPEC_TEXT],
+    ['a subdirectory', d => fs.mkdirSync(path.join(d, 'hooks')), SPEC_TEXT],
+    ['a symlinked CLAUDE.md', null, SPEC_TEXT],
+    ['a CLAUDE.md that is not spec-shaped', () => {}, 'newer personal\n'],
+  ];
+  for (const [what, extra, expected] of cases) {
+    for (const n of fs.readdirSync(path.join(tmpHome, '.claude'))) {
+      if (n.startsWith('backup-')) fs.rmSync(path.join(tmpHome, '.claude', n), { recursive: true });
+    }
+    backupDir('20260301T000000Z', { 'CLAUDE.md': 'personal\n' });
+    let newer;
+    if (extra === null) {
+      newer = backupDir('20260601T000000Z', {});
+      const target = path.join(tmpHome, 'dotfiles-CLAUDE.md');
+      fs.writeFileSync(target, SPEC_TEXT);
+      fs.symlinkSync(target, path.join(newer, 'CLAUDE.md'));
+    } else {
+      newer = backupDir('20260601T000000Z', { 'CLAUDE.md': expected === SPEC_TEXT ? SPEC_TEXT : expected });
+      extra(newer);
+    }
+    fs.rmSync(path.join(tmpHome, '.claude/CLAUDE.md'), { force: true });
+    const res = await uninstall({ specAction: 'restore' });
+    assert.equal(res.skippedSpecOnly, undefined, `${what}: nothing is skipped`);
+    assert.equal(
+      fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'),
+      expected,
+      `${what}: the newest backup is restored`
+    );
+  }
+});
+
+test('restore falls back to the newest backup when every backup holds only a spec', async () => {
+  backupDir('20260301T000000Z', { 'CLAUDE.md': '# AI-CODING-SPEC v6.10.0 — Core\nolder spec\n' });
+  backupDir('20260601T000000Z', { 'CLAUDE.md': SPEC_TEXT });
+  const res = await uninstall({ specAction: 'restore' });
+  assert.equal(res.skippedSpecOnly, undefined);
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), SPEC_TEXT);
+});
+
+test('CLI: a skipped spec-only backup is named on stderr and in the JSON', () => {
+  backupDir('20260301T000000Z', { 'CLAUDE.md': 'personal\n' });
+  const specOnly = backupDir('20260601T000000Z', { 'CLAUDE.md': SPEC_TEXT });
+  const r = spawnSync(process.execPath, [path.join(REPO_ROOT, 'scripts/uninstall.js')], {
+    encoding: 'utf8',
+    env: { ...process.env, HOME: tmpHome, CLAUDEMD_SPEC_ACTION: 'restore' },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).skippedSpecOnly, [specOnly]);
+  assert.match(r.stderr, /restore skipped 1 newer backup\(s\) that hold only a spec-shaped CLAUDE\.md/);
+  assert.ok(r.stderr.includes(specOnly), r.stderr);
+});
+
 test("R18 M2 / R20 M1: with no manifest a delete removes the spec files and keeps the user's", async () => {
   // restore → (edit) → delete is the order the restore docs lead to. Without a
   // manifest, ownership is read from the file: claudemd's spec files open with

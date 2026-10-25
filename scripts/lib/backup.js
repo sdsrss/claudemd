@@ -342,8 +342,10 @@ export function looksLikeSpec(text) {
 //
 // P1-1 gave update.js its own label, but it was forward-only: the dirs already
 // written under `backup-<stamp>` stay there, so on a machine that has run
-// updates, restore still returns a spec-only dir and pruneBackups(5) still
-// counts them against the personal retain window.
+// updates they are the newest dirs in that namespace. The two personal-namespace
+// prunes (install.js, doctor --prune-backups) exclude them, and since 0.116.6
+// restore passes over one that holds nothing but a regular-file spec
+// (uninstall.js); a dir with sibling files is still a restore source.
 //
 // A migration was written for this and then WITHDRAWN before 0.68.3 shipped,
 // because the delta review disproved the invariant it rested on. The reasoning

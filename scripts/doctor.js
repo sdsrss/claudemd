@@ -817,9 +817,10 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
 
   // Legacy spec backups sitting in the PERSONAL namespace. P1-1 stopped new
   // ones landing there but is forward-only, so on an installation old enough to
-  // have run updates before 0.68.3, `CLAUDEMD_SPEC_ACTION=restore` still
-  // returns whichever of these is newest instead of the user's own CLAUDE.md,
-  // and they still count against pruneBackups(BACKUP_RETAIN_COUNT).
+  // have run updates before 0.68.3, `CLAUDEMD_SPEC_ACTION=restore` returned
+  // whichever of these is newest instead of the user's own CLAUDE.md. Since
+  // 0.116.6 it passes over a dir that holds nothing but a regular-file spec
+  // (uninstall.js) and still returns one with sibling files when it is newest.
   //
   // Reported, never moved. A spec-shaped dir here may have been written by
   // update.js OR by an install.js from before v0.23.11 (which backed up
@@ -833,12 +834,14 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
     legacySpecBackups.length === 0
       ? 'no spec-shaped dirs in the personal backup namespace'
       : `${legacySpecBackups.length} dir(s) under ~/.claude/${BACKUP_LABELS.personal}-* hold a ` +
-          `spec-shaped CLAUDE.md, so restore returns a spec rather than your own file: ` +
+          `spec-shaped CLAUDE.md: ` +
           legacySpecBackups
             .map(b => `${path.basename(b.dir)}` + (b.siblings.length ? ` (+ ${b.siblings.join(', ')})` : ''))
             .join(', ') +
-          `. Not moved automatically — a dir with sibling files may be a genuine ` +
-          `personal backup from a pre-v0.23.11 install. Inspect, then move or delete by hand.`
+          `. restore passes over a dir that holds nothing but that file (a regular file, not a link), ` +
+          `unless every backup is one; one marked + holds other files too and may be a genuine ` +
+          `personal backup from a pre-v0.23.11 install, so restore returns it when it is the newest. ` +
+          `Not moved automatically — inspect, then move or delete by hand.`
   );
 
   const logPath = path.join(logsDir(), 'claudemd.jsonl');
