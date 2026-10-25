@@ -15,7 +15,7 @@ const STAMP_GRAMMAR = String.raw`\d{8}T\d{6}(\d{3})?Z(-\d+)?`;
 // namespace at a time (audit-2026-08-22 P1-1). Pre-fix both install.js (the
 // user's personal ~/.claude/CLAUDE.md) and update.js (the spec it is about to
 // overwrite) wrote `backup-<stamp>`, so an update pushed a spec-only backup on
-// top of the personal one: `CLAUDEMD_SPEC_ACTION=restore` takes listBackups()[0]
+// top of the personal one: `CLAUDEMD_SPEC_ACTION=restore` took listBackups()[0]
 // and returned the OLD SPEC, while pruneBackups(5) evicted the personal content
 // after five updates — the v0.23.11 data-loss mode, reopened through update.
 // install.js's "the personal backup is the SOLE backup" comment is true again
@@ -344,9 +344,10 @@ export const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
 
 // A personal-namespace backup restore passes over (uninstall.js): CLAUDE.md is
 // in it, and every entry is one of SPEC_FILES, a regular file (not a link)
-// whose first line is the spec heading. That is what a pre-0.68.3
-// /claudemd-update wrote there: every spec file that differed from the
-// plugin's, usually all four. A dir it cannot list or read, or with any other
+// whose first line is the spec heading. A pre-0.68.3 /claudemd-update wrote
+// every spec file that differed from the plugin's there; when CLAUDE.md did not
+// differ (2 of the 47 spec-changing tag steps up to v0.68.2) its dir has no
+// CLAUDE.md and is not passed over. A dir it cannot list or read, or with any other
 // entry, is not one: such a dir may be a pre-v0.23.11 personal backup with the
 // user's files beside the spec (see findLegacySpecBackups below).
 export function holdsOnlySpecFiles(dir) {

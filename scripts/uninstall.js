@@ -90,11 +90,11 @@ No flags. Behavior is read from the following env vars:
   CLAUDEMD_PURGE        1 to also wipe ~/.claude/.claudemd-state and logs
 
 restore copies the newest backup-<stamp>/ back over ~/.claude, not counting
-backups that hold only spec files (a pre-0.68.3 /claudemd-update wrote the
-ones it replaced there: CLAUDE.md and any other spec file, each a regular file
-whose first line is the "# AI-CODING-SPEC …" heading; the newer ones it passed over are
-listed in \`skippedSpecOnly\` and left in place) unless every backup is one,
-and REPORTS what it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
+backups that hold only spec files unless every backup is one (a pre-0.68.3
+/claudemd-update backed up the spec files it replaced there; a dir counts when
+it holds CLAUDE.md and nothing but spec files, each a regular file whose first
+line is the "# AI-CODING-SPEC …" heading; the newer ones passed over are listed
+in \`skippedSpecOnly\` and left in place), and REPORTS what it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
 kept nothing: a restore whose every file was kept lists them in \`kept\` instead).
 It restores; it does not remove. The spec files claudemd added and you never
 had — CLAUDE-extended.md, CLAUDE-changelog.md, OPERATOR.md — are left in place,

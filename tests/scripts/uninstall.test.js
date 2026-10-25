@@ -211,7 +211,7 @@ function backupDir(stamp, files) {
 }
 
 // The four spec files a pre-0.68.3 update could back up (every one that differed
-// from the plugin's); a real update dir usually holds all four (0.116.6 review H1).
+// from the plugin's); a real update dir holds several of them (0.116.6 review H1).
 const SPEC_SET = {
   'CLAUDE.md': SPEC_TEXT,
   'CLAUDE-extended.md': '# AI-CODING-SPEC v6.12.0 — Extended\n',
@@ -277,7 +277,8 @@ test('restore does not skip a spec-shaped backup that holds anything else, a lin
     let newer;
     if (extra === null) {
       newer = backupDir('20260601T000000Z', {});
-      const target = path.join(tmpHome, 'dotfiles-CLAUDE.md');
+      // Absolute: a relative TMPDIR would leave the link dangling (review L6).
+      const target = path.resolve(tmpHome, 'dotfiles-CLAUDE.md');
       fs.writeFileSync(target, SPEC_TEXT);
       fs.symlinkSync(target, path.join(newer, 'CLAUDE.md'));
     } else {
