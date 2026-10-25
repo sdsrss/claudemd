@@ -8,6 +8,21 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.116.6] - 2026-10-24
+
+**`CLAUDEMD_SPEC_ACTION=restore` passes over a backup that holds only a spec; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, three shipped files change: `scripts/uninstall.js`, `scripts/doctor.js` (the text of one check and a comment) and `scripts/lib/backup.js` (a comment).
+
+**Restore** (9109e50). `/claudemd-uninstall restore` puts back the `~/.claude/CLAUDE*.md` you had before claudemd, from the newest `~/.claude/backup-<stamp>/`. Before 0.68.3, `/claudemd-update` wrote its backups of the spec into that same namespace, so on a machine that ran it then, the newest dir can hold nothing but an old spec while your own file sits in an older one, and restore put the old spec back. It now passes over a dir whose only entry is a regular, spec-shaped `CLAUDE.md` and restores the newest one left. Not passed over: a dir with any other entry, which may be a backup from an install before 0.23.11 with your files beside the spec; a dir whose `CLAUDE.md` is a symlink; and, when every backup holds only a spec, the newest one, as before. The dirs passed over stay on disk and are listed in a new `skippedSpecOnly` field of the JSON output and on stderr; to restore one of them anyway, copy its files back by hand (`cp ~/.claude/backup-<stamp>/CLAUDE.md ~/.claude/`). `/claudemd-doctor`'s `backup-namespace-legacy` row said that every such dir makes restore return a spec; it now says which ones restore passes over and which it can still return.
+
+**Not changed.** `commands/claudemd-uninstall.md` still says restore uses "the most recent backup" and does not mention `skippedSpecOnly`. It is text the model reads, and the restore output names the dirs it passed over.
+
+**Tests.**
+- `tests/scripts/uninstall.test.js`: five cases. A newer spec-only backup is passed over with a manifest and after a default uninstall removed it, and the CLI names it in its JSON and on stderr; these three failed on 0.116.5, which restored `# AI-CODING-SPEC v6.12.0 …` instead of the personal file. Two control cases pass on both versions: a spec-shaped newest dir with a sibling file, with a subdirectory, or with a symlinked `CLAUDE.md`, and a newest dir that is not spec-shaped, are each restored; when every backup holds only a spec, the newest is restored. Six mutants of the selection (no sibling check, `stat` for `lstat`, either result field dropped, no fallback to the newest, no stderr line) each fail a named case.
+- `tests/scripts/doctor.test.js`: one case for the new `backup-namespace-legacy` text; it failed on the old text.
+- @@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.116.5] - 2026-10-24
 
 **`version-cascade-check` checks README's pinned `claudemd-cli` version; nine §8 residual families registered, with no verdict changes; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, two shipped files change: `scripts/version-cascade-check.js` and `spec/hard-rules.json`, where only the review dates move.
