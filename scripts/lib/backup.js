@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { backupRoot, settingsPath } from './paths.js';
+import { SPEC_FILES, backupRoot, settingsPath } from './paths.js';
 
 // Second-precision (legacy) vs millisecond-precision (current). Both accepted
 // by listBackups so pre-existing backups keep sorting correctly. The optional
@@ -337,6 +337,37 @@ export function looksLikeSpec(text) {
   );
 }
 
+// The first line every shipped spec file opens with (all 741 spec files of the
+// 210 tags v0.1.0..v0.68.2 do, checked 2026-10-24). Stricter than looksLikeSpec,
+// which takes the heading anywhere in the first 256 characters (D#392).
+export const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
+
+// A personal-namespace backup restore passes over (uninstall.js): CLAUDE.md is
+// in it, and every entry is one of SPEC_FILES, a regular file (not a link)
+// whose first line is the spec heading. That is what a pre-0.68.3
+// /claudemd-update wrote there: every spec file that differed from the
+// plugin's, usually all four. A dir it cannot list or read, or with any other
+// entry, is not one: such a dir may be a pre-v0.23.11 personal backup with the
+// user's files beside the spec (see findLegacySpecBackups below).
+export function holdsOnlySpecFiles(dir) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  if (!names.includes('CLAUDE.md')) return false;
+  return names.every(n => {
+    if (!SPEC_FILES.includes(n)) return false;
+    const p = path.join(dir, n);
+    try {
+      return fs.lstatSync(p).isFile() && SPEC_FIRST_LINE_RE.test(fs.readFileSync(p, 'utf8').slice(0, 256));
+    } catch {
+      return false;
+    }
+  });
+}
+
 // REPORT — never move — pre-0.68.3 spec backups sitting in the personal
 // namespace.
 //
@@ -344,8 +375,8 @@ export function looksLikeSpec(text) {
 // written under `backup-<stamp>` stay there, so on a machine that has run
 // updates they are the newest dirs in that namespace. The two personal-namespace
 // prunes (install.js, doctor --prune-backups) exclude them, and since 0.116.6
-// restore passes over one that holds nothing but a regular-file spec
-// (uninstall.js); a dir with sibling files is still a restore source.
+// restore passes over one that holds only spec files (holdsOnlySpecFiles above);
+// a dir with any other entry is still a restore source.
 //
 // A migration was written for this and then WITHDRAWN before 0.68.3 shipped,
 // because the delta review disproved the invariant it rested on. The reasoning

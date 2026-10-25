@@ -60,7 +60,7 @@ test('apply-all: backup created and all files updated', async () => {
 // `backup` and its own comment claims that backup is "the SOLE backup → prune
 // can never bury it". update.js used the SAME label, so every /claudemd-update
 // pushed a spec-only backup on top of it: `CLAUDEMD_SPEC_ACTION=restore`
-// (uninstall.js takes listBackups()[0], the newest) returned the OLD SPEC, and
+// (uninstall.js took listBackups()[0], the newest) returned the OLD SPEC, and
 // pruneBackups(5) evicted the personal content for good after five updates.
 // That is the v0.23.11 data-loss mode reopened through the update path.
 
@@ -81,7 +81,7 @@ test('P1-1: after an update, the newest restorable backup is still the personal 
   assert.equal(
     newest.dir,
     personalDir,
-    'uninstall restore takes listBackups()[0] — an update backup must not sit on top of it'
+    'restore reads the personal namespace newest first — an update backup must not sit on top of it'
   );
   assert.equal(
     fs.readFileSync(path.join(newest.dir, 'CLAUDE.md'), 'utf8'),

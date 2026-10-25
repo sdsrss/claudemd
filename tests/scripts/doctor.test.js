@@ -1616,30 +1616,36 @@ test('R10-03: --prune-backups leaves the legacy dirs the same run reports', asyn
 });
 
 test('backup-namespace-legacy says which dirs restore passes over and which it can return', async () => {
-  // 0.116.6: restore no longer returns a dir that holds nothing but a
-  // spec-shaped CLAUDE.md (uninstall.js), so "restore returns a spec rather
-  // than your own file" stays true only for a dir with other files in it.
+  // 0.116.6: restore passes over a dir that holds only spec files
+  // (backup.js holdsOnlySpecFiles), so "restore returns a spec rather than your
+  // own file" no longer holds for every dir this row lists; it marks them.
   const SPEC = '# AI-CODING-SPEC v6.25.2 — Core\n';
-  const only = path.join(box.home, '.claude/backup-20260201T000000Z');
-  const withNotes = path.join(box.home, '.claude/backup-20260301T000000Z');
-  for (const d of [only, withNotes]) {
-    fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(path.join(d, 'CLAUDE.md'), SPEC);
-  }
+  const dir = s => path.join(box.home, `.claude/backup-${s}`);
+  const only = dir('20260201T000000Z');
+  const withNotes = dir('20260301T000000Z');
+  const updateSet = dir('20260401T000000Z');
+  const linked = dir('20260501T000000Z');
+  for (const d of [only, withNotes, updateSet, linked]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(only, 'CLAUDE.md'), SPEC);
+  fs.writeFileSync(path.join(withNotes, 'CLAUDE.md'), SPEC);
   fs.writeFileSync(path.join(withNotes, 'notes.md'), 'mine\n');
+  fs.writeFileSync(path.join(updateSet, 'CLAUDE.md'), SPEC);
+  fs.writeFileSync(path.join(updateSet, 'OPERATOR.md'), '# AI-CODING-SPEC — Operator handbook\n');
+  fs.writeFileSync(path.join(box.home, 'dotfiles-CLAUDE.md'), SPEC);
+  fs.symlinkSync(path.join(box.home, 'dotfiles-CLAUDE.md'), path.join(linked, 'CLAUDE.md'));
   const r = await doctor({});
   const check = r.checks.find(c => c.name === 'backup-namespace-legacy');
   assert.equal(check.ok, false);
   assert.doesNotMatch(check.detail, /so restore returns a spec rather than your own file/);
-  assert.match(check.detail, /backup-20260301T000000Z \(\+ notes\.md\), backup-20260201T000000Z/);
   assert.match(
     check.detail,
-    /restore passes over a dir that holds nothing but that file \(a regular file, not a link\), unless every backup is one/
+    /backup-20260501T000000Z, backup-20260401T000000Z \(\+ OPERATOR\.md\) \[restore passes over\], backup-20260301T000000Z \(\+ notes\.md\), backup-20260201T000000Z \[restore passes over\]\./
   );
   assert.match(
     check.detail,
-    /one marked \+ holds other files too .* restore returns it when it is the newest/
+    /restore passes over a dir marked \[restore passes over\] \(it holds only spec files, each a regular file whose first line is the spec heading\) unless every backup is one/
   );
+  assert.match(check.detail, /it can return any other dir here, which may be a genuine personal backup/);
 });
 
 test('R10-03: pruneSkippedLegacy is empty when the flag is not passed', async () => {

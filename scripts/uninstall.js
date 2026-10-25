@@ -6,7 +6,7 @@ import {
   unmergeHook,
   isClaudemdLegacyHookCommand,
 } from './lib/settings-merge.js';
-import { findLegacySpecBackups, listBackups, restoreBackup } from './lib/backup.js';
+import { SPEC_FIRST_LINE_RE, holdsOnlySpecFiles, listBackups, restoreBackup } from './lib/backup.js';
 import {
   stateDir,
   logsDir,
@@ -90,10 +90,11 @@ No flags. Behavior is read from the following env vars:
   CLAUDEMD_PURGE        1 to also wipe ~/.claude/.claudemd-state and logs
 
 restore copies the newest backup-<stamp>/ back over ~/.claude, not counting
-backups that hold nothing but a spec-shaped CLAUDE.md (a pre-0.68.3
-/claudemd-update wrote those; the newer ones it passed over are listed in
-\`skippedSpecOnly\` and left in place) unless every backup is one, and REPORTS
-what it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
+backups that hold only spec files (a pre-0.68.3 /claudemd-update wrote the
+ones it replaced there: CLAUDE.md and any other spec file, each a regular file
+whose first line is the "# AI-CODING-SPEC …" heading; the newer ones it passed over are
+listed in \`skippedSpecOnly\` and left in place) unless every backup is one,
+and REPORTS what it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
 kept nothing: a restore whose every file was kept lists them in \`kept\` instead).
 It restores; it does not remove. The spec files claudemd added and you never
 had — CLAUDE-extended.md, CLAUDE-changelog.md, OPERATOR.md — are left in place,
@@ -213,7 +214,6 @@ function purgeStateAndLogs(activeManifestPath, legacyPath) {
 // stays theirs (R23 M1). Unreadable reads as the user's. A space must follow
 // both `#` and the token, as in every shipped spec file: `\s*` crossed a
 // newline and `\b` took `AI-CODING-SPEC-like` (D#392).
-const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
 const isSpecFile = p => {
   try {
     return SPEC_FIRST_LINE_RE.test(fs.readFileSync(p, 'utf8').slice(0, 256));
@@ -328,30 +328,19 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       return { specAction: 'abort', restored: null, reason: 'no backups available to restore' };
     }
     // Before 0.68.3 /claudemd-update wrote its spec backups into this namespace
-    // too, so the newest dir can hold nothing but an old spec while the user's
-    // own CLAUDE.md sits in an older one. Skip a dir only when a regular,
-    // spec-shaped CLAUDE.md is ALL it holds: one with any other entry may be a
-    // pre-v0.23.11 personal backup with the user's files beside the spec, and a
-    // symlink is the user's own arrangement (findLegacySpecBackups). With
-    // nothing else to restore, the newest dir is used, as before.
-    const specOnly = new Set(
-      findLegacySpecBackups()
-        .filter(l => {
-          try {
-            return l.siblings.length === 0 && fs.lstatSync(path.join(l.dir, 'CLAUDE.md')).isFile();
-          } catch {
-            return false; // gone since it was listed: not skipped
-          }
-        })
-        .map(l => l.dir)
-    );
-    const pick = backups.findIndex(b => !specOnly.has(b.dir));
+    // too, so the newest dirs can hold nothing but an old spec while the user's
+    // own CLAUDE.md sits in an older one. Pass over a dir that holds only spec
+    // files (holdsOnlySpecFiles); a dir with any other entry may be a
+    // pre-v0.23.11 personal backup with the user's files beside the spec, and
+    // one that cannot be read is not judged. With nothing else to restore, the
+    // newest dir is used, as before.
+    const pick = backups.findIndex(b => !holdsOnlySpecFiles(b.dir));
     if (pick > 0) skippedSpecOnly = backups.slice(0, pick).map(b => b.dir);
     restoreSource = backups[Math.max(pick, 0)].dir;
     if (skippedSpecOnly.length > 0) {
       process.stderr.write(
-        `[claudemd] restore skipped ${skippedSpecOnly.length} newer backup(s) that hold only a spec-shaped ` +
-          `CLAUDE.md (left in place): ${skippedSpecOnly.join(', ')}. Restoring ${restoreSource}.\n`
+        `[claudemd] restore skipped ${skippedSpecOnly.length} newer backup(s) that hold only spec files ` +
+          `(left in place): ${skippedSpecOnly.join(', ')}. Restoring ${restoreSource}.\n`
       );
     }
   }

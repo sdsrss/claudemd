@@ -94,8 +94,8 @@ export async function update({ pluginRoot, choice = 'cancel' } = {}) {
   const existing = targets.map(n => homeSpec(n)).filter(entryPresent);
   // Own namespace, not install.js's `backup-` (audit-2026-08-22 P1-1). Sharing
   // it made every update push a spec-only backup on top of the user's personal
-  // CLAUDE.md backup: `CLAUDEMD_SPEC_ACTION=restore` reads listBackups()[0] and
-  // returned the old SPEC, and five updates pruned the personal content away.
+  // CLAUDE.md backup: `CLAUDEMD_SPEC_ACTION=restore` read listBackups()[0] and
+  // returned the old SPEC (since 0.116.6 it passes over a dir of spec files only), and five updates pruned the personal content away.
   // Rotation still applies — within this namespace only.
   const { dir: backupDir, movedLinks } = createBackup(existing, { label: BACKUP_LABELS.spec });
   pruneBackups(BACKUP_RETAIN_COUNT, { label: BACKUP_LABELS.spec });
