@@ -537,7 +537,8 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   } else if (claudeMdIsSpec || onlySpecSiblings) {
     // DATA-LOSS ROOT-CAUSE FIX (v0.23.11): never back up spec-on-spec — neither
     // a byte-identical re-install NOR a version upgrade. Pre-fix BOTH created a
-    // backup of the spec itself; restore picks the NEWEST backup (uninstall.js)
+    // backup of the spec itself; restore picked the NEWEST backup (uninstall.js;
+    // since 0.116.6 it passes over a dir that holds only spec files)
     // and pruneBackups(BACKUP_RETAIN_COUNT) evicts the oldest, so `CLAUDEMD_SPEC_ACTION=restore`
     // after a re-install OR an upgrade restored the SPEC instead of the user's
     // original personal CLAUDE.md, and enough of them permanently evicted the
