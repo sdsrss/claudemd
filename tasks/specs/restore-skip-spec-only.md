@@ -1,6 +1,6 @@
 # restore 跳过只装着规范的备份
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -28,7 +28,7 @@
 
 - [x] S1：测试（红）：两条路径各一个跳过用例、CLI 用例；对照用例；doctor 文案用例
 - [x] S2：实现 `scripts/uninstall.js` 的选择、两条路径的 `skippedSpecOnly`、stderr 行；doctor 文案与注释；README、`--help`
-- [ ] S3：发 0.116.6（`npm run check`、PR CI、打 tag 前评审、tag、GitHub Release、npm）
+- [x] S3：发 0.116.6（`npm run check`、PR CI、打 tag 前评审、tag、GitHub Release、npm）
 
 ## 决策与进展
 
@@ -40,3 +40,4 @@
 
 - 9109e50（第 1 轮代码）：`node --test tests/scripts/uninstall.test.js` → 新用例改动前 3 个失败（两条路径的用例放回了 `# AI-CODING-SPEC v6.12.0`，CLI 用例缺 `skippedSpecOnly`），改后 42/42；六个变异各被一个用例拦下；`npm run check`（e7e3494、cb4e842）exit 0，node 1694/1696、2 跳过。
 - 修复轮：新用例在 v0.116.5 上 5 个失败、在 9109e50 的代码上 5 个失败，修复后 uninstall 45/45、doctor 相关 3/3；十个变异各被一个具名用例拦下。整套检查见 CHANGELOG 0.116.6 的 Tests 一行。
+- 发布：v0.116.6 附注 tag 于 2026-10-25T08:07:31Z（b24a805），GitHub Release 已建，PR #22 合并。打 tag 前：`npm run check`（6d57653）exit 0，node 1697/1699、2 跳过；`npm run smoke` 2/2；PR CI 7/7：990e578（40166174756）、b71b1ba（40171689494）、6d57653（40173130113）、b24a805（40174280853）。
