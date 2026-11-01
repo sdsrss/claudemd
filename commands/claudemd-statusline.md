@@ -15,8 +15,8 @@ Branch on `verdict`:
 - `claudemd` → already configured. Report the stable path `~/.claude/claudemd-statusline.sh` and `dest.matchesShipped`. If `false`, offer to re-run adopt (refreshes the renderer copy). STOP unless the user wants a refresh.
 - `foreign` → another provider owns the slot (report `current`). Do NOT write. Tell the user their existing statusline is untouched and that `/claudemd-statusline --force` will take it over (saving the current statusLine so `remove` can restore it). Continue to Step 1 ONLY if the user passed `--force`.
 - `host` → the slot is owned by a composite host (`host`, e.g. `code-graph`) that renders multiple providers. Do NOT clobber it. Run `detect --json` and read `providers`, `guestRegistered` and `rendererInUse`:
-  - `guestRegistered: true` → claudemd is already a segment. Report and STOP unless the user wants a refresh (re-run adopt).
-  - `guestRegistered: false`, `rendererInUse: true` → the host already runs claudemd's renderer under another provider id: the `providers` entry whose `command` contains `claudemd-statusline.sh` (code-graph keeps a slot it took over as `_previous`). Registering would show claudemd's segment twice. Report that id and STOP; register (Step 1) only if the user asks for a second segment. If `dest.matchesShipped` is `false`, offer `adopt --empty-only`, which refreshes the renderer copy and registers nothing.
+  - `guestRegistered: true` → claudemd is already a segment. Report and STOP unless the user wants a refresh (re-run adopt). If `rendererRunBy` is non-empty, another provider runs the same renderer and claudemd's segment shows twice: say so; `remove` unregisters claudemd's own entry and keeps the renderer for that provider.
+  - `guestRegistered: false`, `rendererInUse: true` → the host already runs claudemd's renderer under another provider id, listed in `rendererRunBy` (code-graph keeps a slot it took over as `_previous`). Registering would show claudemd's segment twice. Report that id and STOP; register (Step 1) only if the user asks for a second segment. If `dest.matchesShipped` is `false`, offer `adopt --empty-only`, which refreshes the renderer copy and registers nothing.
   - `guestRegistered: false`, `rendererInUse: false` → claudemd will register as a guest so both segments show (`claudemd | code-graph`). Read the `psCandidates` array from `detect --json` — each entry is a hand-made PS1 (a `bash` script under `~/.claude/` that isn't a plugin, e.g. `user-ps1`) claudemd can supersede. If it is non-empty, list those `id`s and ASK: supersede one (`adopt --supersede=<id>`, saved for restore) or keep both (`adopt`). Continue to Step 1.
 
 ## `check` mode (no writes)
@@ -25,9 +25,9 @@ Run Step 0. Report `verdict`, `current`, and whether `~/.claude/claudemd-statusl
 
 ## `remove` mode
 
-Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer; the host keeps the slot. Then run:
+Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer, unless another provider still runs it (`rendererRunBy`), which keeps it; the host keeps the slot. Then run:
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js remove --json`
-Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any. If `not-ours`, nothing was changed.
+Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any, and `rendererKept` (the providers the renderer was kept for) if set. If `not-ours`, nothing was changed.
 
 ## Step 1 — consent gate (always, binds under AUTONOMY_LEVEL: aggressive)
 

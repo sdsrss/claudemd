@@ -227,6 +227,32 @@ test('statusline: a missing renderer the host runs under another id is advised /
   assert.doesNotMatch(c.detail, /claudemd-statusline remove/);
 });
 
+// 0.117.1 pre-tag review M1: with our guest entry AND `_previous` both running
+// the file, remove() unregisters ours and keeps the file for `_previous`, so a
+// missing renderer stays missing: remove is no fix there either.
+test('statusline: a missing renderer that a guest entry and another provider both run is advised /claudemd-install only', async () => {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { id: 'claudemd', command: `bash "${box.claude('claudemd-statusline.sh')}"`, needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, false, c.detail);
+  assert.match(c.detail, /Fix: run \/claudemd-install \(recopies the renderer\)\.$/);
+  assert.doesNotMatch(c.detail, /claudemd-statusline remove/);
+});
+
 test('statusline: the advice names a command that actually recopies the renderer', () => {
   // This assertion was VACUOUS as shipped in 0.84.0 (post-tag review M-1): the
   // detail string embeds the renderer's own path, `…/claudemd-statusline.sh`, so

@@ -174,7 +174,7 @@ test('install: the page names specBackupDir, and the field holds the copy of an 
 test('statusline: the page says remove restores the whole saved slot and adopt refuses a non-object settings.json', () => {
   assertLine(
     'statusline',
-    "Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer; the host keeps the slot. Then run:"
+    "Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer, unless another provider still runs it (`rendererRunBy`), which keeps it; the host keeps the slot. Then run:"
   );
   const line =
     "If `adopt` exits 1 with `statusline-adopt failed: statusline: <path> parses to null, not a JSON object` (or to `an array`, `a JSON string`, `a JSON number` or `a JSON boolean`): nothing was written, and `detect` reads such a file as `absent`. Tell the user to replace the file's content with a JSON object (`{}` is valid) and re-run.";
@@ -199,7 +199,15 @@ test('statusline: the page stops when a host provider already runs our renderer,
   );
   assertLine(
     'statusline',
-    "  - `guestRegistered: false`, `rendererInUse: true` → the host already runs claudemd's renderer under another provider id: the `providers` entry whose `command` contains `claudemd-statusline.sh` (code-graph keeps a slot it took over as `_previous`). Registering would show claudemd's segment twice. Report that id and STOP; register (Step 1) only if the user asks for a second segment. If `dest.matchesShipped` is `false`, offer `adopt --empty-only`, which refreshes the renderer copy and registers nothing."
+    "  - `guestRegistered: false`, `rendererInUse: true` → the host already runs claudemd's renderer under another provider id, listed in `rendererRunBy` (code-graph keeps a slot it took over as `_previous`). Registering would show claudemd's segment twice. Report that id and STOP; register (Step 1) only if the user asks for a second segment. If `dest.matchesShipped` is `false`, offer `adopt --empty-only`, which refreshes the renderer copy and registers nothing."
+  );
+  assertLine(
+    'statusline',
+    "  - `guestRegistered: true` → claudemd is already a segment. Report and STOP unless the user wants a refresh (re-run adopt). If `rendererRunBy` is non-empty, another provider runs the same renderer and claudemd's segment shows twice: say so; `remove` unregisters claudemd's own entry and keeps the renderer for that provider."
+  );
+  assertLine(
+    'statusline',
+    'Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any, and `rendererKept` (the providers the renderer was kept for) if set. If `not-ours`, nothing was changed.'
   );
   assertLine(
     'statusline',
@@ -228,10 +236,7 @@ test('statusline: the page stops when a host provider already runs our renderer,
   assert.equal(d.verdict, 'host');
   assert.equal(d.guestRegistered, false);
   assert.equal(d.rendererInUse, true);
-  assert.deepEqual(
-    d.providers.filter(p => p.command.includes('claudemd-statusline.sh')).map(p => p.id),
-    ['_previous']
-  );
+  assert.deepEqual(d.rendererRunBy, ['_previous']);
   assert.equal(d.dest.matchesShipped, false);
   const before = fs.readFileSync(registry, 'utf8');
   const a = run('statusline-adopt.js', ['adopt', '--empty-only', '--json'], box.env());

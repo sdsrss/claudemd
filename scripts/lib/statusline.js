@@ -46,6 +46,16 @@ function readSupersededList() {
   return arr.filter(p => p && p.id);
 }
 
+// Host providers, other than our own guest entry, whose command runs our file:
+// the same MARKER test detect() applies to the slot. Ids only.
+function othersRunningRenderer(providers) {
+  return (providers || [])
+    .filter(
+      p => p?.id !== CLAUDEMD_PROVIDER_ID && typeof p?.command === 'string' && p.command.includes(MARKER)
+    )
+    .map(p => p.id);
+}
+
 export function detect(pluginRoot = null) {
   const settings = loadSettings();
   // Presence — not command-parseability — decides absent-vs-occupied. A slot
@@ -87,10 +97,12 @@ export function detect(pluginRoot = null) {
   // itself, our guest entry, or another provider running our command. code-graph
   // keeps a slot it took over as provider `_previous`, so claudemd's command can
   // run there with claudemd not registered (D#599). Same test as the slot's own.
+  // `rendererRunBy` lists the host providers OTHER than our guest entry that run
+  // it: remove() keeps the file for them, and doctor does not offer remove as a
+  // fix while they do (0.117.1 pre-tag review M1).
+  const rendererRunBy = verdict === 'host' ? othersRunningRenderer(providers) : [];
   const rendererInUse =
-    verdict === 'claudemd' ||
-    (verdict === 'host' &&
-      (guestRegistered || providers.some(p => typeof p?.command === 'string' && p.command.includes(MARKER))));
+    verdict === 'claudemd' || (verdict === 'host' && (guestRegistered || rendererRunBy.length > 0));
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -108,6 +120,7 @@ export function detect(pluginRoot = null) {
     providers,
     guestRegistered,
     rendererInUse,
+    rendererRunBy,
     psCandidates,
     dest: { exists, matchesShipped },
   };
@@ -275,12 +288,19 @@ export function remove() {
         /* best-effort */
       }
     }
-    try {
-      fs.unlinkSync(destPath());
-    } catch {
-      /* best-effort */
+    // Another provider can run the same file under its own id: code-graph's
+    // `_previous`, beside a guest entry 0.117.0's /claudemd-statusline added in
+    // that state, or a superseded provider just restored. Deleting the file would
+    // break the host's status line, so it stays for them.
+    const kept = othersRunningRenderer(adapter.listProviders());
+    if (kept.length === 0) {
+      try {
+        fs.unlinkSync(destPath());
+      } catch {
+        /* best-effort */
+      }
     }
-    return { action: 'unregistered', host: d.host, restored };
+    return { action: 'unregistered', host: d.host, restored, rendererKept: kept.length ? kept : null };
   }
   const { verdict } = d;
   if (verdict !== 'claudemd') return { action: 'not-ours', restored: null };

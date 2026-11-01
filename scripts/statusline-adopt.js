@@ -15,7 +15,9 @@ Modes:
 
 Flags:
   --force           adopt: replace a foreign statusLine (saves prior for remove).
-  --empty-only      adopt: only write when the slot is empty (install-time guard).
+  --empty-only      adopt: install-time mode. Sets an empty slot; otherwise only
+                    refreshes a renderer copy a slot or host provider already runs.
+                    Never takes a slot or registers.
   --supersede=<id>  adopt(host): supersede a named provider (saves it for remove).
   --dry-run         adopt: print the transition, write nothing.
   --json            Machine-readable JSON (default is a human-readable summary).
@@ -43,6 +45,7 @@ function renderHuman(mode, out) {
     out.host && `host=${out.host}`,
     sup && `superseded=${sup}`,
     out.restored && `restored=${out.restored}`,
+    out.rendererKept && `renderer-kept-for=${out.rendererKept.join(',')}`,
     out.to && `to=${out.to}`,
   ]
     .filter(Boolean)

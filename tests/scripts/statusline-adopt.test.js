@@ -380,6 +380,42 @@ test('remove: our renderer under another id → not-ours, renderer and registry 
   assert.deepEqual(snapshot(), before);
 });
 
+// 0.117.1 pre-tag review M1: 0.117.0's /claudemd-statusline registered a guest
+// in the `_previous` state, so the registry can hold BOTH entries. remove() then
+// unregistered ours and deleted the file `_previous` still runs, which broke the
+// host's status line it had just meant to de-duplicate.
+test('remove: guest entry beside another provider running our renderer → unregistered, renderer kept', () => {
+  seedCg([
+    { id: '_previous', command: CMD, needsStdin: true },
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  assert.equal(detect(pluginRoot).guestRegistered, true, 'precondition: our guest entry exists');
+  assert.deepEqual(detect(pluginRoot).rendererRunBy, ['_previous'], 'our own entry is not listed');
+  const r = remove();
+  assert.equal(r.action, 'unregistered');
+  assert.deepEqual(r.rendererKept, ['_previous']);
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['_previous', 'code-graph'],
+    'only our entry goes'
+  );
+  assert.ok(fs.existsSync(destFile()), 'the file `_previous` runs stays');
+});
+
+test('remove: guest entry alone → unregistered, renderer deleted, nothing kept', () => {
+  seedCg([
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  const r = remove();
+  assert.equal(r.action, 'unregistered');
+  assert.equal(r.rendererKept, null);
+  assert.ok(!fs.existsSync(destFile()), 'no other provider runs it, so it goes');
+});
+
 test('adopt: host (command) → registers claudemd at front, copies renderer', () => {
   seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
   const r = adopt({ pluginRoot });
