@@ -197,7 +197,8 @@ export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 // The exit-code predicate. A row is advisory by NAME (the set above) or, for a
 // counted row whose evidence was inferred on this run, by its own `advisory`
-// flag — `hook-drift` on the `plugin-cache` basis is the one such case.
+// flag — the three rows that compare against the guessed `plugin-cache` root
+// (`hook-drift`, `plugin cache:staleness`, `plugin-root:stale-registration`).
 export const countsTowardExit = c => !!c && c.ok === false && c.advisory !== true && !isAdvisoryCheck(c.name);
 
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
@@ -616,13 +617,18 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
     realOf(RUNNING.root) !== realOf(PLUGIN_ROOT) &&
     inCache(PLUGIN_ROOT) &&
     inCache(RUNNING.root);
-  const drift2 = staleRegistration
-    ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
-    : twoCacheRoots
-      ? { skipped: true, skippedReason: 'cache-version-transition', driftCount: 0, diffs: [] }
-      : RUNNING.root
-        ? compareHooks(PLUGIN_ROOT, RUNNING.root)
-        : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
+  // The stale-registration skip keeps a pending restart from being reported
+  // twice. On the guessed basis (`activeGuess`) that registration is only the
+  // newest cache dir, so it must not silence this row — with a hook record this
+  // row is a measurement (0.117.0 pre-tag review, round 1, M1).
+  const drift2 =
+    staleRegistration && !activeGuess
+      ? { skipped: true, skippedReason: 'stale-registration', driftCount: 0, diffs: [] }
+      : twoCacheRoots
+        ? { skipped: true, skippedReason: 'cache-version-transition', driftCount: 0, diffs: [] }
+        : RUNNING.root
+          ? compareHooks(PLUGIN_ROOT, RUNNING.root)
+          : { skipped: true, skippedReason: 'no-active-plugin-root', driftCount: 0, diffs: [] };
   // Hoisted above the branch so both outcomes describe the basis the same way. A
   // hook-fired basis carries WHEN it was recorded: this row names a root as
   // "running", and a reader who has restarted Claude Code since needs to see that

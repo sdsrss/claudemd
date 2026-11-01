@@ -2255,6 +2255,52 @@ test('stale registration on the inferred plugin-cache basis is advisory', async 
   assert.equal(isAdvisoryCheck('plugin-root:stale-registration'), false, 'the name stays counted');
 });
 
+// 0.117.0 pre-tag review, round 1, M1. `hook-drift` skips itself on a stale
+// registration so a pending restart is not reported twice. On the inferred
+// basis that registration is only a guess, and skipping on it hid a MEASURED
+// drift: doctor from a cache dir, no registry, a hook record naming a checkout
+// whose hooks differ, and a partial newer leftover in the cache — exit 0, while
+// the same tree without the leftover exits 3. A guess must not silence a
+// measurement.
+test('a guessed stale registration does not skip a measured hook-drift', async () => {
+  const live = seedRunnableRoot(box, '0.86.0', { withScripts: true });
+  const leftover = seedRunnableRoot(box, '0.200.0');
+  fs.rmSync(path.join(leftover, 'hooks'), { recursive: true, force: true });
+  fs.mkdirSync(path.join(leftover, 'hooks'));
+  fs.copyFileSync(
+    path.join(live, 'hooks/session-start-check.sh'),
+    path.join(leftover, 'hooks/session-start-check.sh')
+  );
+  const checkout = seedCheckout(box, '0.86.0');
+  fs.appendFileSync(path.join(checkout, 'hooks/pre-bash-safety-check.sh'), '\n# local edit\n');
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const installed = spawnSync(process.execPath, [path.join(live, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, `the fixture needs a healthy install: ${installed.stderr}`);
+  assert.equal(fs.existsSync(box.claude('plugins/installed_plugins.json')), false);
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: checkout, ts: '2026-11-01T00:00:00Z', version: '0.86.0', sid: 'm1' })
+  );
+
+  const r = spawnDoctorFrom(box, live);
+  const stale = r.report.checks.find(x => x.name === 'plugin-root:stale-registration');
+  assert.equal(stale.ok, false);
+  assert.equal(stale.advisory, true, 'the registration is still the guess');
+  const drift = r.report.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, `the measured difference must be reported: ${drift.detail}`);
+  assert.match(drift.detail, /via hook-fired/);
+  assert.equal(drift.advisory, undefined, 'a hook-fired basis is a measurement');
+  assert.deepEqual(
+    r.report.checks.filter(countsTowardExit).map(c => c.name),
+    ['hook-drift']
+  );
+  assert.equal(r.status, 3);
+});
+
 // ── Final whole-branch review, I-1 ──
 // `hook-root.json` is ONE global file and every hook that fires rewrites it,
 // including a hook from a different plugin root. As of 0.85.0 the row it feeds
