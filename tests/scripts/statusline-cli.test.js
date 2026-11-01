@@ -119,6 +119,47 @@ test('adopt --supersede a non-existent id → human warns, --json surfaces super
   assert.equal(obj.superseded, null);
 });
 
+test('D#628: adopt --supersede=claudemd → exit 1, names the reason', () => {
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
+  );
+  fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
+    JSON.stringify([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }])
+  );
+  const r = run(['adopt', '--supersede=claudemd']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /cannot supersede claudemd/);
+});
+
+test('D#628: remove names a saved provider it did not restore', () => {
+  const dest = path.join(tmpHome, '.claude/claudemd-statusline.sh');
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
+  );
+  fs.mkdirSync(path.join(tmpHome, '.cache/code-graph'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
+    JSON.stringify([
+      { id: 'claudemd', command: `bash "${dest}"`, needsStdin: true },
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+    ])
+  );
+  fs.writeFileSync(dest, '#!/usr/bin/env bash\necho x\n');
+  fs.mkdirSync(path.join(tmpHome, '.claude/.claudemd-state'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/.claudemd-state/statusline-prev.json'),
+    JSON.stringify({ superseded: [{ id: '_previous', command: 'bash "/home/x/ps1.sh"', needsStdin: true }] })
+  );
+  const r = run(['remove']);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /not-restored=_previous/);
+  assert.match(r.stdout, /kept in .*statusline-prev\.json/);
+});
+
 // R11-26 (2026-09-03 audit): `--empty-only` had zero occurrences in tests/.
 // The lib parameter reaches adopt() from install.js:351 and is covered there
 // only as a library argument — the CLI flag that sets it was untested, so a

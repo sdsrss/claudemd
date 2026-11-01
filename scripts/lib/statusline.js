@@ -43,7 +43,21 @@ function readSupersededList() {
   }
   if (!prev || prev.superseded == null) return [];
   const arr = Array.isArray(prev.superseded) ? prev.superseded : [prev.superseded];
-  return arr.filter(p => p && p.id);
+  // Our own entry is never a saved provider (D#628): adopt refuses
+  // `--supersede=claudemd` now, but a record an older version wrote holds it,
+  // and restoring it registered our entry over a renderer remove() deleted.
+  return arr.filter(p => p && p.id && p.id !== CLAUDEMD_PROVIDER_ID);
+}
+
+// remove() restores a saved provider only when no live one has its id (D#628):
+// register replaces by id, so restoring would overwrite the entry the host runs
+// now, possibly one that runs our file. detect() predicts with the same split.
+function splitRestorable(saved, liveProviders) {
+  const live = new Set((liveProviders || []).map(p => p?.id));
+  return {
+    restore: saved.filter(p => !live.has(p.id)),
+    blocked: saved.filter(p => live.has(p.id)),
+  };
 }
 
 // Host providers, other than our own guest entry, whose command runs our file:
@@ -109,9 +123,12 @@ export function detect(pluginRoot = null) {
   // Superseded providers remove() would put back that run our file, so it keeps
   // the file for them too (D#618: after `adopt --supersede=_previous` the
   // registry shows only our entry). remove() restores only under our guest
-  // entry. Not part of rendererInUse: none of them renders until restored.
+  // entry, and not over a live provider with the same id (D#628). Not part of
+  // rendererInUse: none of them renders until restored.
   const rendererRestoredBy =
-    verdict === 'host' && guestRegistered ? othersRunningRenderer(readSupersededList()) : [];
+    verdict === 'host' && guestRegistered
+      ? othersRunningRenderer(splitRestorable(readSupersededList(), providers).restore)
+      : [];
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -158,6 +175,14 @@ export function adopt({
   backupSettings = true,
 } = {}) {
   if (!pluginRoot) throw new Error('adopt: pluginRoot required');
+  // D#628: superseding our own guest entry saved it in the restore record, and
+  // remove() then registered it again over a renderer it had just deleted.
+  if (supersede === CLAUDEMD_PROVIDER_ID) {
+    throw new Error(
+      `statusline: cannot supersede claudemd's own entry ('${CLAUDEMD_PROVIDER_ID}'); ` +
+        `--supersede takes the id of another provider in the host's registry.`
+    );
+  }
   const shape = settingsShapeError(rawSettings());
   if (shape) {
     throw new Error(
@@ -282,20 +307,28 @@ export function remove() {
     const adapter = HOST_ADAPTERS.find(a => a.id === d.host);
     adapter.unregister(CLAUDEMD_PROVIDER_ID);
     let restored = null;
+    let notRestored = null;
     if (fs.existsSync(prevPath())) {
-      // Restore EVERY superseded provider (list shape; legacy singular tolerated).
-      // Reverse order + front-insert so they regain their original relative
-      // order: the last superseded, restored first, ends up behind the earlier
-      // ones. `restored` is a comma-joined id list (single case → the one id).
-      const list = readSupersededList();
-      for (let i = list.length - 1; i >= 0; i--) {
-        adapter.register(list[i], { front: true });
+      // Restore every superseded provider (list shape; legacy singular tolerated)
+      // that has no live namesake. Reverse order + front-insert so they regain
+      // their original relative order: the last superseded, restored first, ends
+      // up behind the earlier ones. `restored` is a comma-joined id list (single
+      // case → the one id). A provider not restored stays in the record and is
+      // listed in `notRestored`, so its command is not lost.
+      const { restore, blocked } = splitRestorable(readSupersededList(), adapter.listProviders());
+      for (let i = restore.length - 1; i >= 0; i--) {
+        adapter.register(restore[i], { front: true });
       }
-      if (list.length) restored = list.map(p => p.id).join(',');
-      try {
-        fs.unlinkSync(prevPath());
-      } catch {
-        /* best-effort */
+      if (restore.length) restored = restore.map(p => p.id).join(',');
+      if (blocked.length) {
+        notRestored = blocked.map(p => p.id);
+        fs.writeFileSync(prevPath(), JSON.stringify({ superseded: blocked }, null, 2));
+      } else {
+        try {
+          fs.unlinkSync(prevPath());
+        } catch {
+          /* best-effort */
+        }
       }
     }
     // Another provider can run the same file under its own id: code-graph's
@@ -310,7 +343,13 @@ export function remove() {
         /* best-effort */
       }
     }
-    return { action: 'unregistered', host: d.host, restored, rendererKept: kept.length ? kept : null };
+    return {
+      action: 'unregistered',
+      host: d.host,
+      restored,
+      ...(notRestored ? { notRestored } : {}),
+      rendererKept: kept.length ? kept : null,
+    };
   }
   const { verdict } = d;
   if (verdict !== 'claudemd') return { action: 'not-ours', restored: null };

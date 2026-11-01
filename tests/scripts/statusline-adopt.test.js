@@ -463,6 +463,95 @@ test('detect/remove: a provider without an id that runs our renderer is listed a
   assert.ok(fs.existsSync(destFile()), 'the file the id-less entry runs stays');
 });
 
+// D#628 L1 (0.117.2 pre-tag review): `adopt --supersede=claudemd` saved our own
+// guest entry in the restore record, and remove() then registered it again over
+// a renderer it had just deleted.
+test('D#628: adopt refuses to supersede claudemd itself and writes nothing', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  adopt({ pluginRoot });
+  const before = JSON.stringify(cgReg());
+  assert.throws(() => adopt({ pluginRoot, supersede: 'claudemd' }), /supersede.*claudemd/);
+  assert.throws(() => adopt({ pluginRoot, supersede: 'claudemd', dryRun: true }), /supersede.*claudemd/);
+  assert.equal(JSON.stringify(cgReg()), before, 'registry unchanged');
+  assert.ok(!fs.existsSync(prevFile()), 'no restore record written');
+});
+
+test('D#628: a restore record an older version wrote with our own entry is not restored', () => {
+  seedCg([
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(
+    prevFile(),
+    JSON.stringify({ superseded: [{ id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true }] })
+  );
+  const r = remove();
+  assert.equal(r.action, 'unregistered');
+  assert.equal(r.restored, null, 'our own entry is not put back');
+  assert.deepEqual(
+    cgReg().map(p => p.id),
+    ['code-graph']
+  );
+  assert.ok(!fs.existsSync(destFile()), 'nothing runs the renderer, so it goes');
+  assert.ok(!fs.existsSync(prevFile()));
+});
+
+// D#628 L7: remove() restored a saved provider over a live one with the same id
+// (register replaces by id), so the live `_previous` that ran our renderer was
+// overwritten and the file deleted, although detect listed it in rendererRunBy.
+test('D#628: remove() does not overwrite a live provider with a saved one of the same id', () => {
+  const ps1 = { id: '_previous', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true };
+  const userPs1 = { id: 'user-ps1', command: 'bash "/home/x/.claude/ps1.sh"', needsStdin: true };
+  seedCg([
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: '_previous', command: CMD, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(prevFile(), JSON.stringify({ superseded: [ps1, userPs1] }));
+  assert.deepEqual(detect(pluginRoot).rendererRunBy, ['_previous'], 'precondition');
+
+  const r = remove();
+
+  assert.equal(r.restored, 'user-ps1', 'a saved provider with no live namesake is restored');
+  assert.deepEqual(r.notRestored, ['_previous']);
+  assert.deepEqual(r.rendererKept, ['_previous']);
+  assert.equal(
+    cgReg().find(p => p.id === '_previous').command,
+    CMD,
+    'the live _previous still runs our renderer'
+  );
+  assert.ok(cgReg().some(p => p.id === 'user-ps1'));
+  assert.ok(fs.existsSync(destFile()), 'the file the live _previous runs stays');
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(prevFile(), 'utf8')),
+    { superseded: [ps1] },
+    'the saved provider that was not restored stays in the record'
+  );
+});
+
+test('D#628: a saved provider that runs our renderer but has a live namesake is not in rendererRestoredBy', () => {
+  seedCg([
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: '_previous', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(
+    prevFile(),
+    JSON.stringify({ superseded: [{ id: '_previous', command: CMD, needsStdin: true }] })
+  );
+  const d = detect(pluginRoot);
+  assert.deepEqual(d.rendererRestoredBy, [], 'remove() will not restore it, so it keeps nothing');
+  const r = remove();
+  assert.deepEqual(r.notRestored, ['_previous']);
+  assert.equal(r.rendererKept, null);
+  assert.ok(!fs.existsSync(destFile()), 'detect and remove() agree: nothing left runs the renderer');
+});
+
 test('remove: guest entry alone → unregistered, renderer deleted, nothing kept', () => {
   seedCg([
     { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },

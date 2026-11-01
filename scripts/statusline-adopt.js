@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
-import { resolvePluginRoot } from './lib/paths.js';
+import path from 'node:path';
+import { resolvePluginRoot, stateDir } from './lib/paths.js';
 import { detect, adopt, remove } from './lib/statusline.js';
 
 const USAGE = `Usage: node scripts/statusline-adopt.js <detect|adopt|remove> [flags]
@@ -45,6 +46,7 @@ function renderHuman(mode, out) {
     out.host && `host=${out.host}`,
     sup && `superseded=${sup}`,
     out.restored && `restored=${out.restored}`,
+    out.notRestored && `not-restored=${out.notRestored.join(',')}`,
     out.rendererKept && `renderer-kept-for=${out.rendererKept.join(',')}`,
     out.to && `to=${out.to}`,
   ]
@@ -53,7 +55,11 @@ function renderHuman(mode, out) {
   const missed = out.supersedeMissed
     ? `\n⚠ supersede target '${out.supersedeMissed}' not found — nothing superseded`
     : '';
-  return `action: ${out.action}${tail ? '  ' + tail : ''}${missed}`;
+  const blocked = out.notRestored
+    ? `\n⚠ saved provider(s) ${out.notRestored.join(', ')} not restored: the host already has a provider ` +
+      `with that id. The saved entries are kept in ${path.join(stateDir(), 'statusline-prev.json')}.`
+    : '';
+  return `action: ${out.action}${tail ? '  ' + tail : ''}${missed}${blocked}`;
 }
 
 if (invokedAsMain(import.meta.url)) {
