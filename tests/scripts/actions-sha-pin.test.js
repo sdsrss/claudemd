@@ -360,19 +360,25 @@ test('M1: the patterns see the shapes they guard and skip comments (mutation con
 });
 
 // ── npm trusted publishing (OIDC) ──
-// npm tries OIDC first and, when the exchange fails, falls back to a token in
-// the environment, logging the failure only in verbose output. While
-// NODE_AUTH_TOKEN carried secrets.NPM_TOKEN into the publish step, a wrong
-// trust configuration on npmjs.com would still have published, with the job
-// green. No workflow names either variable outside a comment, so a broken
-// configuration fails the publish instead. `codeLines` is the M1 helper above.
-const TOKEN_RE = /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b/;
+// npm 11 tries OIDC first and, when the exchange fails, falls back to a token
+// in the environment, logging the failure only in verbose output. With a token
+// the package accepts, a wrong trust configuration on npmjs.com would still
+// publish with the job green. claudemd-cli refuses tokens today (0.117.2's
+// token publish got E403), so keeping every npm token out of the workflows
+// means a green publish went through OIDC, and it stays that way if the
+// package setting is ever relaxed.
+// Secret names resolve case-insensitively, so `secrets.npm_token` is the same
+// secret (0.117.3 review M2), and only full-line comments are skipped: a ` #`
+// inside a quoted run-script string is not a comment (review L2).
+const TOKEN_RE = /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b|_authToken|toJSON\(\s*secrets\s*\)|\bsecrets\s*\[/i;
+const nonCommentLines = text =>
+  text.split('\n').map((l, i) => ({ line: i + 1, code: /^\s*#/.test(l) ? '' : l }));
 
-test('trusted publishing: no workflow names NPM_TOKEN or NODE_AUTH_TOKEN outside a comment', t => {
+test('trusted publishing: no workflow supplies an npm token outside a full-line comment', t => {
   const hits = [];
   let judged = 0;
   for (const f of workflowFiles()) {
-    for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
+    for (const { line, code } of nonCommentLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
       if (code.trim() === '') continue;
       judged++;
       if (TOKEN_RE.test(code)) hits.push(`${f}:${line}: ${code.trim()}`);
@@ -385,17 +391,31 @@ test('trusted publishing: no workflow names NPM_TOKEN or NODE_AUTH_TOKEN outside
     [],
     'npm token reference(s) in a workflow:\n      ' +
       hits.join('\n      ') +
-      '\n      npm-publish.yml publishes through npm trusted publishing. With a token in the ' +
-      'environment npm falls back to it when the OIDC exchange fails, so a wrong trust ' +
-      'configuration publishes anyway and the job stays green. Fix the npmjs.com trusted ' +
-      'publisher (organization or user, repository, workflow filename, environment) instead.'
+      '\n      npm-publish.yml publishes through npm trusted publishing. With a token the package ' +
+      'accepts, npm falls back to it when the OIDC exchange fails, so a wrong trust configuration ' +
+      'publishes anyway and the job stays green. Fix the npmjs.com trusted publisher (organization ' +
+      'or user, repository, workflow filename, environment, allowed actions incl. npm publish) instead.'
   );
 });
 
-test('trusted publishing: the token pattern sees code and skips comments (mutation control)', () => {
-  const code = s => codeLines(s)[0].code;
-  assert.ok(TOKEN_RE.test(code('          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}')));
-  assert.ok(TOKEN_RE.test(code('        env: { NODE_AUTH_TOKEN: x }')));
-  assert.ok(!TOKEN_RE.test(code('# Required repo secret: NPM_TOKEN')));
-  assert.ok(!TOKEN_RE.test(code('  id-token: write  # replaces NPM_TOKEN')));
+test('trusted publishing: the token pattern sees the shapes it guards (mutation control)', () => {
+  const code = s => nonCommentLines(s)[0].code;
+  for (const yes of [
+    '          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}',
+    '        env: { NODE_AUTH_TOKEN: x }',
+    '          npm config set //registry.npmjs.org/:_authToken "${{ secrets.npm_token }}"',
+    '          export T="$(echo \'${{ toJSON(secrets) }}\' | jq -r .npm_token)"',
+    "          T=${{ secrets['NPM_TOKEN'] }}",
+    '          echo "step #1"; export NODE_AUTH_TOKEN="${{ secrets.NPM_TOKEN }}"',
+  ]) {
+    assert.ok(TOKEN_RE.test(code(yes)), `token not seen: ${yes}`);
+  }
+  for (const no of [
+    '# Required repo secret: NPM_TOKEN',
+    '        # NODE_AUTH_TOKEN is not set here',
+    '      id-token: write',
+    '          npm publish --provenance --access public --tag "$dist_tag"',
+  ]) {
+    assert.ok(!TOKEN_RE.test(code(no)), `not a token: ${no}`);
+  }
 });

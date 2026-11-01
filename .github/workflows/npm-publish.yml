@@ -16,15 +16,20 @@ name: npm-publish
 # Publishing uses npm trusted publishing (OIDC); no npm token is stored.
 #   npmjs.com → claudemd-cli → Settings → Trusted publishing → GitHub Actions:
 #   organization or user `sdsrss`, repository `claudemd`, workflow filename
-#   `npm-publish.yml`, environment empty (the publish job sets none).
+#   `npm-publish.yml`, environment empty (the publish job sets none), and
+#   allowed actions including `npm publish` (a publisher created after
+#   2026-09-03 allows only `npm stage publish` unless that box is ticked).
 #   Requires npm >= 11.5.1 and Node >= 22.14.0 in the publish job (Node 24
 #   below; Node 20 and 22 bundle npm 10), a GitHub-hosted runner, and the
 #   publish job's `id-token: write`. npm tries OIDC first and falls back to a
 #   token in the environment when the exchange fails, logging that only in
-#   verbose output, so while a token is present a broken trust configuration
-#   still publishes and the job stays green. With none, the publish step fails:
-#   on a 401, 403 or 404 check the four values above and the job's
-#   permissions; do not add a token back.
+#   verbose output: with a token the package accepted, a broken trust
+#   configuration would still publish and the job would stay green. The
+#   package refuses tokens (0.117.2's token publish got E403), and the
+#   placeholder NODE_AUTH_TOKEN setup-node v6.5.0 sets is not one npm can
+#   publish with, so a failed exchange fails the publish step: on a 401, 403
+#   or 404 check the five settings above and the job's permissions; do not
+#   add a token back.
 #
 # Pre-publish gate: `publish` needs BOTH the `static` job and every leg of the
 # `test` matrix — three Linux node legs plus one macOS leg (Round-14 audit
@@ -227,10 +232,11 @@ jobs:
         # whole string would ship a release to `next`. After the strip, a `-` is the
         # prerelease separator.
         #
-        # No token in the environment: npm authenticates through trusted
-        # publishing (see the header), and `--provenance` is generated either
-        # way. tests/scripts/actions-sha-pin.test.js keeps NPM_TOKEN and
-        # NODE_AUTH_TOKEN out of every workflow's non-comment lines.
+        # No npm token in the environment (setup-node sets a placeholder
+        # NODE_AUTH_TOKEN, which npm cannot publish with): npm authenticates
+        # through trusted publishing (see the header), and `--provenance` is
+        # generated either way. tests/scripts/actions-sha-pin.test.js keeps
+        # npm tokens out of every workflow line that is not a full-line comment.
         # tests/scripts/workflow-step-exec.test.js executes this body.
         run: |
           set -eu
