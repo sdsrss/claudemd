@@ -188,6 +188,61 @@ test('statusline: the page says remove restores the whole saved slot and adopt r
   assert.equal(fs.readFileSync(box.claude('settings.json'), 'utf8'), 'null\n');
 });
 
+// D#610: code-graph keeps a slot it took over as provider `_previous`, so our
+// command can render inside the host while claudemd is not a registered guest.
+// The page branched on guestRegistered alone and registered a guest there,
+// which showed claudemd's segment twice.
+test('statusline: the page stops when a host provider already runs our renderer, and detect/adopt say what it names', () => {
+  assertLine(
+    'statusline',
+    '- `host` → the slot is owned by a composite host (`host`, e.g. `code-graph`) that renders multiple providers. Do NOT clobber it. Run `detect --json` and read `providers`, `guestRegistered` and `rendererInUse`:'
+  );
+  assertLine(
+    'statusline',
+    "  - `guestRegistered: false`, `rendererInUse: true` → the host already runs claudemd's renderer under another provider id: the `providers` entry whose `command` contains `claudemd-statusline.sh` (code-graph keeps a slot it took over as `_previous`). Registering would show claudemd's segment twice. Report that id and STOP; register (Step 1) only if the user asks for a second segment. If `dest.matchesShipped` is `false`, offer `adopt --empty-only`, which refreshes the renderer copy and registers nothing."
+  );
+  assertLine(
+    'statusline',
+    "  - `guestRegistered: false`, `rendererInUse: false` → claudemd will register as a guest so both segments show (`claudemd | code-graph`). Read the `psCandidates` array from `detect --json` — each entry is a hand-made PS1 (a `bash` script under `~/.claude/` that isn't a plugin, e.g. `user-ps1`) claudemd can supersede. If it is non-empty, list those `id`s and ASK: supersede one (`adopt --supersede=<id>`, saved for restore) or keep both (`adopt`). Continue to Step 1."
+  );
+  const own = 'bash "$HOME/.claude/claudemd-statusline.sh"';
+  const providers = [
+    { id: '_previous', command: own, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ];
+  const registry = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(registry), { recursive: true });
+  fs.mkdirSync(box.claude(), { recursive: true });
+  fs.writeFileSync(registry, JSON.stringify(providers));
+  fs.writeFileSync(box.claude('statusline-providers.json'), JSON.stringify(providers));
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
+  );
+  fs.writeFileSync(
+    box.claude('claudemd-statusline.sh'),
+    '#!/usr/bin/env bash\n# an older claudemd renderer\n'
+  );
+  const detect = () => JSON.parse(run('statusline-adopt.js', ['detect', '--json'], box.env()).stdout);
+  const d = detect();
+  assert.equal(d.verdict, 'host');
+  assert.equal(d.guestRegistered, false);
+  assert.equal(d.rendererInUse, true);
+  assert.deepEqual(
+    d.providers.filter(p => p.command.includes('claudemd-statusline.sh')).map(p => p.id),
+    ['_previous']
+  );
+  assert.equal(d.dest.matchesShipped, false);
+  const before = fs.readFileSync(registry, 'utf8');
+  const a = run('statusline-adopt.js', ['adopt', '--empty-only', '--json'], box.env());
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(JSON.parse(a.stdout).action, 'renderer-refreshed');
+  const after = detect();
+  assert.equal(after.dest.matchesShipped, true);
+  assert.equal(after.guestRegistered, false);
+  assert.equal(fs.readFileSync(registry, 'utf8'), before, 'nothing registered');
+});
+
 test('doctor: the page says when to run --ack-fail-open, and the fields and file it names are what the flag produces', () => {
   assertLine(
     'doctor',

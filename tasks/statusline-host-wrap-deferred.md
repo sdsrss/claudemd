@@ -84,3 +84,10 @@ Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); th
 - **doctor checks the renderer in that state**; its advice (`/claudemd-install`) was run end to end in the test and turns the row green.
 - **`remove()` unchanged** (`not-ours`, file kept): the `_previous` entry is code-graph's, and deleting the file it runs would break its composite.
 - **Not changed, deferred:** `commands/claudemd-statusline.md` still tells the agent to register as a guest when `guestRegistered` is false, which in this state adds a second claudemd segment. Changing a shipped command body is LLM-visible metadata (L3), so it gets its own change.
+
+## Decision 2026-11-01 (D#610)
+
+- **The page branches on `rendererInUse` too.** `guestRegistered: false` with `rendererInUse: true` means a host provider already runs our renderer under another id (code-graph's `_previous`): the page now reports that id and stops, and registers a guest only if the user asks for a second segment. A stale copy gets `adopt --empty-only`, which refreshes the file and registers nothing (the D#599 path). The guest-register branch is now `guestRegistered: false`, `rendererInUse: false`.
+- **No supersede offer for that id.** `adopt --supersede=_previous` would move code-graph's own restore record into ours; what code-graph does on its uninstall without that entry is not checked here.
+- **Level: L2 bugfix, not L3.** The page's description says it registers "idempotently"; a second claudemd segment breaks that, so the change restores documented behaviour (`fix:`), which caps it at L2. The earlier D#599 entry above called it L3.
+- **Test:** `tests/scripts/command-page-behaviour.test.js` pins the three branch lines and runs `detect --json` / `adopt --empty-only` in a sandbox HOME on the `_previous` state. It failed before the page change (the page lacked the line); a mutant that drops the provider-command test in `detect()` fails it too.
