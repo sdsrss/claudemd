@@ -72,7 +72,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
 | `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
 | `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |
-| `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`) | `pruneCache` |
+| `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`); an older version a running session may still use is held: `.orphaned_at` under 14 days old, or a hook-log row from it in the last 14 days (D#635) | `pruneCache` |
 | `transcript-user-turn.js` | Normalise the two user-turn content shapes (string vs array) | `userTurnText` `isUserTurn` |
 
 **L3 / CLI / spec**

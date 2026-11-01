@@ -37,13 +37,16 @@
 - [x] S1：D#635 测试（红）→ 实现 → 绿
 - [x] S2：D#628 测试（红）→ 实现 → 绿
 - [x] S3：D#613 diff 给使用者看，同意后改规范并跑级联
-- [ ] S4：CHANGELOG、版本五处、`npm run check`、`npm run smoke`
+- [x] S4：CHANGELOG、版本五处、`npm run check`、`npm run smoke`
 - [ ] S5：发版（release 分支、draft PR、PR CI、评审、ff main、tag、GitHub Release、npm 核对）
 
 ## 决策与进展
 
 - 2026-11-01：使用者同意"a 和 b 一起做，下个小版本先写失败测试再修"，并要求把 D#628、D#613、D#598 一起做。查到 Claude Code 官方文档的 14 天宽限期后，宽限期取 14 天（与它一致），(a) 的窗口也取 14 天：会话可以开着很久不触发 hook，窗口太短挡不住。可撤回：只改一个常量。
 - D#613 是规范正文改动，按 §13 META 和 `.claude/rules/spec-edit.md` 先给 diff 再改。2026-11-01 使用者看过 diff，选了“两处都改”：core §7 那一句（v8.3.1，补丁）和 `commands/claudemd-statusline.md` 第 28、30 行（`notRestored`）。
+- 2026-11-01：`npm run check` 在 147acaf 上失败 2 例：`tests/scripts/command-page-behaviour.test.js` 逐字固定命令页整行，5efc96b 改了其中两行。期望值改成已同意的新文字（345702b）。之前只按文件名在 tests/ 里搜过命令页，没按句子搜。
+- 发版进度：release/v0.117.4 已推送，draft PR #27，PR CI run 41335111751；打 tag 前评审已派出（第 1 轮，范围 5126416..345702b）。下一步：评审结果到达后按 §12 修复（Critical/High 先写失败测试），然后填 CHANGELOG 的 @@CHECKS@@ / @@REVIEW@@，PR CI 绿后 ff main、打 tag、GitHub Release、核对两个 tag 工作流和 `npm view claudemd-cli@0.117.4 _npmUser`。
+- 2026-11-01：打 tag 前评审第 1 轮（5126416..345702b）：0C/0H/2M/6L。M1（自我取代的缺陷 0.117.0 就有，CHANGELOG 写成从 0.117.1 起）、M2（Not changed 里写 doctor 的 statusline 行不变，但同名存档且渲染文件缺失时它多了 remove 建议）、L1（标记文件读不了按没有标记处理，只有内容不是数字才留下，CHANGELOG 和注释写成“读不了也留下”）、L2（保留的 3 个里含当前版本）都按文字修，加一处代码注释。L3–L6 不修：L3、L4 都是 0.117.3 就有、只能手工改存档或走别的命令才出现；L5 只影响二分查找；L6 只在设了 `CLAUDEMD_STATE_DIR` 时路径不同，而且改命令页还要再征求同意。全是文字修复，按手册走 claim-drift，不派第 2 轮。
 - 实现中加的一处：`detect()` 的 `rendererRestoredBy` 也按“注册表里已有同 id 就不恢复”来预测，否则它和 `remove()` 实际做的不一致（多了一个用例）。
 - D#598：2026-11-01 重扫（脚本副本，结果在会话草稿区）：38/62。不到条件，不跑；今天已有快照，下一次最晚 11-28。
 
@@ -54,3 +57,5 @@
 - `npm run check`（86c72b3）→ 通过（exit 0；node 1738/1740，2 个跳过；shell 套件全部通过）
 - `node scripts/spec-coherence-audit.js --strict` → 通过（coreDelta=0，extendedDelta=0）；`node scripts/version-cascade-check.js` → 通过
 - `node --test tests/scripts/spec-structure.test.js tests/scripts/spec-modules.test.js` → 通过（99/99）
+- `npm run check`（147acaf）→ 失败（2 例，command-page-behaviour 逐字固定的两行）
+- `npm run check`（345702b）→ 通过（exit 0；node 1738/1740，2 个跳过；shell 套件全部通过）；`npm run smoke` → 通过（2/2）

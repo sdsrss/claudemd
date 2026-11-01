@@ -15,7 +15,7 @@ import { readLogRows } from './rule-hits-parse.js';
 // `.orphaned_at` (ms since epoch) and deletes it 14 days later, "so a session
 // that already loaded the old version keeps running"
 // (code.claude.com/docs/en/plugins/loading, "Cleanup of previous versions").
-// A candidate is held while that mark is under 14 days old (or unreadable), or
+// A candidate is held while that mark is under 14 days old (or not a number), or
 // while the hook log has a row from its version in the last 14 days, which also
 // covers dirs nothing marked. The log window is as long as the mark's because a
 // session can stay open for days without firing a hook.
