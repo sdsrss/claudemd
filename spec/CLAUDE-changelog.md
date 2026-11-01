@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.3.1 (patch, 2026-11-01) — §7's push check reads the run the push gate reads
+
+Design record `tasks/specs/prune-hold-statusline-baseline.md` (D#613). Patch: wording only; the check it describes is the one `ship-baseline-check` has made since 0.117.1. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: core §7 told a session to read the color of `gh run list --branch "$(git branch --show-current)" --limit 1`. On 2026-11-01 that command's first row on sdsrss/claudemd's `main` was GitHub's own `Dependabot Updates` job (event `dynamic`), failed because no fix could be applied, which says nothing about any commit. `ship-baseline-check` skips that pair and gates on the newest completed run of the last 5 (an in-progress run has no color yet), so a session following the text read a green branch as red.
+- **Core §7 Push fires CI/Release** (HARD, requirement unchanged): "check the color of the newest completed run in `gh run list --branch "$(git branch --show-current)" --limit 5`, skipping GitHub's own `Dependabot Updates` job (detached-HEAD → latest-any)." Was: "check `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any)."
+
 ## v8.3.0 (minor, 2026-10-21) — `-D` only through the branch-prune hook's checked command
 
 Design record `tasks/specs/landed-branch-cleanup.md`; data `tasks/landed-branch-cleanup/` (local). Minor, because what a session may do when `git branch -d` refuses changes. No HARD rule added or removed; every rule keeps its ID.

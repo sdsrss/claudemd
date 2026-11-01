@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.3.0 — Core
+# AI-CODING-SPEC v8.3.1 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
 
@@ -124,7 +124,7 @@ A claim of done / fixed / passing names what ran and what it showed, in the repo
 
 Green tests / passing lint ≠ done. Three orthogonal triggers:
 
-- **Push fires CI/Release (pre-action)** (HARD; a push onto red CI hides which change broke it): check `gh run list --branch "$(git branch --show-current)" --limit 1` color (detached-HEAD → latest-any). Green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK.
+- **Push fires CI/Release (pre-action)** (HARD; a push onto red CI hides which change broke it): check the color of the newest completed run in `gh run list --branch "$(git branch --show-current)" --limit 5`, skipping GitHub's own `Dependabot Updates` job (detached-HEAD → latest-any). Green → proceed; red → (a) fix / (b) commit-body `known-red baseline: <reason>` / (c) ASK.
 - **Code writes to user-global / cross-project path** (HARD): `~/.claude/` `~/.cache/` `~/.config/` `os.tmpdir()` `/tmp/` `/var/tmp/` → post-action residue count (`find <explicit-path> -maxdepth 2 -newer <baseline>` / `du -sh <explicit-path>` / equivalent), inline count cited — leaks / orphan writes / cache bloat are invisible to exit code.
 - **Edit touches metric-coupled code** (SHOULD) — bench / oracle / compile-time budget / tool descriptions / adoption-memory / field compression / prompt templates: record baseline before, re-run after, cite both numbers; regression beyond declared threshold → (a) fix / (b) `known-drop: <reason>` / (c) ASK.
 
