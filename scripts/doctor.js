@@ -195,6 +195,11 @@ const ADVISORY =
   /^(memory-tag-specificity|memory-index-size|memory-index-lines|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
+// The exit-code predicate. A row is advisory by NAME (the set above) or, for a
+// counted row whose evidence was inferred on this run, by its own `advisory`
+// flag — `hook-drift` on the `plugin-cache` basis is the one such case.
+export const countsTowardExit = c => !!c && c.ok === false && c.advisory !== true && !isAdvisoryCheck(c.name);
+
 // `hookSelfTests: false` is for tests/scripts/doctor.test.js only: its cases
 // call doctor() in-process ~80 times, the 25 hook spawns were ~88% of each
 // call, and none of those cases read a self-test row. The CLI never passes it.
@@ -252,7 +257,7 @@ function writeFailOpenAck(entries) {
 
 export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFailOpen = false } = {}) {
   const checks = [];
-  const push = (name, ok, detail) => checks.push({ name, ok, detail });
+  const push = (name, ok, detail, extra = null) => checks.push({ name, ok, detail, ...extra });
 
   // Resolved ONCE: four checks below ask "what does Claude Code actually run",
   // and three of them used to answer it with a different directory each time
@@ -265,6 +270,21 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // would put a non-cache path through `inCache()` at the staleRegistration gate
   // and silently retire that row.
   const RUNNING = runningPluginRoot();
+  // `plugin-cache` is the arm both resolvers reach when installed_plugins.json
+  // names no usable claudemd install (and, for RUNNING, no hook recorded a
+  // root): the newest semver dir in the cache, which nothing checks Claude Code
+  // loaded. Three counted rows compare against it — the two version rows below
+  // and `hook-drift`. Measured 2026-11-01 in a sandbox HOME (checkout, healthy
+  // install, an interrupted install's partial 0.200.0 dir): those rows were the
+  // only counted reds, so the exit code turned on which leftover sorts newest.
+  // On that basis they still print, carry `advisory: true`, and stop counting
+  // (countsTowardExit; tasks/hook-drift-plugin-cache-basis-not-verified.md).
+  // `installed-plugins` is Claude Code's own record and `hook-fired` a
+  // measurement; both stay counted.
+  const GUESS_NOTE =
+    ' Advisory: installed_plugins.json names no usable claudemd install, so the root compared here is only ' +
+    'the newest version directory in the plugin cache; this row does not count toward the exit code.';
+  const activeGuess = ACTIVE.source === 'plugin-cache';
 
   const m = readManifest();
   // Three states, not two. `exists && data == null` is a manifest that is ON
@@ -334,8 +354,10 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
           !stale,
           stale
             ? `manifest.pluginRoot holds v${rootVer} but the installed plugin is v${activeVer} — stale registration; ` +
-                `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).`
-            : `manifest.pluginRoot v${rootVer} is current vs installed v${activeVer}`
+                `hooks may run old code. Fix: /claudemd-refresh (or /plugin uninstall claudemd@claudemd, /plugin install claudemd@claudemd, /reload-plugins).` +
+                (activeGuess ? GUESS_NOTE : '')
+            : `manifest.pluginRoot v${rootVer} is current vs installed v${activeVer}`,
+          stale && activeGuess ? { advisory: true } : null
         );
       }
     }
@@ -520,7 +542,9 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       false,
       `this session's hooks run from v${runningVer} (${PLUGIN_ROOT}) but v${registeredVer} is installed. ` +
         `Claude Code pinned the hook paths when the session started and an update landed after that. ` +
-        `Fix: /reload-plugins, or restart Claude Code. Nothing is wrong on disk.`
+        `Fix: /reload-plugins, or restart Claude Code. Nothing is wrong on disk.` +
+        (activeGuess ? GUESS_NOTE : ''),
+      activeGuess ? { advisory: true } : null
     );
   }
 
@@ -625,6 +649,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // sentence. Same defect class as the H-1 this release repairs, so the copy
   // branches on the basis rather than asserting the strongest one.
   const hookFired = RUNNING.source === 'hook-fired';
+  // RUNNING reaches `plugin-cache` only with no hook record AND no usable
+  // registry entry — the guess GUESS_NOTE (near ACTIVE) describes, and the one
+  // basis 0.85.0's reason for counting this row (the running root is MEASURED)
+  // does not cover. Both red arms below print on it and stop counting.
+  const inferred = RUNNING.source === 'plugin-cache';
+  const INFERRED_NOTE = inferred ? GUESS_NOTE : '';
+  const inferredExtra = inferred ? { advisory: true } : null;
   const REINSTALL =
     '/claudemd-refresh (or /plugin uninstall claudemd@claudemd then /plugin install claudemd@claudemd, then /reload-plugins)';
   if (drift2.skipped && drift2.skippedReason === 'no-hooks-in-market') {
@@ -640,7 +671,9 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       false,
       `${RUNNING.root} (via ${basis}) carries no hooks/ directory. ` +
         `Nothing can be running hooks from there, so no comparison was possible — this is not a clean bill of health. ` +
-        `Fix: ${REINSTALL}.`
+        `Fix: ${REINSTALL}.` +
+        INFERRED_NOTE,
+      inferredExtra
     );
   } else if (drift2.skipped) {
     push('hook-drift', true, `skipped (${drift2.skippedReason})`);
@@ -678,7 +711,9 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
             // wrong thing. If the record's existence is worth reporting, read
             // it; do not infer it from this.
             `This root was resolved from the filesystem rather than measured at hook-fire time. ` +
-            `Fix: ${REINSTALL}.`)
+            `Fix: ${REINSTALL}.`) +
+        INFERRED_NOTE,
+      inferredExtra
     );
   }
 
@@ -1551,7 +1586,7 @@ if (invokedAsMain(import.meta.url)) {
       // Code 3, not 1: 1 already means "argv rejected", and reusing it would make
       // a failing health check indistinguishable from a typo'd flag — the same
       // exit-code overloading this pass is removing elsewhere.
-      const failed = (r.checks || []).filter(c => c && c.ok === false && !isAdvisoryCheck(c.name)).length;
+      const failed = (r.checks || []).filter(countsTowardExit).length;
       if (failed > 0) process.exitCode = 3;
     })
     .catch(err => {

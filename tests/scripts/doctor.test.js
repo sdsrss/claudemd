@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { doctor as doctorFull, isAdvisoryCheck } from '../../scripts/doctor.js';
+import { doctor as doctorFull, isAdvisoryCheck, countsTowardExit } from '../../scripts/doctor.js';
 import { runningPluginRoot } from '../../scripts/lib/paths.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
@@ -2165,6 +2165,94 @@ test('hook-drift moves the exit code again, and a matching tree leaves it at 0',
     'the exit code below must have exactly one cause'
   );
   assert.equal(drifted.status, 3, 'a counted row exits 3 — this was 0 for the whole of 0.84.x');
+});
+
+// tasks/hook-drift-plugin-cache-basis-not-verified.md, decided 2026-11-01. With
+// no hook record and no usable registry entry, RUNNING falls through to the
+// `plugin-cache` arm — the newest semver dir in the cache, which nothing checks
+// Claude Code loaded. Measured in a sandbox HOME before the change: a checkout,
+// a healthy install, and an interrupted install's partial 0.200.0 dir left
+// `hook-drift` the ONLY counted red row, so the exit code was decided by which
+// leftover dir sorts newest. 0.85.0 put the row back on the exit code because
+// the running root became MEASURABLE; on this basis it is not measured, so the
+// row still prints and stops counting. The registry arm is the control: the same
+// drifted dir, now named by installed_plugins.json, still exits 3.
+test('hook-drift on the inferred plugin-cache basis prints but does not move the exit code', async () => {
+  const checkout = seedCheckout(box, '0.85.0');
+  const leftover = seedRunnableRoot(box, '0.200.0');
+  fs.rmSync(path.join(leftover, 'hooks'), { recursive: true, force: true });
+  fs.mkdirSync(path.join(leftover, 'hooks'));
+  fs.copyFileSync(
+    path.join(checkout, 'hooks/session-start-check.sh'),
+    path.join(leftover, 'hooks/session-start-check.sh')
+  );
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const installed = spawnSync(process.execPath, [path.join(checkout, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, `the fixture needs a healthy install: ${installed.stderr}`);
+  const registry = box.claude('plugins/installed_plugins.json');
+  assert.equal(fs.existsSync(registry), false, 'the inferred basis needs no registry entry');
+  assert.equal(fs.existsSync(path.join(box.stateDir, 'hook-root.json')), false, 'and no hook record');
+
+  const inferred = spawnDoctorFrom(box, checkout);
+  const drift = inferred.report.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, 'the difference is still reported');
+  assert.match(drift.detail, /via plugin-cache/);
+  assert.equal(drift.advisory, true, 'marked so a reader can see why it did not count');
+  assert.match(drift.detail, /does not count toward the exit code/);
+  // The sibling row on the same guess: manifest v0.85.0 vs the leftover's
+  // package.json v0.200.0 read as "the installed plugin". Found by this test's
+  // first run — the sandbox probe's leftover had no package.json, so the row
+  // could not read a version there and stayed silent.
+  const staleness = inferred.report.checks.find(x => x.name === 'plugin cache:staleness');
+  assert.equal(staleness.ok, false);
+  assert.equal(staleness.advisory, true);
+  assert.match(staleness.detail, /does not count toward the exit code/);
+  assert.deepEqual(
+    inferred.report.checks.filter(countsTowardExit).map(c => c.name),
+    [],
+    'nothing resting on the guess may count'
+  );
+  assert.equal(inferred.status, 0, 'an inferred root must not decide the exit code');
+
+  fs.writeFileSync(
+    registry,
+    JSON.stringify({
+      version: 2,
+      plugins: { 'claudemd@claudemd': [{ scope: 'user', installPath: leftover, version: '0.200.0' }] },
+    })
+  );
+  const registered = spawnDoctorFrom(box, checkout);
+  const drift2 = registered.report.checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift2.ok, false);
+  assert.match(drift2.detail, /via installed-plugins/);
+  assert.equal(drift2.advisory, undefined, 'a registry claim is not the inference');
+  const staleness2 = registered.report.checks.find(x => x.name === 'plugin cache:staleness');
+  assert.equal(staleness2.ok, false);
+  assert.equal(staleness2.advisory, undefined);
+  assert.equal(registered.status, 3, 'the registry basis stays counted');
+});
+
+// The third row on the guess, reached from the END-USER side: doctor launched
+// from a cache dir (what `/claudemd-doctor` runs) while a newer leftover sits
+// beside it and installed_plugins.json names nothing. With a registry this is
+// the real pending-restart state and stays counted (the test above this pair);
+// without one, "v0.83.0 is installed" is the newest-dir guess.
+test('stale registration on the inferred plugin-cache basis is advisory', async () => {
+  const older = seedRunnableRoot(box, '0.81.0', { withScripts: true });
+  seedRunnableRoot(box, '0.83.0');
+  assert.equal(fs.existsSync(box.claude('plugins/installed_plugins.json')), false);
+  const r = runDoctorFrom(box, older);
+  const stale = r.checks.find(x => x.name === 'plugin-root:stale-registration');
+  assert.equal(stale.ok, false);
+  assert.match(stale.detail, /v0\.83\.0 is installed/);
+  assert.equal(stale.advisory, true);
+  assert.match(stale.detail, /does not count toward the exit code/);
+  assert.equal(countsTowardExit(stale), false);
+  assert.equal(isAdvisoryCheck('plugin-root:stale-registration'), false, 'the name stays counted');
 });
 
 // ── Final whole-branch review, I-1 ──
