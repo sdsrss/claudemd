@@ -266,3 +266,77 @@ test('doctor: the page says when to run --ack-fail-open, and the fields and file
   assert.deepEqual([ack.written, ack.acknowledged], [true, 1]);
   assert.ok(fs.existsSync(path.join(box.stateDir, 'fail-open-ack.json')));
 });
+
+// 0.117.5: four page sentences the 0.116.6, 0.117.0 and 0.117.4 entries listed
+// under 'Not changed'. Each case pins the new line and runs what it names.
+const INSTALL_HELD_LINE =
+  "- `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless). `cachePruned.held`: older dirs beyond the three newest that stay because a session opened earlier may still run its hooks from them, each with a `reason`: `orphaned-recently` (Claude Code's `.orphaned_at` mark in the dir is under 14 days old, or does not read as a number) or `hook-rows-recently` (the hook log has a row from that version in the last 14 days). Name them when the list is non-empty; nothing needs doing, since a later install removes each once neither reason holds, and Claude Code deletes a dir it marked 14 days after marking it.";
+
+test('install: the page names cachePruned.held and its two reasons, and pruneCache returns those reasons', () => {
+  assertLine('install', INSTALL_HELD_LINE);
+  const versions = path.join(box.home, '.claude/plugins/cache/claudemd/claudemd');
+  for (const v of ['0.1.1', '0.1.4', '0.1.6', '0.1.9', '0.2.1']) {
+    fs.mkdirSync(path.join(versions, v), { recursive: true });
+  }
+  fs.writeFileSync(path.join(versions, '0.1.4', '.orphaned_at'), String(Date.now() - 86400000));
+  fs.mkdirSync(box.claude('logs'), { recursive: true });
+  fs.writeFileSync(
+    box.claude('logs/claudemd.jsonl'),
+    `{"ts":"${new Date(Date.now() - 3600000).toISOString().replace(/\.\d{3}Z$/, 'Z')}","hook":"verify-log","event":"verify-run","hook_version":"0.1.1"}\n`
+  );
+  const r = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `const { pruneCache } = await import(${JSON.stringify(path.join(REPO, 'scripts/lib/cache-prune.js'))});` +
+        `console.log(JSON.stringify(pruneCache(${JSON.stringify(path.join(versions, '0.2.1'))}, { keep: 3 }).held));`,
+    ],
+    { encoding: 'utf8', env: box.env() }
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(
+    JSON.parse(r.stdout).sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: '0.1.1', reason: 'hook-rows-recently' },
+      { name: '0.1.4', reason: 'orphaned-recently' },
+    ]
+  );
+});
+
+test('install and uninstall: restore passes over newer spec-only backups, as both pages now say', () => {
+  assertLine(
+    'install',
+    "Backup is conditional, not universal: only genuine USER content is moved aside, into `~/.claude/backup-<ISO>/`. An existing `~/.claude/CLAUDE.md` that is already a claudemd spec never enters `backup-<ISO>/`, so the backups install writes there hold only the user's own files. A `/claudemd-update` before 0.68.3 also wrote spec-only backups into that namespace; `CLAUDEMD_SPEC_ACTION=restore` passes over the newer ones (it lists them in `skippedSpecOnly` and leaves them in place) and restores the newest backup that is not spec-only, or the newest one when every backup is spec-only. A spec that was already installed is not discarded either: unless it already matches the shipped spec, it is copied to `spec-backup-<ISO>/` — a separate namespace that restore does not read — so edits somebody made to an installed spec stay recoverable without putting a spec back in restore's reach. Pre-plugin hand-installed hook files go to their own `handhook-backup-<ISO>/` namespace."
+  );
+  assertLine(
+    'uninstall',
+    '- Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the newest backup that is not spec-only (a `/claudemd-update` before 0.68.3 wrote backups holding only spec files; restore passes over newer ones, leaves them in place and lists them in `skippedSpecOnly`, and uses the newest backup when every one is spec-only):'
+  );
+  assertLine(
+    'uninstall',
+    'On a restore, `skippedSpecOnly` (when present) lists the newer backup dirs passed over because they hold only spec files; they are left in place. Name them, so the user knows the restored files came from an older backup.'
+  );
+  const mk = (stamp, text) => {
+    const d = box.claude(`backup-${stamp}`);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'CLAUDE.md'), text);
+    return d;
+  };
+  mk('20260301T000000Z', 'personal\n');
+  const specOnly = mk('20260601T000000Z', '# AI-CODING-SPEC v6.10.0 — Core\nold spec\n');
+  const r = run('uninstall.js', [], box.env({ CLAUDEMD_SPEC_ACTION: 'restore' }));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).skippedSpecOnly, [specOnly]);
+  assert.equal(fs.readFileSync(box.claude('CLAUDE.md'), 'utf8'), 'personal\n');
+});
+
+test('doctor: the page says a failing row with advisory: true does not count, as countsTowardExit reads it', async () => {
+  assertLine(
+    'doctor',
+    'A row with `ok: false` that also carries `advisory: true` does not count toward the exit code: its basis was inferred on this run, as its text says. Show it with [△] and say it does not count.'
+  );
+  const { countsTowardExit } = await import(path.join(REPO, 'scripts/doctor.js'));
+  assert.equal(countsTowardExit({ name: 'hook-drift', ok: false, advisory: true }), false);
+  assert.equal(countsTowardExit({ name: 'hook-drift', ok: false }), true);
+});
