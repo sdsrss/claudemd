@@ -295,6 +295,87 @@ test('statusline: a missing renderer whose superseded provider runs it is advise
   assert.equal(after.ok, true, after.detail);
 });
 
+// 0.117.1 'Not changed': with CLAUDEMD_NO_STATUSLINE=1 install.js leaves the
+// status line alone and copies no renderer, so `/claudemd-install` repairs
+// nothing there. `/claudemd-statusline` does: its `adopt --empty-only` recopies
+// the file in all three wired states and changes no setting. Each state is
+// followed through: the old advice leaves the row red, the new one turns it green.
+for (const [label, wire, drop] of [
+  [
+    'stale, own slot',
+    b => wireStatusline(b, { renderer: '#!/usr/bin/env bash\n# an older claudemd renderer\n' }),
+    false,
+  ],
+  ['missing, own slot', b => wireStatusline(b), true],
+  ['missing, guest', b => wireStatuslineAsGuest(b), true],
+  [
+    'stale, host-run under `_previous`',
+    b => {
+      fs.writeFileSync(
+        b.claude('settings.json'),
+        JSON.stringify({
+          statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+        })
+      );
+      const reg = path.join(b.home, '.cache/code-graph/statusline-registry.json');
+      fs.mkdirSync(path.dirname(reg), { recursive: true });
+      fs.writeFileSync(
+        reg,
+        JSON.stringify([
+          { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+          { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+        ])
+      );
+      fs.writeFileSync(
+        b.claude('claudemd-statusline.sh'),
+        '#!/usr/bin/env bash\n# an older claudemd renderer\n'
+      );
+    },
+    false,
+  ],
+]) {
+  test(`statusline: under CLAUDEMD_NO_STATUSLINE=1 a ${label} renderer is advised /claudemd-statusline, which repairs it`, async () => {
+    wire(box);
+    if (drop)
+      assert.equal(fs.existsSync(box.claude('claudemd-statusline.sh')), false, 'precondition: no renderer');
+    const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    const env = { ...box.env(), CLAUDEMD_NO_STATUSLINE: '1' };
+    delete env.CLAUDE_PLUGIN_ROOT;
+    const saved = process.env.CLAUDEMD_NO_STATUSLINE;
+    process.env.CLAUDEMD_NO_STATUSLINE = '1';
+    try {
+      const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+      assert.equal(c.ok, false, c.detail);
+      assert.match(
+        c.detail,
+        /Fix: run \/claudemd-statusline and have it refresh the renderer \(with CLAUDEMD_NO_STATUSLINE=1, \/claudemd-install does not recopy it\)/
+      );
+      assert.doesNotMatch(c.detail, /Fix: run \/claudemd-install/);
+
+      // The old advice, followed: install.js runs and the row stays red.
+      const installed = spawnSync(process.execPath, [path.join(repo, 'scripts/install.js')], {
+        env,
+        encoding: 'utf8',
+      });
+      assert.equal(installed.status, 0, installed.stderr);
+      assert.equal((await doctor({})).checks.find(x => x.name === 'statusline').ok, false);
+
+      // The new advice, followed: what /claudemd-statusline offers.
+      const adopted = spawnSync(
+        process.execPath,
+        [path.join(repo, 'scripts/statusline-adopt.js'), 'adopt', '--empty-only', '--json'],
+        { env, encoding: 'utf8' }
+      );
+      assert.equal(adopted.status, 0, adopted.stderr);
+      const after = (await doctor({})).checks.find(x => x.name === 'statusline');
+      assert.equal(after.ok, true, after.detail);
+    } finally {
+      if (saved === undefined) delete process.env.CLAUDEMD_NO_STATUSLINE;
+      else process.env.CLAUDEMD_NO_STATUSLINE = saved;
+    }
+  });
+}
+
 test('statusline: the advice names a command that actually recopies the renderer', () => {
   // This assertion was VACUOUS as shipped in 0.84.0 (post-tag review M-1): the
   // detail string embeds the renderer's own path, `…/claudemd-statusline.sh`, so

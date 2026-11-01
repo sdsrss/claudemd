@@ -406,6 +406,16 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // guestRegistered is already true, so it declines the refresh by default,
   // while install.js's adopt({emptyOnly:true}) now refreshes an
   // already-ours renderer in both wired shapes without touching the slot.
+  //
+  // Except under CLAUDEMD_NO_STATUSLINE=1: install.js then leaves the status
+  // line alone and copies no renderer, so `/claudemd-install` repairs nothing.
+  // `/claudemd-statusline`'s `adopt --empty-only` recopies the file in every
+  // wired state below (own slot, registered guest, a host provider running it)
+  // and changes no setting (0.117.1 'Not changed').
+  const RECOPY =
+    process.env.CLAUDEMD_NO_STATUSLINE === '1'
+      ? 'run /claudemd-statusline and have it refresh the renderer (with CLAUDEMD_NO_STATUSLINE=1, /claudemd-install does not recopy it)'
+      : null;
   try {
     const sl = detectStatusline(PLUGIN_ROOT);
     // rendererInUse also covers a host provider that runs our file under an id
@@ -418,7 +428,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline runs it` : 'the statusLine still points at it'} — ` +
-          `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer)` +
+          `every render prints "No such file or directory". Fix: ${RECOPY || 'run /claudemd-install (recopies the renderer)'}` +
           // remove() unwires only our slot or our guest entry, and keeps the file
           // while a host provider runs it under its own id (D#599; 0.117.1 pre-tag
           // review M1) or a superseded one it restores does (D#618), so it
@@ -434,7 +444,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} differs from the shipped renderer — left over from an ` +
-          `older version. Fix: run /claudemd-install (recopies it).`
+          `older version. Fix: ${RECOPY ? `${RECOPY}.` : 'run /claudemd-install (recopies it).'}`
       );
     } else {
       push('statusline', true, `renderer present and matches shipped (${sl.verdict})`);
