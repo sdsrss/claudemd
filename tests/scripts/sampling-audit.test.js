@@ -808,18 +808,21 @@ test('turn-yield-api-error fixture: a stop the API made is not a tell', async ()
   }
 });
 
-test('CALIBRATION closure: six detectors report closed with a reason, two stay collecting', async () => {
+// Six closed on 2026-07-24; §10-V and §11-turn-yield joined them on 2026-11-01
+// (D#576: 3 flags each across every retained transcript, 0/6 violations by
+// three blind raters), so no detector presents itself as pending calibration.
+test('CALIBRATION closure: all eight detectors report closed with a reason', async () => {
   const dir = stageFixture('clean');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
     const closed = Object.entries(r.byRule).filter(([, v]) => v.status === 'closed');
-    assert.equal(closed.length, 6, `expected 6 closed detectors, got ${closed.map(([k]) => k).join(',')}`);
+    assert.equal(closed.length, 8, `expected 8 closed detectors, got ${closed.map(([k]) => k).join(',')}`);
     for (const [k, v] of closed) {
       assert.ok(v.closedReason && v.closedReason.length > 10, `${k} closed without a reason`);
       assert.equal(v.precision, null, `${k} must not present a rate while closed`);
     }
-    assert.equal(r.byRule['§10-V'].status, 'collecting');
-    assert.equal(r.byRule['§11-turn-yield'].status, 'collecting');
+    assert.match(r.byRule['§10-V'].closedReason, /0\/3 violations/);
+    assert.match(r.byRule['§11-turn-yield'].closedReason, /API-error record/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -838,7 +841,8 @@ test('A2 stratification: per-class rows carry closure status (the stratified vie
       'a closed detector must read as closed in the stratified view too'
     );
     assert.ok(r.byClass.self.byRule['§5-hard-auth'].closedReason);
-    assert.equal(r.byClass.self.byRule['§10-V'].status, 'collecting');
+    assert.equal(r.byClass.self.byRule['§10-V'].status, 'closed', 'the 2026-11-01 closure reads through too');
+    assert.ok(r.byClass.self.byRule['§10-V'].closedReason);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

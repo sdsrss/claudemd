@@ -377,11 +377,14 @@ test('A5 selfCompliance: section present, rate withheld while precision uncalibr
   // dashboard contradicted the calibration record by recomputing 'collecting'
   // from precision alone (2026-07-25 audit, loop-F1). This list mirrors the
   // CALIBRATION table in scripts/sampling-audit.js; a drift means one of the
-  // two moved without the other.
+  // two moved without the other. §10-V and §11-turn-yield joined it with the
+  // 2026-11-01 labeling pass (D#576).
   const CLOSED = [
+    '§10-V',
     '§iron-law-2',
     '§10-four-section-order',
     '§10-honesty',
+    '§11-turn-yield',
     '§7-bugfix-anchor',
     '§11-post-compaction',
     '§5-hard-auth',

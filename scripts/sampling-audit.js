@@ -79,16 +79,34 @@ export const PRECISION_GATE = 0.8;
 // and both were repaired in this release, so their precision must be
 // re-measured from scratch — precision stays null, status returns to
 // collecting, and the pre-2026-07-24 series is NOT comparable.
+//
+// 2026-11-01 labeling pass (D#576): the re-measurement those two were waiting
+// for cannot happen as pre-registered. Across every transcript still on disk
+// (all projects; Claude Code deletes transcripts after 30 days) each flagged 3.
+// Three blind raters labeled all six plus nine unflagged turn-yield controls:
+// 0 of 6 flagged were violations, unanimous on all six. §10-V fails the gate on
+// those three alone (0/3 has a 95% upper bound of 0.71). §11-turn-yield's three
+// shared one cause, repaired this release (see `apiError`), which leaves it at
+// zero flags, so nothing is left to calibrate. Both now CLOSED: ~50 flagged per
+// rule at ~3 per 30-day retention window could never accumulate, so
+// `collecting` was a promise the data cannot keep.
 const CALIBRATION = {
   '§10-V': {
     precision: null,
-    labeledAt: '2026-07-24',
-    note: 'sanitize parity restored this release — re-baselined, prior counts not comparable',
+    labeledAt: '2026-11-01',
+    closed:
+      'every flagged turn in the retained transcripts (3 of 8197 opportunities, all projects) labeled by ' +
+      'three blind raters: 0/3 violations (two quoted mentions of a banned word, one statistical ' +
+      '"significantly" about an external metric); 95% upper bound 0.71, below the gate. At ~3 flags per ' +
+      '30-day transcript retention window the ~50-sample calibration cannot accumulate',
   },
   '§11-turn-yield': {
     precision: null,
-    labeledAt: '2026-09-06',
-    note: 'structural subagent-spawn suppression added with spec v6.26.0 — re-baselined, prior counts not comparable',
+    labeledAt: '2026-11-01',
+    closed:
+      'every flagged stop in the retained transcripts labeled by three blind raters: 0/3 violations, all ' +
+      'three after an API-error record Claude Code wrote (suppressed since 0.117.0); with that fixed, 0 ' +
+      'flagged in 1035 opportunities across all projects, so there is nothing to calibrate',
   },
   '§iron-law-2': {
     precision: null,
