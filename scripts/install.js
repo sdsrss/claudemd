@@ -299,7 +299,7 @@ export async function install(opts = {}) {
       settingsBackup: null,
       settingsBackupsPruned: [],
       entries: [],
-      cachePruned: { kept: [], removed: [], skipped: 'not-attempted' },
+      cachePruned: { kept: [], removed: [], held: [], skipped: 'not-attempted' },
       userContentDetected: false,
       statusline: { action: 'skipped-locked' },
     };
@@ -795,11 +795,12 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   const log = path.join(logsDir(), 'claudemd.jsonl');
   if (!fs.existsSync(log)) fs.writeFileSync(log, '');
 
-  // Cache pruning: keep 3 newest version dirs (including current), drop older.
+  // Cache pruning: keep 3 newest version dirs (including current), drop older
+  // ones unless a running session may still use them (`held`, D#635).
   // Best-effort — install has already succeeded; a prune failure must not
   // void that outcome, so the call is wrapped. `pruneCache` is a no-op when
   // pluginRoot basename is not semver (dev-mode via `node scripts/install.js`).
-  let cachePruned = { kept: [], removed: [], skipped: 'not-attempted' };
+  let cachePruned = { kept: [], removed: [], held: [], skipped: 'not-attempted' };
   try {
     cachePruned = pruneCache(pluginRoot, { keep: 3 });
   } catch {

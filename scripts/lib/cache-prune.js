@@ -3,10 +3,48 @@ import path from 'node:path';
 // Single source (2026-07-27 audit, L8): this file declared its own
 // `/^\d+\.\d+\.\d+$/` shadowing the exported one in paths.js. Equivalent today,
 // tested only on the paths.js side — the shape every drifted seam starts as.
-import { SEMVER_RE, pluginCacheDir } from './paths.js';
+import { SEMVER_RE, pluginCacheDir, logsDir } from './paths.js';
+import { readLogRows } from './rule-hits-parse.js';
+
+// A version dir past `keep` can still be the hook root of a running session:
+// Claude Code keeps a session on the version it loaded until /reload-plugins or
+// a restart. D#635 (2026-11-01): 0.117.3's install removed 0.116.6 while two
+// sessions ran their hooks from it, and there every claudemd hook then exited
+// 127 ("No such file or directory"), which does not block, so the §8 gates were
+// off until a reload. Claude Code itself marks a superseded dir with
+// `.orphaned_at` (ms since epoch) and deletes it 14 days later, "so a session
+// that already loaded the old version keeps running"
+// (code.claude.com/docs/en/plugins/loading, "Cleanup of previous versions").
+// A candidate is held while that mark is under 14 days old (or unreadable), or
+// while the hook log has a row from its version in the last 14 days, which also
+// covers dirs nothing marked. The log window is as long as the mark's because a
+// session can stay open for days without firing a hook.
+const HOLD_MS = 14 * 86400 * 1000;
+
+// Number when the mark exists (NaN when it does not parse), null when absent.
+function orphanedAt(dir) {
+  let text;
+  try {
+    text = fs.readFileSync(path.join(dir, '.orphaned_at'), 'utf8');
+  } catch {
+    return null;
+  }
+  return /^\s*\d+\s*$/.test(text) ? Number(text) : NaN;
+}
+
+// Versions with a hook row at or after `since`, across the rotated generations.
+function versionsLoggedSince(since) {
+  const seen = new Set();
+  const { rows } = readLogRows(path.join(logsDir(), 'claudemd.jsonl'));
+  for (const { row, t } of rows) {
+    if (t >= since && typeof row.hook_version === 'string') seen.add(row.hook_version);
+  }
+  return seen;
+}
 
 // Prune sibling version dirs of `pluginRoot` down to `keep` newest (by semver),
-// always retaining `pluginRoot` itself.
+// always retaining `pluginRoot` itself, and holding any older dir that may still
+// be in use (above). `held` lists those with the reason.
 //
 // TWO independent gates, because the first one alone was not a location check
 // (2026-09-02 audit R11-02). `SEMVER_RE.test(basename)` constrains the SHAPE of
@@ -28,31 +66,32 @@ import { SEMVER_RE, pluginCacheDir } from './paths.js';
 // home. realpath also subsumes the old existence check.
 export function pruneCache(pluginRoot, { keep = 3 } = {}) {
   let realRoot;
+  const skip = skipped => ({ kept: [], removed: [], held: [], skipped });
   try {
     realRoot = fs.realpathSync(pluginRoot);
   } catch {
-    return { kept: [], removed: [], skipped: 'missing-versions-dir' };
+    return skip('missing-versions-dir');
   }
 
   const currentVersion = path.basename(realRoot);
   const versionsDir = path.dirname(realRoot);
 
   if (!SEMVER_RE.test(currentVersion)) {
-    return { kept: [], removed: [], skipped: 'non-semver-plugin-root' };
+    return skip('non-semver-plugin-root');
   }
 
   let cacheRoot;
   try {
     cacheRoot = fs.realpathSync(pluginCacheDir());
   } catch {
-    return { kept: [], removed: [], skipped: 'outside-plugin-cache' };
+    return skip('outside-plugin-cache');
   }
   if (!(versionsDir + path.sep).startsWith(cacheRoot + path.sep)) {
-    return { kept: [], removed: [], skipped: 'outside-plugin-cache' };
+    return skip('outside-plugin-cache');
   }
 
   if (!fs.existsSync(versionsDir)) {
-    return { kept: [], removed: [], skipped: 'missing-versions-dir' };
+    return skip('missing-versions-dir');
   }
 
   const siblings = fs
@@ -78,12 +117,25 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
   }
 
   const removed = [];
-  for (const s of siblings) {
-    if (!keepSet.has(s.name)) {
-      fs.rmSync(s.dir, { recursive: true, force: true });
-      removed.push(s.dir);
+  const held = [];
+  const candidates = siblings.filter(s => !keepSet.has(s.name));
+  if (candidates.length) {
+    const now = Date.now();
+    // Read only when something could go: most installs see ≤ keep dirs.
+    const logged = versionsLoggedSince(now - HOLD_MS);
+    for (const s of candidates) {
+      const mark = orphanedAt(s.dir);
+      // `!(age >= HOLD_MS)` holds a NaN mark and a future-dated one too.
+      if (mark !== null && !(now - mark >= HOLD_MS)) {
+        held.push({ name: s.name, reason: 'orphaned-recently' });
+      } else if (logged.has(s.name)) {
+        held.push({ name: s.name, reason: 'hook-rows-recently' });
+      } else {
+        fs.rmSync(s.dir, { recursive: true, force: true });
+        removed.push(s.dir);
+      }
     }
   }
 
-  return { kept: [...keepSet], removed, skipped: null };
+  return { kept: [...keepSet], removed, held, skipped: null };
 }

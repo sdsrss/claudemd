@@ -138,6 +138,106 @@ test('R11-02.2: the guard resolves symlinks — a link INTO the cache still prun
   assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')));
 });
 
+// --- D#635 (2026-11-01): pruning deleted a version dir live sessions ran from ---
+// 0.117.3's install removed 0.116.6 while two sessions still ran their hooks
+// from it; with the dir gone every claudemd hook there exits 127, which does not
+// block. Claude Code marks a superseded dir with `.orphaned_at` (ms) and deletes
+// it 14 days later so a session that loaded it keeps running; prune holds a dir
+// while either that mark or the hook log says it may still be in use.
+
+const DAY = 86400 * 1000;
+const logPath = () => path.join(sandbox, '.claude/logs/claudemd.jsonl');
+
+function markOrphaned(name, content) {
+  fs.writeFileSync(path.join(versionsDir, name, '.orphaned_at'), String(content));
+}
+
+function logRow(version, msAgo, file = logPath()) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const row = {
+    ts: new Date(Date.now() - msAgo).toISOString(),
+    hook: 'verify-log',
+    event: 'verify-run',
+    hook_version: version,
+  };
+  fs.appendFileSync(file, JSON.stringify(row) + '\n');
+}
+
+test('D#635.1: a dir Claude Code orphaned under 14 days ago is held; one orphaned earlier goes', () => {
+  for (const v of ['0.1.1', '0.1.4', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  markOrphaned('0.1.4', Date.now() - 1 * DAY);
+  markOrphaned('0.1.1', Date.now() - 20 * DAY);
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.4')), 'orphaned 1 day ago: a session may still run it');
+  assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')), 'orphaned 20 days ago and no log rows: removed');
+  assert.deepEqual(r.held, [{ name: '0.1.4', reason: 'orphaned-recently' }]);
+  assert.deepEqual(r.removed, [path.join(versionsDir, '0.1.1')]);
+  assert.deepEqual(r.kept.sort(), ['0.1.6', '0.1.9', '0.2.1']);
+});
+
+test('D#635.2: a dir whose version logged a hook row in the last 14 days is held, marked or not', () => {
+  for (const v of ['0.1.1', '0.1.4', '0.1.5', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  logRow('0.1.5', 2 * DAY); // unmarked, recent row → held
+  markOrphaned('0.1.4', Date.now() - 20 * DAY);
+  logRow('0.1.4', 3 * DAY); // old mark, recent row → held
+  logRow('0.1.1', 30 * DAY); // unmarked, only an old row → removed
+  logRow('0.1.6', 1 * DAY); // a kept version's row holds nothing else
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.5')));
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.4')));
+  assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')));
+  assert.deepEqual(
+    r.held.sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: '0.1.4', reason: 'hook-rows-recently' },
+      { name: '0.1.5', reason: 'hook-rows-recently' },
+    ]
+  );
+});
+
+test('D#635.3: rows in the rotated log generations count', () => {
+  for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  logRow('0.1.1', 5 * DAY, `${logPath()}.1`);
+  logRow('0.2.1', 0, logPath());
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.1')), 'the row in claudemd.jsonl.1 holds it');
+  assert.deepEqual(r.held, [{ name: '0.1.1', reason: 'hook-rows-recently' }]);
+});
+
+test('D#635.4: a marker that is not a number holds the dir', () => {
+  for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  markOrphaned('0.1.1', 'not-a-timestamp');
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.1')));
+  assert.deepEqual(r.held, [{ name: '0.1.1', reason: 'orphaned-recently' }]);
+});
+
+test('D#635.6: a log that cannot be read throws before anything is removed (install swallows it)', () => {
+  for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  fs.mkdirSync(logPath(), { recursive: true }); // EISDIR on read, as root too
+
+  assert.throws(() => pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 }));
+  assert.ok(
+    fs.existsSync(path.join(versionsDir, '0.1.1')),
+    'no candidate is removed when liveness is unknown'
+  );
+});
+
+test('D#635.5: no candidates beyond keep → held is empty and removal is unchanged', () => {
+  for (const v of ['0.1.9', '0.2.1']) mkVersion(v);
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+  assert.deepEqual(r.held, []);
+  assert.deepEqual(r.removed, []);
+});
+
 test('R11-02.3: missing plugin cache dir → skip rather than scan', () => {
   fs.rmSync(path.join(sandbox, '.claude/plugins'), { recursive: true, force: true });
   const ghostVersions = path.join(sandbox, 'elsewhere');
