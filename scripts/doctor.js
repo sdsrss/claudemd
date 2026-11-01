@@ -409,9 +409,10 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   //
   // Except under CLAUDEMD_NO_STATUSLINE=1: install.js then leaves the status
   // line alone and copies no renderer, so `/claudemd-install` repairs nothing.
-  // `/claudemd-statusline`'s `adopt --empty-only` recopies the file in every
-  // wired state below (own slot, registered guest, a host provider running it)
-  // and changes no setting (0.117.1 'Not changed').
+  // `/claudemd-statusline` recopies it when asked: its page re-runs `adopt` for
+  // our own slot and a registered guest, and offers `adopt --empty-only` when a
+  // host provider runs the file (0.117.1 'Not changed'). Only `=== '1'` counts,
+  // the same test install.js makes.
   const RECOPY =
     process.env.CLAUDEMD_NO_STATUSLINE === '1'
       ? 'run /claudemd-statusline and have it refresh the renderer (with CLAUDEMD_NO_STATUSLINE=1, /claudemd-install does not recopy it)'

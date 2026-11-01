@@ -270,7 +270,7 @@ test('doctor: the page says when to run --ack-fail-open, and the fields and file
 // 0.117.5: four page sentences the 0.116.6, 0.117.0 and 0.117.4 entries listed
 // under 'Not changed'. Each case pins the new line and runs what it names.
 const INSTALL_HELD_LINE =
-  "- `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless). `cachePruned.held`: older dirs beyond the three newest that stay because a session opened earlier may still run its hooks from them, each with a `reason`: `orphaned-recently` (Claude Code's `.orphaned_at` mark in the dir is under 14 days old, or does not read as a number) or `hook-rows-recently` (the hook log has a row from that version in the last 14 days). Name them when the list is non-empty; nothing needs doing, since a later install removes each once neither reason holds, and Claude Code deletes a dir it marked 14 days after marking it.";
+  "- `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless). `cachePruned.held`: older dirs install would otherwise remove (it keeps three: the current version and the newest others) that stay because a session opened earlier may still run its hooks from them, each with a `reason`: `orphaned-recently` (Claude Code's `.orphaned_at` mark in the dir is under 14 days old, or does not read as a number) or `hook-rows-recently` (the hook log has a row from that version in the last 14 days). Name them when the list is non-empty. A later install removes each once neither reason holds, and Claude Code deletes a dir it marked 14 days after marking it; a mark that does not read as a number holds its dir on every install.";
 
 test('install: the page names cachePruned.held and its two reasons, and pruneCache returns those reasons', () => {
   assertLine('install', INSTALL_HELD_LINE);
@@ -307,15 +307,15 @@ test('install: the page names cachePruned.held and its two reasons, and pruneCac
 test('install and uninstall: restore passes over newer spec-only backups, as both pages now say', () => {
   assertLine(
     'install',
-    "Backup is conditional, not universal: only genuine USER content is moved aside, into `~/.claude/backup-<ISO>/`. An existing `~/.claude/CLAUDE.md` that is already a claudemd spec never enters `backup-<ISO>/`, so the backups install writes there hold only the user's own files. A `/claudemd-update` before 0.68.3 also wrote spec-only backups into that namespace; `CLAUDEMD_SPEC_ACTION=restore` passes over the newer ones (it lists them in `skippedSpecOnly` and leaves them in place) and restores the newest backup that is not spec-only, or the newest one when every backup is spec-only. A spec that was already installed is not discarded either: unless it already matches the shipped spec, it is copied to `spec-backup-<ISO>/` — a separate namespace that restore does not read — so edits somebody made to an installed spec stay recoverable without putting a spec back in restore's reach. Pre-plugin hand-installed hook files go to their own `handhook-backup-<ISO>/` namespace."
+    "Backup is conditional, not universal: only genuine USER content is moved aside, into `~/.claude/backup-<ISO>/`. An existing `~/.claude/CLAUDE.md` that is already a claudemd spec never enters `backup-<ISO>/`, so no backup install writes there has the spec as its `CLAUDE.md`; the three spec files beside the user's own `CLAUDE.md` (`CLAUDE-extended.md`, `CLAUDE-changelog.md`, `OPERATOR.md`, when present) move with it, so that restore puts the whole earlier state back. A `/claudemd-update` before 0.68.3 also wrote spec backups into that namespace. `CLAUDEMD_SPEC_ACTION=restore` passes over a newer backup that holds a `CLAUDE.md` and nothing but spec files (it lists it in `skippedSpecOnly` and leaves it in place) and restores the newest other one, or the newest of all when every backup is like that; a backup of spec files with no `CLAUDE.md` is not passed over, and restore puts those spec files back. A spec that was already installed is not discarded either: unless it already matches the shipped spec, it is copied to `spec-backup-<ISO>/` — a separate namespace that restore does not read — so edits somebody made to an installed spec stay recoverable without putting a spec back in restore's reach. Pre-plugin hand-installed hook files go to their own `handhook-backup-<ISO>/` namespace."
   );
   assertLine(
     'uninstall',
-    '- Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the newest backup that is not spec-only (a `/claudemd-update` before 0.68.3 wrote backups holding only spec files; restore passes over newer ones, leaves them in place and lists them in `skippedSpecOnly`, and uses the newest backup when every one is spec-only):'
+    '- Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the newest backup that is not a spec backup (a `/claudemd-update` before 0.68.3 wrote spec backups there; restore passes over a newer dir that holds a `CLAUDE.md` and nothing but spec files, leaves it in place and lists it in `skippedSpecOnly`, and uses the newest backup when every one is such a dir; a dir of spec files with no `CLAUDE.md` is not passed over, and its spec files are restored):'
   );
   assertLine(
     'uninstall',
-    'On a restore, `skippedSpecOnly` (when present) lists the newer backup dirs passed over because they hold only spec files; they are left in place. Name them, so the user knows the restored files came from an older backup.'
+    'On a restore, `skippedSpecOnly` (when present) lists the newer backup dirs passed over because they hold a `CLAUDE.md` and nothing but spec files; they are left in place. Name them, so the user knows the restored files came from an older backup.'
   );
   const mk = (stamp, text) => {
     const d = box.claude(`backup-${stamp}`);
@@ -339,4 +339,29 @@ test('doctor: the page says a failing row with advisory: true does not count, as
   const { countsTowardExit } = await import(path.join(REPO, 'scripts/doctor.js'));
   assert.equal(countsTowardExit({ name: 'hook-drift', ok: false, advisory: true }), false);
   assert.equal(countsTowardExit({ name: 'hook-drift', ok: false }), true);
+});
+
+// 0.117.5 pre-tag review M1: a spec backup with no `CLAUDE.md` is not passed
+// over (holdsOnlySpecFiles needs one), and restore puts its spec files back. Both
+// pages now say so; this runs the reviewer's repro.
+test('install and uninstall: a backup of spec files with no CLAUDE.md is restored, as both pages say', () => {
+  const mk = (stamp, files) => {
+    const d = box.claude(`backup-${stamp}`);
+    fs.mkdirSync(d, { recursive: true });
+    for (const [n, t] of Object.entries(files)) fs.writeFileSync(path.join(d, n), t);
+    return d;
+  };
+  mk('20260301T000000Z', { 'CLAUDE.md': 'personal\n' });
+  mk('20260601T000000Z', { 'CLAUDE-extended.md': '# AI-CODING-SPEC v6.10.0 — Extended\nold\n' });
+  const r = run('uninstall.js', [], box.env({ CLAUDEMD_SPEC_ACTION: 'restore' }));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).skippedSpecOnly, undefined, 'not passed over');
+  assert.equal(
+    fs.readFileSync(box.claude('CLAUDE-extended.md'), 'utf8'),
+    '# AI-CODING-SPEC v6.10.0 — Extended\nold\n',
+    'its spec file is restored'
+  );
+  const home = box.claude('CLAUDE.md');
+  const now = fs.existsSync(home) ? fs.readFileSync(home, 'utf8') : null;
+  assert.notEqual(now, 'personal\n', "the older dir's CLAUDE.md is not used");
 });

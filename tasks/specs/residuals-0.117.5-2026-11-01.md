@@ -14,14 +14,14 @@
 
 ## 验收标准
 
-- [x] AC1：`CLAUDEMD_NO_STATUSLINE=1` 下，renderer 过期或缺失时（自己的槽位、注册的 guest、宿主用 `_previous` 运行），statusline 行建议 `/claudemd-statusline`，不再写 "run /claudemd-install"；照旧建议跑 install.js 后行仍是红的，照新建议跑 `adopt --empty-only` 后变绿。验证：`node --test tests/scripts/doctor.test.js`（4 条新用例；修复前 3 条失败，第 4 条是后补的状态；变异体 4/4 失败）。
-- [x] AC2：三个命令页五处新句子与代码一致：`cachePruned.held` 及其两种 `reason`；restore 跳过较新的 spec-only 备份并列入 `skippedSpecOnly`；doctor 的 `advisory: true` 不计入退出码。验证：`node --test tests/scripts/command-page-behaviour.test.js`（3 条新用例在旧页面上失败）。
+- [x] AC1：`CLAUDEMD_NO_STATUSLINE=1` 下，renderer 过期或缺失时（自己的槽位、注册的 guest、宿主用 `_previous` 运行），statusline 行建议 `/claudemd-statusline`，不再写 "run /claudemd-install"；照旧建议跑 install.js 后行仍是红的，照 `/claudemd-statusline` 页面在该状态下给的命令（自己的槽位和 guest 是 `adopt`，宿主运行是 `adopt --empty-only`）跑后变绿，且设置文件逐字节不变；开关取 `0`、`true`、空值时建议不变。验证：`node --test tests/scripts/doctor.test.js`（7 条新用例；4 条 opt-out 用例在 v0.117.4 的 doctor.js 上全部失败；评审给出的 5 个变异体各至少 2 条失败）。
+- [x] AC2：三个命令页五处新句子与代码一致：`cachePruned.held` 及其两种 `reason`；restore 跳过较新的、含 `CLAUDE.md` 且只有 spec 文件的备份并列入 `skippedSpecOnly`，没有 `CLAUDE.md` 的 spec 备份不跳过；doctor 的 `advisory: true` 不计入退出码。验证：`node --test tests/scripts/command-page-behaviour.test.js`（4 条新用例；含整行锁定的 3 条在旧页面上失败）。
 - [x] AC3：两项评估的结论写进已跟踪的设计记录，数字可由本地材料复算。验证：`node tasks/r3-wtree-eval/analyze.mjs` 的输出与 `tasks/specs/wtree-evidence.md` 记的数一致。
 - [ ] AC4：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过；tag、GitHub Release、npm（`_npmUser` 为 GitHub Actions）。
 
 ## 方案
 
-- doctor：install.js 在 `CLAUDEMD_NO_STATUSLINE=1` 时整段跳过 status line（`scripts/install.js:815`），所以 `/claudemd-install` 在这种状态下不会重新拷贝 renderer。`statusline-adopt.js adopt --empty-only` 在三种接线状态下都会拷贝（`scripts/lib/statusline.js` 的 `refreshed` / `guest-refreshed` / `renderer-refreshed` 三个分支），且不改任何设置，`/claudemd-statusline` 页面会提供它。只在开关为 `1` 时换建议文字，其余文字逐字不变（已有测试锁着）。
+- doctor：install.js 在 `CLAUDEMD_NO_STATUSLINE=1` 时整段跳过 status line（`scripts/install.js:815`），所以 `/claudemd-install` 在这种状态下不会重新拷贝 renderer。`/claudemd-statusline` 被要求刷新时会重新拷贝：它的页面对自己的槽位和已注册 guest 写的是重跑 `adopt`，对宿主用别的 id 运行的状态写的是 `adopt --empty-only`（评审 L1 指出原稿把 `--empty-only` 说成三种状态通用）。`adopt` 对命令与本版本不同的 guest 条目会重新注册（改写 registry，2026-11-01 复现）。只在开关为 `1` 时换建议文字（与 install.js 的判定相同），其余文字逐字不变（已有测试锁着）。
 - 命令页：每句都先读代码再写（`scripts/lib/cache-prune.js` 的 hold 规则、`scripts/uninstall.js` 的 restore 选择、`scripts/doctor.js` 的 `countsTowardExit`）。新句子独立成行，测试锁整行，并跑一遍它描述的行为。
 - 两项评估（材料在本地 `tasks/r3-wtree-eval/`、`tasks/cross-repo-write/`）：R3 盲标 108 条（88 条分歧全部，加两个一致格子各 10 条对照），三个 Opus 盲评员，多数票；cross-repo-write 逐条读 4 次命中的 transcript。
 
@@ -49,3 +49,6 @@
 - 同上（修复后）→ 通过（4/4）；`node --test tests/scripts/doctor.test.js` → 通过（127/127）
 - 变异体（开关判定永远为假）→ 新用例 4/4 失败
 - `node --test --test-name-pattern='cachePruned.held|spec-only backups|advisory: true' tests/scripts/command-page-behaviour.test.js`（改页面前）→ 失败（3 条：页面缺这些行）；改后 `node --test tests/scripts/command-page-behaviour.test.js` → 通过（13/13）
+- 发版前评审第 1 轮（17eac21..4bd7e25，新开的 release-reviewer）：0 Critical、0 High、1 Medium、6 Low。逐条对照代码核实后修复：M1（restore 只跳过含 `CLAUDE.md` 的 spec 备份，`scripts/lib/backup.js:360`）、L2（用户内容扫描连带三个 spec 文件，`scripts/install.js:569-573`）、L3（keep 3 = 当前版本加最新的其他版本）、L4（读不成数字的标记每次都保留）、L1（各状态的命令不同）、L5（4 个变异体存活，测试改为锁整句并锁 `=== '1'`）、L6（第 4 条用例在 v0.117.4 上也失败，已复现）。修复只有文字、测试和一处 `doctor.js` 注释，按 runbook 走 claim-drift 自查，不再派第二轮评审。e5dec8d、7a6cc1a 已推送，提交信息保留原措辞，CHANGELOG 的评审段写明。
+- `node --test --test-name-pattern=CLAUDEMD_NO_STATUSLINE tests/scripts/doctor.test.js`（修复轮后）→ 通过（7/7）；评审的 5 个变异体 → 失败（4、2、2、4、2 条）
+- `node --test tests/scripts/doctor.test.js tests/scripts/command-page-behaviour.test.js`（修复轮后）→ 通过（144/144）

@@ -297,42 +297,46 @@ test('statusline: a missing renderer whose superseded provider runs it is advise
 
 // 0.117.1 'Not changed': with CLAUDEMD_NO_STATUSLINE=1 install.js leaves the
 // status line alone and copies no renderer, so `/claudemd-install` repairs
-// nothing there. `/claudemd-statusline` does: its `adopt --empty-only` recopies
-// the file in all three wired states and changes no setting. Each state is
-// followed through: the old advice leaves the row red, the new one turns it green.
-for (const [label, wire, drop] of [
-  [
-    'stale, own slot',
-    b => wireStatusline(b, { renderer: '#!/usr/bin/env bash\n# an older claudemd renderer\n' }),
-    false,
-  ],
-  ['missing, own slot', b => wireStatusline(b), true],
-  ['missing, guest', b => wireStatuslineAsGuest(b), true],
-  [
-    'stale, host-run under `_previous`',
-    b => {
-      fs.writeFileSync(
-        b.claude('settings.json'),
-        JSON.stringify({
-          statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
-        })
-      );
-      const reg = path.join(b.home, '.cache/code-graph/statusline-registry.json');
-      fs.mkdirSync(path.dirname(reg), { recursive: true });
-      fs.writeFileSync(
-        reg,
-        JSON.stringify([
-          { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
-          { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
-        ])
-      );
-      fs.writeFileSync(
-        b.claude('claudemd-statusline.sh'),
-        '#!/usr/bin/env bash\n# an older claudemd renderer\n'
-      );
-    },
-    false,
-  ],
+// nothing there. `/claudemd-statusline` does when asked: for our own slot and a
+// registered guest its page says to re-run `adopt`, and when a host provider runs
+// the file it offers `adopt --empty-only`. Each state is followed through with
+// the command the page names: the old advice leaves the row red, the new one
+// turns it green and writes no setting. The whole Fix clause is pinned, the
+// remove clause included (0.117.5 pre-tag review L5).
+const OPTOUT_FIX =
+  'Fix: run /claudemd-statusline and have it refresh the renderer (with CLAUDEMD_NO_STATUSLINE=1, /claudemd-install does not recopy it)';
+const REMOVE_TAIL = ', or /claudemd-statusline remove to unwire it.';
+const STALE_RENDERER = '#!/usr/bin/env bash\n# an older claudemd renderer\n';
+function wirePreviousProvider(b) {
+  fs.writeFileSync(
+    b.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(b.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  fs.writeFileSync(b.claude('claudemd-statusline.sh'), STALE_RENDERER);
+}
+const settingFiles = b => [
+  b.claude('settings.json'),
+  path.join(b.home, '.cache/code-graph/statusline-registry.json'),
+  b.claude('statusline-providers.json'),
+];
+const readOrNull = f => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null);
+
+for (const [label, wire, drop, tail, adoptArgs] of [
+  ['stale, own slot', b => wireStatusline(b, { renderer: STALE_RENDERER }), false, '.', ['adopt']],
+  ['missing, own slot', b => wireStatusline(b), true, REMOVE_TAIL, ['adopt']],
+  ['missing, guest', b => wireStatuslineAsGuest(b), true, REMOVE_TAIL, ['adopt']],
+  ['stale, host-run under `_previous`', wirePreviousProvider, false, '.', ['adopt', '--empty-only']],
 ]) {
   test(`statusline: under CLAUDEMD_NO_STATUSLINE=1 a ${label} renderer is advised /claudemd-statusline, which repairs it`, async () => {
     wire(box);
@@ -346,11 +350,7 @@ for (const [label, wire, drop] of [
     try {
       const c = (await doctor({})).checks.find(x => x.name === 'statusline');
       assert.equal(c.ok, false, c.detail);
-      assert.match(
-        c.detail,
-        /Fix: run \/claudemd-statusline and have it refresh the renderer \(with CLAUDEMD_NO_STATUSLINE=1, \/claudemd-install does not recopy it\)/
-      );
-      assert.doesNotMatch(c.detail, /Fix: run \/claudemd-install/);
+      assert.ok(c.detail.endsWith(OPTOUT_FIX + tail), c.detail);
 
       // The old advice, followed: install.js runs and the row stays red.
       const installed = spawnSync(process.execPath, [path.join(repo, 'scripts/install.js')], {
@@ -360,15 +360,36 @@ for (const [label, wire, drop] of [
       assert.equal(installed.status, 0, installed.stderr);
       assert.equal((await doctor({})).checks.find(x => x.name === 'statusline').ok, false);
 
-      // The new advice, followed: what /claudemd-statusline offers.
+      // The new advice, followed: the command /claudemd-statusline's page names
+      // for this state. It recopies the renderer and writes no setting.
+      const before = settingFiles(box).map(readOrNull);
       const adopted = spawnSync(
         process.execPath,
-        [path.join(repo, 'scripts/statusline-adopt.js'), 'adopt', '--empty-only', '--json'],
+        [path.join(repo, 'scripts/statusline-adopt.js'), ...adoptArgs, '--json'],
         { env, encoding: 'utf8' }
       );
       assert.equal(adopted.status, 0, adopted.stderr);
+      assert.deepEqual(settingFiles(box).map(readOrNull), before, 'no setting changes');
       const after = (await doctor({})).checks.find(x => x.name === 'statusline');
       assert.equal(after.ok, true, after.detail);
+    } finally {
+      if (saved === undefined) delete process.env.CLAUDEMD_NO_STATUSLINE;
+      else process.env.CLAUDEMD_NO_STATUSLINE = saved;
+    }
+  });
+}
+
+// Only the value install.js reads as the opt-out (`=== '1'`) switches the
+// advice: under any other value install.js does recopy (0.117.5 review L5).
+for (const value of ['0', 'true', '']) {
+  test(`statusline: CLAUDEMD_NO_STATUSLINE=${JSON.stringify(value)} keeps the /claudemd-install advice`, async () => {
+    wireStatusline(box, { renderer: STALE_RENDERER });
+    const saved = process.env.CLAUDEMD_NO_STATUSLINE;
+    process.env.CLAUDEMD_NO_STATUSLINE = value;
+    try {
+      const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+      assert.equal(c.ok, false, c.detail);
+      assert.ok(c.detail.endsWith('Fix: run /claudemd-install (recopies it).'), c.detail);
     } finally {
       if (saved === undefined) delete process.env.CLAUDEMD_NO_STATUSLINE;
       else process.env.CLAUDEMD_NO_STATUSLINE = saved;
