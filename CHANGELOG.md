@@ -8,6 +8,39 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.4] - 2026-11-01
+
+**An install no longer deletes an older version folder that a running session's hooks still run from. Two `/claudemd-statusline` states left over from 0.117.1 are fixed, and spec v8.3.1's §7 check before a push skips GitHub's Dependabot job, as the push gate already does.**
+
+**What changes for users.**
+- After an install, claudemd keeps the three newest version folders under `~/.claude/plugins/cache/claudemd/claudemd/` and removes the older ones. Until now it removed one even while a session opened earlier still ran its hooks from it. In that session every claudemd hook then failed with "No such file or directory" (exit 127), which Claude Code does not treat as a block, so the §8 gates stayed off there until `/reload-plugins` or a restart (seen here on 2026-11-01 in two sessions). An older folder now stays while either of two things says a session may still use it: Claude Code's `.orphaned_at` mark in the folder is under 14 days old (or does not read as a number), or the hook log has a row from that version in the last 14 days. Claude Code deletes a marked folder itself 14 days after marking it. The install result's `cachePruned` gains `held`, which lists each folder kept this way and why.
+- `statusline-adopt.js adopt --supersede=claudemd` exits 1 and writes nothing; it used to save claudemd's own entry as a provider to restore. A restore record an older version wrote that way is now read without that entry, so `remove` takes claudemd out and deletes the renderer nothing else runs; from 0.117.1 on it put claudemd's entry back over the renderer it had just deleted.
+- `remove` no longer restores a saved provider over a host provider that has the same id now. That one stays in `~/.claude/.claudemd-state/statusline-prev.json`, the result lists it as `notRestored`, and the human output says where it is. Before, the saved entry replaced the live one, and when the live one ran the renderer, the renderer was deleted too.
+- Spec v8.3.1 (core §7, Push fires CI/Release): "check the color of the newest completed run in `gh run list --branch "$(git branch --show-current)" --limit 5`, skipping GitHub's own `Dependabot Updates` job". It said `--limit 1`, whose first row on this repo's `main` on 2026-11-01 was a failed Dependabot job, which `ship-baseline-check` already skips.
+
+No action is needed. A session still running from a folder an earlier install removed needs `/reload-plugins` or a restart. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Cache prune** (853e6dd, D#635). `scripts/lib/cache-prune.js` still keeps `keep` (3) newest version folders plus the current one. Each older folder is held while its `.orphaned_at` is under 14 days old or unreadable (a future-dated mark too), or while `claudemd.jsonl`, `.1` or `.2` has a row with its `hook_version` from the last 14 days; otherwise it is removed as before. The log is read only when a folder is past `keep`: on this machine the three generations (11.5 MB, 36,798 rows) read in 54 to 58 ms. A log that cannot be read throws before anything is removed, and `install.js` already catches a prune failure, so then nothing is removed. Claude Code's documentation states the 14 days and the reason ("so a session that already loaded the old version keeps running", code.claude.com/docs/en/plugins/loading, "Cleanup of previous versions"); the log window matches it because a session can stay open for days without firing a hook.
+
+**Statusline** (86c72b3, 5efc96b, D#628). `adopt()` throws before any write when `supersede` is `claudemd`, dry run included. `readSupersededList` drops an entry with claudemd's id. `remove()` restores a saved provider only when no live provider has its id; the others are written back to the record and returned as `notRestored`. `detect()`'s `rendererRestoredBy` applies the same split, so it names only providers `remove()` will restore. `/claudemd-statusline`'s remove text says when a saved provider is not restored and tells the model to report `notRestored`.
+
+**Spec v8.3.1** (3d329b8, D#613). Patch: the §7 sentence now describes the check `ship-baseline-check` makes (newest completed run of the last 5, GitHub's `Dependabot Updates` job with event `dynamic` skipped). No HARD rule added or removed; every rule keeps its ID.
+
+**Not changed.**
+- Claude Code's own cleanup of marked folders after 14 days.
+- With `DISABLE_RULE_HITS_LOG=1` the hook log has no rows, so a folder with no `.orphaned_at` mark is removed as before.
+- `/claudemd-doctor`'s statusline row. In the self-supersede state with the renderer missing it still offers remove, and that remove now takes claudemd out.
+- `commands/claudemd-install.md` describes `cachePruned.removed` only; it does not name `held`.
+- D#598 (the skill re-scan) waits for 62 release-word sessions; the scan on 2026-11-01 counted 38.
+
+**Tests.**
+- `tests/scripts/cache-prune.test.js`: six cases (D#635.1 to .6), each failing on 0.117.3's `cache-prune.js`: a dir marked 1 day ago is held and one marked 20 days ago with no rows goes; unmarked and marked-long-ago dirs with a row in the last 14 days are held, one with only a 30-day-old row goes, and a kept version's row holds nothing else; a row in `claudemd.jsonl.1` counts; a mark that is not a number holds; with nothing past `keep`, `held` is empty; a log that cannot be read throws before any removal. Mutants that drop the mark check or the log check each fail two named cases.
+- `tests/scripts/statusline-adopt.test.js`, `tests/scripts/statusline-cli.test.js`: six cases, each failing before 86c72b3: `adopt` refuses `supersede: 'claudemd'` (dry run too) with the registry unchanged and no record; the CLI exits 1 for it; a record holding claudemd's own entry restores nothing and the renderer goes; a saved `_previous` is not restored over a live `_previous` that runs the renderer, which stays, while a saved provider with no live namesake is restored and the blocked one stays in the record; `rendererRestoredBy` leaves out a saved provider with a live namesake and `remove()` then deletes the renderer; the human output names `not-restored=` and the record. Mutants that drop the refusal, the self filter, the live-namesake split or detect's use of it each fail at least one named case.
+- `tests/scripts/spec-structure.test.js`: the pins of the two preambles, core §7, Recent changes and both heading inventories follow v8.3.1.
+@@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.117.3] - 2026-11-01
 
 **`claudemd-cli` is published to npm through npm trusted publishing (GitHub Actions OIDC) instead of a stored `NPM_TOKEN`. 0.117.2 never reached npm, and README's example pinned it; the pin now names 0.117.3.**
