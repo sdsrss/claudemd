@@ -70,11 +70,14 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          # 24 = the maintainer's runtime and the npm that wrote the lockfile;
-          # `npm ci` is stricter about lockfile shape than `npm install`.
+          # 24 = the maintainer's runtime.
           node-version: 24
-          cache: npm
-      - run: npm ci
+      # `npm install`, not `npm ci`, and no `cache: npm`: the repo tracks no
+      # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
+      # devDependencies from one), and setup-node's npm cache keys on it.
+      # package.json pins every devDependency to an exact version; their own
+      # dependencies resolve fresh on each run.
+      - run: npm install --no-audit --no-fund
       - name: eslint (blocking)
         run: npm run lint:js
       - name: prettier (blocking)

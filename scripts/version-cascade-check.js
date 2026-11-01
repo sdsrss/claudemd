@@ -12,10 +12,11 @@
 //      extended.md's byte count, hence the floor isn't 0).
 //
 //   3. Plugin semver agreement (v0.47.4): the plugin's own semver MUST be
-//      identical in `package.json#version`, `package-lock.json#version` and
-//      `#packages[""].version` (v0.72.0), `.claude-plugin/plugin.json#version`,
+//      identical in `package.json#version`, `.claude-plugin/plugin.json#version`,
 //      `.claude-plugin/marketplace.json#metadata.version`, and
-//      `.claude-plugin/marketplace.json#plugins[0].version`. Distinct from check
+//      `.claude-plugin/marketplace.json#plugins[0].version`. package-lock.json
+//      carried two more sites from v0.72.0 until 0.117.2 deleted the lockfile
+//      (D#612: Claude Code installs a plugin's devDependencies from it). Distinct from check
 //      1, which is about the SPEC version (v6.X) — the plugin semver and the spec
 //      semver are independent by policy (see CHANGELOG "Versioning policy").
 //
@@ -74,8 +75,8 @@ Pre-tag guard. Verifies three invariants:
   2. Spec **Sizing** line in spec/CLAUDE-extended.md matches actual byte
      counts of spec/CLAUDE.md, spec/CLAUDE-extended.md, spec/OPERATOR.md
      within ±20B (the recursive-rewrite drift envelope).
-  3. Plugin semver agrees across package.json, both package-lock.json sites,
-     .claude-plugin/plugin.json, both .claude-plugin/marketplace.json sites
+  3. Plugin semver agrees across package.json, .claude-plugin/plugin.json,
+     both .claude-plugin/marketplace.json sites
      and every claudemd-cli@X.Y.Z pin in README.md — a PATCH-level check the
      v6.X comparison in (1) structurally cannot make.
 
@@ -120,22 +121,10 @@ export function runPluginSemverCheck({ root }) {
     }
   };
   const pkg = readJson('package.json');
-  const lock = readJson('package-lock.json');
   const plugin = readJson('.claude-plugin/plugin.json');
   const market = readJson('.claude-plugin/marketplace.json');
   const sites = [
     { file: 'package.json', path: 'version', value: pkg?.version ?? null },
-    // The lockfile carries the version twice and `npm version` is the only
-    // thing that rewrites it; a hand-edited package.json leaves both behind.
-    // 0.72.0 reached its pre-tag review with the lockfile still at 0.71.3 and
-    // this check green — the gate's own reach was short of its subject
-    // (feedback_gate_scope_must_cover_its_subject).
-    { file: 'package-lock.json', path: 'version', value: lock?.version ?? null },
-    {
-      file: 'package-lock.json',
-      path: 'packages[""].version',
-      value: lock?.packages?.['']?.version ?? null,
-    },
     { file: '.claude-plugin/plugin.json', path: 'version', value: plugin?.version ?? null },
     {
       file: '.claude-plugin/marketplace.json',
@@ -356,7 +345,7 @@ if (invokedAsMain(import.meta.url)) {
         }
         process.stderr.write(
           // Derived, not written down. The literal said "four" while this gate
-          // has enumerated six sites since the lockfile pair was added, and
+          // enumerated six sites (the lockfile pair had been added), and
           // nothing re-checked the sentence when the list grew (round-17
           // REL-M3). A count in prose beside the array it counts is a number
           // with no owner.

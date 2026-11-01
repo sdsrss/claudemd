@@ -85,8 +85,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+      # No lockfile is tracked (D#612): see ci.yml's static job.
+      - run: npm install --no-audit --no-fund
       - name: eslint (blocking)
         run: npm run lint:js
       - name: prettier (blocking)

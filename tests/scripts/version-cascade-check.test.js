@@ -384,18 +384,9 @@ test('CLI: sizing drift exits 1 with stderr Δ line + actionable Fix sizing note
 // stale version into the manifest and /claudemd-status reported 0.47.0 for a live
 // 0.47.3 install. These lock the class.
 
-// Both lockfile sites default to `pkg`: the common fixture wants agreement.
-// Pass `lock` (top-level) or `lockRoot` (`packages[""]`) to drift ONE of them,
-// or `lock: null` to omit the lockfile (undefined would take the default).
-function semverFixture(dir, { pkg, plugin, meta, entry, lock = pkg, lockRoot = pkg }) {
+function semverFixture(dir, { pkg, plugin, meta, entry }) {
   fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true });
   if (pkg !== undefined) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: pkg }));
-  if (lock !== null) {
-    fs.writeFileSync(
-      path.join(dir, 'package-lock.json'),
-      JSON.stringify({ version: lock, packages: { '': { version: lockRoot } } })
-    );
-  }
   fs.writeFileSync(path.join(dir, '.claude-plugin/plugin.json'), JSON.stringify({ version: plugin }));
   fs.writeFileSync(
     path.join(dir, '.claude-plugin/marketplace.json'),
@@ -404,44 +395,36 @@ function semverFixture(dir, { pkg, plugin, meta, entry, lock = pkg, lockRoot = p
   return dir;
 }
 
-test('pluginSemver: all six sites agree -> ok', () => {
+test('pluginSemver: all four manifest sites agree -> ok', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
   try {
     semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
     const r = runPluginSemverCheck({ root: d });
     assert.equal(r.ok, true);
     assert.equal(r.expected, '1.2.3');
-    assert.equal(r.sites.length, 6);
+    assert.equal(r.sites.length, 4);
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
 });
 
-// 0.72.0 reached its pre-tag review with package-lock.json still at 0.71.3 and
-// this check green: the lockfile was not a site. `npm version` rewrites both
-// lockfile copies; a hand-edited package.json leaves them behind.
-test('pluginSemver: a stale package-lock.json is caught (either copy)', () => {
-  for (const drift of [{ lock: '0.71.3' }, { lockRoot: '0.71.3' }]) {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
-    try {
-      semverFixture(d, { pkg: '0.72.0', plugin: '0.72.0', meta: '0.72.0', entry: '0.72.0', ...drift });
-      const r = runPluginSemverCheck({ root: d });
-      assert.equal(r.ok, false, `lockfile drift ${JSON.stringify(drift)} must fail`);
-      const stale = r.sites.filter(s => s.file === 'package-lock.json' && s.value === '0.71.3');
-      assert.equal(stale.length, 1, 'the drifted lockfile site is named');
-    } finally {
-      fs.rmSync(d, { recursive: true, force: true });
-    }
-  }
-});
-
-test('pluginSemver: missing package-lock.json fails loudly, does not skip', () => {
+// D#612 (0.117.2): package-lock.json is no longer tracked, so its two copies
+// are no longer sites. A stray local lockfile must not count.
+test('pluginSemver: a package-lock.json in the root is not a site', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-semver-'));
   try {
-    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3', lock: null });
+    semverFixture(d, { pkg: '1.2.3', plugin: '1.2.3', meta: '1.2.3', entry: '1.2.3' });
+    fs.writeFileSync(
+      path.join(d, 'package-lock.json'),
+      JSON.stringify({ version: '0.71.3', packages: { '': { version: '0.71.3' } } })
+    );
     const r = runPluginSemverCheck({ root: d });
-    assert.equal(r.ok, false);
-    assert.equal(r.sites.filter(s => s.file === 'package-lock.json' && s.value === null).length, 2);
+    assert.equal(r.ok, true, JSON.stringify(r.sites));
+    assert.deepEqual(
+      r.sites.filter(x => x.file === 'package-lock.json'),
+      [],
+      'the lockfile is not read'
+    );
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -509,16 +492,46 @@ test('pluginSemver: each README claudemd-cli pin is a site, named by line', () =
         ['claudemd-cli@ (line 4)', '1.1.0'],
       ]
     );
-    assert.equal(r.sites.length, 8);
+    assert.equal(r.sites.length, 6);
 
     fs.writeFileSync(path.join(d, 'README.md'), 'npx --yes claudemd-cli@1.2.3 lint --stdin\n');
     const ok = runPluginSemverCheck({ root: d });
     assert.equal(ok.ok, true, `matching pin must pass: ${JSON.stringify(ok.sites)}`);
-    assert.equal(ok.sites.length, 7);
+    assert.equal(ok.sites.length, 5);
 
     fs.writeFileSync(path.join(d, 'README.md'), 'npx --yes claudemd-cli lint --stdin\n');
-    assert.equal(runPluginSemverCheck({ root: d }).sites.length, 6, 'an unpinned mention is not a site');
+    assert.equal(runPluginSemverCheck({ root: d }).sites.length, 4, 'an unpinned mention is not a site');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
+});
+
+// D#612: Claude Code installs a plugin's dependencies, devDependencies included,
+// whenever the plugin root holds package.json and a lockfile it reads (2.1.316:
+// bun.lock, npm-shrinkwrap.json, package-lock.json, bun.lockb; yarn.lock and
+// pnpm-lock.yaml get a "not supported" warning instead). It rebuilds both files
+// in a temp dir and runs `npm ci` there, so no .npmrc in this repo can stop it.
+// With package-lock.json tracked, every cached version carried 37M of eslint,
+// c8, prettier and jscpd that no hook or command loads (only the repo's own
+// lint and metrics tooling does). The devDependencies are
+// pinned to exact versions in package.json instead.
+test('D#612: the repo root tracks no lockfile, so the plugin install has nothing to install', () => {
+  const lockfiles = [
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'bun.lock',
+    'bun.lockb',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+  ];
+  const r = spawnSync('git', ['ls-files', '--', ...lockfiles], { cwd: REPO_ROOT, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(
+    r.stdout.split('\n').filter(Boolean),
+    [],
+    'a tracked root lockfile ships to every plugin cache'
+  );
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+  const loose = Object.entries(pkg.devDependencies || {}).filter(([, v]) => !/^\d+\.\d+\.\d+$/.test(v));
+  assert.deepEqual(loose, [], 'without a lockfile every devDependency is pinned to an exact version');
 });
