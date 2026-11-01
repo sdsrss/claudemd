@@ -1,6 +1,6 @@
 ---
 status: implemented
-revision: 7
+revision: 9
 ---
 
 # Cross-repo write advisory
@@ -202,3 +202,13 @@ Produces:
   verdict changes). Not taken: by user decision the r7 simple form stays, and the
   quoted separator is listed above as a known limit. The patch is kept outside git at
   `tasks/cross-repo-write/0241e73-quote-aware-split.patch` on the maintainer's machine.
+- r9 2026-11-01: phase-1 evaluation closed early. Its stop rule ("30 days or 20
+  advisories, whichever comes later") could not be reached: 36 days after the flag
+  was set on this machine there were 4 hits, so 20 would take about 180 days. Read on
+  the 4 (log snapshot of 2026-11-01, 239 sessions with a log row): all 4 came from
+  subagents doing authorized work: two hook probes that passed another repo's
+  `git -C …` as a jq string (never executed), two mutation runs in a reviewer's own
+  scratch clone. 3 advisories delivered (`first: true`), 1.3 per 100 sessions;
+  unauthorized hits 0, so the decision rule's first condition fails and default-ON is
+  not proposed. The shipped default stays OFF. Per-hit table:
+  `tasks/cross-repo-write/RESULT-2026-11-01.md` (maintainer's machine).
