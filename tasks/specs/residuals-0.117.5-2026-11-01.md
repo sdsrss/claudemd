@@ -1,4 +1,4 @@
-# 0.117.5：评审遗留攒批（doctor 关闭开关下的建议、四处命令页、两项评估收尾）
+# 0.117.5：评审遗留攒批（doctor 关闭开关下的建议、三个命令页五处文字、两项评估收尾）
 
 状态：进行中
 
@@ -14,9 +14,9 @@
 
 ## 验收标准
 
-- [ ] AC1：`CLAUDEMD_NO_STATUSLINE=1` 下，renderer 过期或缺失时（自己的槽位、注册的 guest、宿主用 `_previous` 运行），statusline 行建议 `/claudemd-statusline`，不再写 "run /claudemd-install"；照旧建议跑 install.js 后行仍是红的，照新建议跑 `adopt --empty-only` 后变绿。验证：`node --test tests/scripts/doctor.test.js`（4 条新用例；修复前 3 条失败，第 4 条是后补的状态；变异体 4/4 失败）。
-- [ ] AC2：四处命令页的新句子与代码一致：`cachePruned.held` 及其两种 `reason`；restore 跳过较新的 spec-only 备份并列入 `skippedSpecOnly`；doctor 的 `advisory: true` 不计入退出码。验证：`node --test tests/scripts/command-page-behaviour.test.js`（3 条新用例在旧页面上失败）。
-- [ ] AC3：两项评估的结论写进已跟踪的设计记录，数字可由本地材料复算。验证：`node tasks/r3-wtree-eval/analyze.mjs` 的输出与 `tasks/specs/wtree-evidence.md` 记的数一致。
+- [x] AC1：`CLAUDEMD_NO_STATUSLINE=1` 下，renderer 过期或缺失时（自己的槽位、注册的 guest、宿主用 `_previous` 运行），statusline 行建议 `/claudemd-statusline`，不再写 "run /claudemd-install"；照旧建议跑 install.js 后行仍是红的，照新建议跑 `adopt --empty-only` 后变绿。验证：`node --test tests/scripts/doctor.test.js`（4 条新用例；修复前 3 条失败，第 4 条是后补的状态；变异体 4/4 失败）。
+- [x] AC2：三个命令页五处新句子与代码一致：`cachePruned.held` 及其两种 `reason`；restore 跳过较新的 spec-only 备份并列入 `skippedSpecOnly`；doctor 的 `advisory: true` 不计入退出码。验证：`node --test tests/scripts/command-page-behaviour.test.js`（3 条新用例在旧页面上失败）。
+- [x] AC3：两项评估的结论写进已跟踪的设计记录，数字可由本地材料复算。验证：`node tasks/r3-wtree-eval/analyze.mjs` 的输出与 `tasks/specs/wtree-evidence.md` 记的数一致。
 - [ ] AC4：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过；tag、GitHub Release、npm（`_npmUser` 为 GitHub Actions）。
 
 ## 方案
@@ -30,9 +30,9 @@
 - [x] S1：`git fetch --prune`；三份日志快照到 `tasks/r3-wtree-eval/`
 - [x] S2：R3 打包、盲标、汇总、写 RESULT — 覆盖 AC3
 - [x] S3：cross-repo-write 读 4 次命中、写 RESULT — 覆盖 AC3
-- [ ] S4：doctor 修复（先红后绿、变异检验）— 覆盖 AC1
-- [ ] S5：命令页四处（先红后绿）— 覆盖 AC2
-- [ ] S6：两份设计记录写结果；runbook 记"评审遗留攒批"
+- [x] S4：doctor 修复（先红后绿、变异检验）— 覆盖 AC1 — e5dec8d
+- [x] S5：命令页五处（先红后绿）— 覆盖 AC2 — 7a6cc1a
+- [x] S6：两份设计记录写结果（e31937b）；runbook 记"评审遗留攒批"
 - [ ] S7：发 0.117.5（版本号五处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC4
 
 ## 决策与进展

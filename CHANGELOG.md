@@ -8,6 +8,36 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.5] - 2026-11-01
+
+**`/claudemd-doctor`'s status-line row names a fix that works when `CLAUDEMD_NO_STATUSLINE=1` is set, and three command pages now describe `cachePruned.held`, restore's `skippedSpecOnly` and doctor's `advisory` rows. No hook or spec text changes.**
+
+**What changes for users.**
+- With `CLAUDEMD_NO_STATUSLINE=1`, a stale or missing `~/.claude/claudemd-statusline.sh` is still a red `statusline` row, and its fix now reads "run /claudemd-statusline and have it refresh the renderer (with CLAUDEMD_NO_STATUSLINE=1, /claudemd-install does not recopy it)". The row used to name `/claudemd-install`, which leaves the status line alone under that setting, so the row stayed red after the fix it named. Without the setting the row reads as before.
+- `/claudemd-install` names `cachePruned.held` (older version folders kept because a running session may still use them, with `orphaned-recently` or `hook-rows-recently` as the reason) and says that restore passes over newer backups that hold only spec files. `/claudemd-uninstall` says which backup restore uses and relays `skippedSpecOnly`. `/claudemd-doctor` says a failing row with `advisory: true` does not count toward the exit code. These are the pages the model reads before it runs the commands; apart from the doctor row above, the scripts behave as in 0.117.4.
+
+No action is needed. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Doctor** (e5dec8d). With `CLAUDEMD_NO_STATUSLINE=1`, install.js returns `statusline.action: "opted-out"` and does not touch the renderer. `statusline-adopt.js adopt --empty-only`, which `/claudemd-statusline` offers, copies it in each of the three wired states doctor checks (claudemd's own slot, a registered guest, a host provider that runs it under another id) and changes no setting. Only the fix text switches under that setting; the `, or /claudemd-statusline remove to unwire it.` clause keeps its conditions.
+
+**Command pages** (7a6cc1a). Each sentence was written from the code it describes: `scripts/lib/cache-prune.js`, `scripts/uninstall.js` and `countsTowardExit` in `scripts/doctor.js`. The install page said restore "cannot return a spec instead of the user's own file". That holds for the backups install writes, but not for the spec-only ones a `/claudemd-update` before 0.68.3 wrote into the same namespace, which restore has passed over since 0.116.6.
+
+**Evaluations** (e31937b; design records, nothing shipped). Two local evaluations ended, recorded in `tasks/specs/cross-repo-write.md` (r9) and `tasks/specs/wtree-evidence.md` (r2). cross-repo-write (opt-in `CROSS_REPO_WRITE=1`) had 4 hits in 36 days on the maintainer's machine, all from subagents doing work they were asked to do and none an unauthorized write, so the advisory stays off by default. The working-tree fingerprint (`EVIDENCE_WTREE=1`) was compared with evidence-gate's verdict on 108 completion claims that three blind raters labelled. Counting only the claims they could decide, an evidence-gate fire was a code claim left unverified in 0 of 29 cases, and a fingerprint "unverified" in 1 of 62. Both are under the 0.8 precision required before either is shown to the model, so neither is. Most of the false alarms were messages that claimed no code change at all.
+
+**Not changed.**
+- `hooks/` and `spec/` (spec v8.3.1).
+- When `DISABLE_RULE_HITS_LOG=1` keeps the hook log empty, the cache prune still removes an older folder that carries no `.orphaned_at` mark.
+- Which backup restore picks: the 0.116.6 rule stands, and only the pages that describe it changed.
+- evidence-gate and cross-repo-write stay off by default, and evidence-gate's claim detection is as before.
+- The skill re-scan (D#598) is still short of its 62 sessions.
+
+**Tests.**
+- `tests/scripts/doctor.test.js`: four cases set `CLAUDEMD_NO_STATUSLINE=1` (a stale renderer in claudemd's own slot, a missing one there, a missing one under a registered guest, a stale one under code-graph's `_previous`) and follow both fixes: `scripts/install.js` leaves the row red, `adopt --empty-only` turns it green. The first three failed before e5dec8d; the fourth state was added after. A mutant that never takes the opt-out branch fails all four.
+- `tests/scripts/command-page-behaviour.test.js`: three cases pin the new lines whole and run what they name: `pruneCache` holding one folder for each reason, a restore that passes over a newer spec-only backup and lists it, and `countsTowardExit` on a failing row with and without `advisory`. All three failed on the old pages.
+@@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.117.4] - 2026-11-01
 
 **An install no longer deletes an older version folder that a running session's hooks still run from. Two `/claudemd-statusline` states 0.117.3 still got wrong are fixed, and spec v8.3.1's §7 check before a push skips GitHub's Dependabot job, as the push gate already does.**
