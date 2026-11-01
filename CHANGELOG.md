@@ -8,6 +8,30 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.3] - 2026-11-01
+
+**`claudemd-cli` is published to npm through npm trusted publishing (GitHub Actions OIDC) instead of a stored `NPM_TOKEN`. 0.117.2 never reached npm, and README's example pinned it; the pin now names 0.117.3.**
+
+**What changes for users.**
+- Nothing in the plugin: `hooks/`, `spec/`, `commands/`, `scripts/` and `bin/` are as in 0.117.2.
+- 0.117.2's npm publish failed with E403 ("Two-factor authentication is required to publish this package but an automation token was specified"): the package refuses tokens, and the workflow still sent one. `claudemd-cli@0.117.2` does not exist on npm, while README's GitHub Actions example ran `npx --yes claudemd-cli@0.117.2`. The example now pins `claudemd-cli@0.117.3`; a workflow that copied the 0.117.2 pin needs the same change. The npm package's code (`bin/claudemd-lint.js`, `scripts/lib/lint.js`, `scripts/lib/argv.js`, `hooks/banned-vocab.patterns`) is the same as 0.117.1's.
+
+No action is needed for plugin users. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Publishing** (d72b804). npm-publish.yml's `publish` job runs on Node 24 (trusted publishing needs npm 11.5.1 or later and Node 22.14.0 or later; Node 20 and 22 bundle npm 10) and passes no token: `NODE_AUTH_TOKEN` and `secrets.NPM_TOKEN` are gone from the workflow. npm exchanges the job's OIDC token (the `id-token: write` that 0.117.2 limited to this job) for a short-lived publish credential; the trusted publisher on npmjs.com is GitHub `sdsrss/claudemd`, workflow `npm-publish.yml`, no environment. `--provenance` and `registry-url` stay. With a token in the environment, npm falls back to it whenever the OIDC exchange fails, so a wrong trust configuration would still publish and the job would stay green; with none, the publish step fails. The workflow header, ci.yml's comments and the action-pin test's text no longer describe a stored token.
+
+**Not changed.**
+- The `NPM_TOKEN` repository secret still exists; no workflow reads it.
+- setup-node stays at v6.5.0, which writes a placeholder `NODE_AUTH_TOKEN` when `registry-url` is set (v7 dropped it). npm cannot publish with that placeholder, so it does not bring the token fallback back.
+- `spec/`: D#613, the §7 push check that reads a failed Dependabot job as red CI, is still open.
+
+**Tests.**
+- `tests/scripts/actions-sha-pin.test.js`: no workflow names `NPM_TOKEN` or `NODE_AUTH_TOKEN` outside a comment (failed on de77844 at `npm-publish.yml:228`); a control pins what the pattern does and does not see.
+- @@CHECKS@@
+- The publish path runs only on a tag, so this release's npm-publish run is its end-to-end test, read from `npm view claudemd-cli@0.117.3 _npmUser`, which must name GitHub Actions rather than a person, not from the job's colour.
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.117.2] - 2026-11-01
 
 **The plugin cache no longer gets claudemd's devDependencies: the repo stops tracking `package-lock.json`, the file Claude Code installs a plugin's dependencies from. `/claudemd-doctor` no longer offers `/claudemd-statusline remove` for a missing status-line renderer that a superseded provider runs.**
