@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { doctor as doctorFull, isAdvisoryCheck, countsTowardExit } from '../../scripts/doctor.js';
 import { runningPluginRoot } from '../../scripts/lib/paths.js';
+import { adopt as adoptStatusline } from '../../scripts/lib/statusline.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
   cleanStateDir,
@@ -251,6 +252,47 @@ test('statusline: a missing renderer that a guest entry and another provider bot
   assert.equal(c.ok, false, c.detail);
   assert.match(c.detail, /Fix: run \/claudemd-install \(recopies the renderer\)\.$/);
   assert.doesNotMatch(c.detail, /claudemd-statusline remove/);
+});
+
+// D#618: after `adopt --supersede=_previous` our guest entry is the only
+// registry provider running the file, but remove() restores `_previous`, which
+// runs it too, and keeps the file: the row stayed red after the advised remove.
+// The state is built by the real writer, then the advice is followed.
+test('statusline: a missing renderer whose superseded provider runs it is advised /claudemd-install only, and that repairs it', async () => {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const adopted = adoptStatusline({ pluginRoot: repo, supersede: '_previous' });
+  assert.equal(adopted.superseded, '_previous', 'precondition: the supersede happened');
+  fs.rmSync(box.claude('claudemd-statusline.sh'));
+
+  const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, false, c.detail);
+  assert.match(c.detail, /Fix: run \/claudemd-install \(recopies the renderer\)\.$/);
+  assert.doesNotMatch(c.detail, /claudemd-statusline remove/);
+
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const installed = spawnSync(process.execPath, [path.join(repo, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, installed.stderr);
+  const after = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(after.ok, true, after.detail);
 });
 
 test('statusline: the advice names a command that actually recopies the renderer', () => {

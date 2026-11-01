@@ -421,8 +421,10 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
           `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer)` +
           // remove() unwires only our slot or our guest entry, and keeps the file
           // while a host provider runs it under its own id (D#599; 0.117.1 pre-tag
-          // review M1), so it repairs nothing while one does.
-          (sl.verdict === 'claudemd' || (sl.guestRegistered && sl.rendererRunBy.length === 0)
+          // review M1) or a superseded one it restores does (D#618), so it
+          // repairs nothing in those states.
+          (sl.verdict === 'claudemd' ||
+          (sl.guestRegistered && sl.rendererRunBy.length === 0 && sl.rendererRestoredBy.length === 0)
             ? `, or /claudemd-statusline remove to unwire it.`
             : `.`)
       );

@@ -47,13 +47,16 @@ function readSupersededList() {
 }
 
 // Host providers, other than our own guest entry, whose command runs our file:
-// the same MARKER test detect() applies to the slot. Ids only.
+// the same MARKER test detect() applies to the slot. Ids only; code-graph's
+// composite runs an entry that has no id too, so one counts, under a label
+// (D#618: it was listed as undefined, null in --json).
+const NO_ID = '(no id)';
 function othersRunningRenderer(providers) {
   return (providers || [])
     .filter(
       p => p?.id !== CLAUDEMD_PROVIDER_ID && typeof p?.command === 'string' && p.command.includes(MARKER)
     )
-    .map(p => p.id);
+    .map(p => (typeof p.id === 'string' && p.id !== '' ? p.id : NO_ID));
 }
 
 export function detect(pluginRoot = null) {
@@ -103,6 +106,12 @@ export function detect(pluginRoot = null) {
   const rendererRunBy = verdict === 'host' ? othersRunningRenderer(providers) : [];
   const rendererInUse =
     verdict === 'claudemd' || (verdict === 'host' && (guestRegistered || rendererRunBy.length > 0));
+  // Superseded providers remove() would put back that run our file, so it keeps
+  // the file for them too (D#618: after `adopt --supersede=_previous` the
+  // registry shows only our entry). remove() restores only under our guest
+  // entry. Not part of rendererInUse: none of them renders until restored.
+  const rendererRestoredBy =
+    verdict === 'host' && guestRegistered ? othersRunningRenderer(readSupersededList()) : [];
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -121,6 +130,7 @@ export function detect(pluginRoot = null) {
     guestRegistered,
     rendererInUse,
     rendererRunBy,
+    rendererRestoredBy,
     psCandidates,
     dest: { exists, matchesShipped },
   };

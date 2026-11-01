@@ -404,6 +404,65 @@ test('remove: guest entry beside another provider running our renderer → unreg
   assert.ok(fs.existsSync(destFile()), 'the file `_previous` runs stays');
 });
 
+// D#618 (1): `adopt --supersede=_previous` moves code-graph's `_previous` entry,
+// which runs our file, into the restore record. rendererRunBy reads only the
+// registry, so it was empty, yet remove() puts `_previous` back and keeps the
+// file for it. rendererRestoredBy names those providers before the remove.
+test('detect: a superseded provider that runs our renderer → rendererRestoredBy, and remove() keeps the file for it', () => {
+  seedCg([
+    { id: '_previous', command: CMD, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  adopt({ pluginRoot, supersede: '_previous' });
+  const d = detect(pluginRoot);
+  assert.equal(d.guestRegistered, true, 'precondition: our guest entry replaced _previous');
+  assert.deepEqual(d.rendererRunBy, [], 'precondition: no registry provider besides ours runs it');
+  assert.deepEqual(d.rendererRestoredBy, ['_previous']);
+  const r = remove();
+  assert.equal(r.restored, '_previous');
+  assert.deepEqual(r.rendererKept, d.rendererRestoredBy, 'detect named what remove() keeps the file for');
+  assert.ok(fs.existsSync(destFile()), 'the file the restored _previous runs stays');
+});
+
+test('detect: a superseded provider that runs another script → rendererRestoredBy empty', () => {
+  seedCg([
+    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  adopt({ pluginRoot, supersede: 'user-ps1' });
+  assert.deepEqual(detect(pluginRoot).rendererRestoredBy, []);
+  assert.equal(remove().rendererKept, null, 'the renderer was deleted');
+  assert.ok(!fs.existsSync(destFile()));
+});
+
+test('detect: a restore record without our guest entry → rendererRestoredBy empty (remove() restores nothing)', () => {
+  seedCg([{ id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false }]);
+  fs.mkdirSync(path.dirname(prevFile()), { recursive: true });
+  fs.writeFileSync(prevFile(), JSON.stringify({ superseded: [{ id: '_previous', command: CMD }] }));
+  const d = detect(pluginRoot);
+  assert.equal(d.guestRegistered, false, 'precondition');
+  assert.deepEqual(d.rendererRestoredBy, []);
+  assert.equal(remove().action, 'not-ours');
+});
+
+// D#618 (2): code-graph's composite runs every registry entry, id or not, so an
+// entry without an id that runs our file still keeps it; it was listed as
+// `undefined` (null in --json).
+test('detect/remove: a provider without an id that runs our renderer is listed as "(no id)"', () => {
+  seedCg([
+    { command: CMD, needsStdin: true },
+    { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\necho claudemd-sl\n');
+  const d = detect(pluginRoot);
+  assert.deepEqual(d.rendererRunBy, ['(no id)']);
+  assert.equal(d.rendererInUse, true);
+  const r = remove();
+  assert.deepEqual(r.rendererKept, ['(no id)']);
+  assert.ok(fs.existsSync(destFile()), 'the file the id-less entry runs stays');
+});
+
 test('remove: guest entry alone → unregistered, renderer deleted, nothing kept', () => {
   seedCg([
     { id: 'claudemd', command: `bash "${destFile()}"`, needsStdin: true },
