@@ -1,6 +1,6 @@
 # 0.117.4：缓存清理不删正在用的版本、statusline 两个旧问题、§7 发版前检查的文字
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -25,7 +25,7 @@
 - [x] AC2：`adopt({supersede:'claudemd'})` 抛错，注册表和 `statusline-prev.json` 不变；CLI `--supersede=claudemd` 退出码 1。存档里已有 claudemd 自己的条目时，`remove()` 不把它注册回去，claudemd 被摘掉、没人用的渲染文件被删。— 验证：`node --test tests/scripts/statusline.test.js tests/scripts/statusline-cli.test.js`
 - [x] AC3：注册表 `[claudemd, _previous→渲染文件]`、存档 `[_previous→别的脚本]` 时，`remove()` 后注册表里的 `_previous` 仍是渲染文件那条，渲染文件还在，`rendererKept` 含 `_previous`，`notRestored` 含 `_previous`，存档里留着那条别的脚本。— 验证：同上
 - [x] AC4（D#613，经同意后）：core §7 的命令和闸门跳过的是同一对；`version-cascade-check`、`spec-coherence-audit --strict`、`spec-structure` 通过。— 验证：`npm run check`
-- [ ] AC5：`npm run check` 退出 0，`npm run smoke` 2/2，PR CI 7/7，发版前评审无未修的 Critical/High。
+- [x] AC5：`npm run check` 退出 0，`npm run smoke` 2/2，PR CI 7/7，发版前评审无未修的 Critical/High。
 
 ## 方案
 
@@ -38,7 +38,7 @@
 - [x] S2：D#628 测试（红）→ 实现 → 绿
 - [x] S3：D#613 diff 给使用者看，同意后改规范并跑级联
 - [x] S4：CHANGELOG、版本五处、`npm run check`、`npm run smoke`
-- [ ] S5：发版（release 分支、draft PR、PR CI、评审、ff main、tag、GitHub Release、npm 核对）
+- [x] S5：发版（release 分支、draft PR、PR CI、评审、ff main、tag、GitHub Release、npm 核对）
 
 ## 决策与进展
 
@@ -59,3 +59,8 @@
 - `node --test tests/scripts/spec-structure.test.js tests/scripts/spec-modules.test.js` → 通过（99/99）
 - `npm run check`（147acaf）→ 失败（2 例，command-page-behaviour 逐字固定的两行）
 - `npm run check`（345702b）→ 通过（exit 0；node 1738/1740，2 个跳过；shell 套件全部通过）；`npm run smoke` → 通过（2/2）
+- `npm run check`（4a00cee，即 tag 所在提交）→ 通过（exit 0；node 1738/1740，2 个跳过；shell 套件全部通过）；`npm run smoke` → 通过（2/2）
+- PR CI：345702b 上 run 41335111751 → 通过（7/7）；4a00cee 上 run 41337520961 → 通过（7/7）
+- 发版前评审第 1 轮 → 0C/0H/2M/6L；M1、M2、L1、L2 按文字修复（0b5a2fc、4a00cee），claim-drift 逐行复核
+- tag v0.117.4（4a00cee）：tag 的 ci run 41339167148 → 通过（7/7）；npm-publish run 41339167174 → 通过（publish 任务通过）；main 的 ci run 41339161177 → 通过（7/7）
+- `npm view claudemd-cli@0.117.4 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`，带 SLSA provenance；dist-tags latest = 0.117.4
