@@ -131,6 +131,38 @@ test('manualPsCandidates picks a ~/.claude bash PS1, not plugins or claudemd', (
   );
 });
 
+// The id exclusions are the deciding check only when a provider passes every
+// command-text check — a ~/.claude bash script under a reserved id. The case
+// above cannot show that: its code-graph entry fails `\bbash\b` and its
+// claudemd entry names claudemd-statusline.sh, so either id check could be
+// deleted and it would still pass (v0.26.0 whole-branch review coverage gap).
+test('manualPsCandidates excludes the code-graph and claudemd ids by id alone', () => {
+  const providers = [
+    { id: 'code-graph', command: 'bash "/home/x/.claude/cg-wrap.sh"', needsStdin: false },
+    { id: CLAUDEMD_PROVIDER_ID, command: 'bash "/home/x/.claude/my-line.sh"', needsStdin: true },
+    { id: 'user-ps1', command: 'bash "/home/x/.claude/statusline-command.sh"', needsStdin: true },
+  ];
+  assert.deepEqual(
+    manualPsCandidates(providers).map(p => p.id),
+    ['user-ps1']
+  );
+});
+
+// The fallback is tested above; this is the other half of cgRead's contract.
+// When the two files disagree the volatile primary is what code-graph renders
+// from, so it is what an adapter read must report.
+test('read prefers the primary when primary and mirror both exist and disagree', () => {
+  fs.mkdirSync(path.dirname(primary()), { recursive: true });
+  fs.mkdirSync(path.dirname(mirror()), { recursive: true });
+  fs.writeFileSync(primary(), JSON.stringify([{ id: 'from-primary', command: 'node "/p.js"' }]));
+  fs.writeFileSync(mirror(), JSON.stringify([{ id: 'from-mirror', command: 'node "/m.js"' }]));
+  assert.deepEqual(
+    codeGraphAdapter.listProviders().map(p => p.id),
+    ['from-primary']
+  );
+  assert.equal(codeGraphAdapter.isRegistered('from-mirror'), false);
+});
+
 test('HOST_ADAPTERS contains the code-graph adapter', () => {
   assert.ok(HOST_ADAPTERS.includes(codeGraphAdapter));
 });

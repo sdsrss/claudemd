@@ -223,7 +223,14 @@ test('detect: host + claudemd already in registry → guestRegistered true', () 
     reg,
     JSON.stringify([{ id: 'claudemd', command: 'bash "/x/claudemd-statusline.sh"', needsStdin: true }])
   );
-  assert.equal(detect().guestRegistered, true);
+  const d = detect();
+  assert.equal(d.guestRegistered, true);
+  // providers[] is what commands/claudemd-statusline.md shows the user; no
+  // detect case asserted its contents (v0.26.0 whole-branch review gap).
+  assert.deepEqual(d.providers, [
+    { id: 'claudemd', command: 'bash "/x/claudemd-statusline.sh"', needsStdin: true },
+  ]);
+  assert.deepEqual(d.psCandidates, [], 'our own entry is never a supersede candidate');
 });
 
 test('detect: a plain non-composite command stays foreign', () => {

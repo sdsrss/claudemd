@@ -815,6 +815,63 @@ test('install with a code-graph host in the slot → host-detected, no registry 
   assert.equal(s.statusLine.command, 'node "/cg/scripts/statusline-composite.js"');
 });
 
+// The stderr note is the only thing a CLI install tells the user about their
+// statusLine slot, one per outcome; the cases above assert the action and
+// never the text (v0.26.0 whole-branch review coverage gap).
+async function installStderr() {
+  const orig = process.stderr.write;
+  let out = '';
+  process.stderr.write = chunk => {
+    out += String(chunk);
+    return true;
+  };
+  try {
+    const res = await install({ pluginRoot });
+    return { res, out };
+  } finally {
+    process.stderr.write = orig;
+  }
+}
+
+test('statusline note: set', async () => {
+  const { res, out } = await installStderr();
+  assert.equal(res.statusline.action, 'set');
+  assert.match(out, /\[claudemd\] statusLine set \(.*\)\. Undo: \/claudemd-statusline remove\n/);
+});
+
+test('statusline note: host-detected names the host and the command', async () => {
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' } })
+  );
+  const { res, out } = await installStderr();
+  assert.equal(res.statusline.action, 'host-detected');
+  assert.match(out, /statusLine owned by a composite host \(code-graph\) — run \/claudemd-statusline/);
+});
+
+test('statusline note: skipped-foreign says the slot was left alone', async () => {
+  fs.writeFileSync(
+    path.join(tmpHome, '.claude/settings.json'),
+    JSON.stringify({ statusLine: { type: 'command', command: 'node /foreign/sl.js' } })
+  );
+  const { res, out } = await installStderr();
+  assert.equal(res.statusline.action, 'skipped-foreign');
+  assert.match(
+    out,
+    /already owned by another provider — left untouched\. Take over: \/claudemd-statusline --force/
+  );
+});
+
+test('statusline note: error carries the reason and leaves the slot empty', async () => {
+  fs.rmSync(path.join(pluginRoot, 'scripts/statusline.sh'));
+  const { res, out } = await installStderr();
+  assert.equal(res.statusline.action, 'error');
+  assert.match(out, /statusLine setup skipped \(.*ENOENT.*\)\. The renderer may be missing from the package/);
+  const sPath = path.join(tmpHome, '.claude/settings.json');
+  const s = fs.existsSync(sPath) ? JSON.parse(fs.readFileSync(sPath, 'utf8')) : {};
+  assert.equal(s.statusLine, undefined, 'a failed copy must not wire a missing renderer');
+});
+
 test('SCRIPT-1: incomplete shipped spec fails BEFORE moving user content', async () => {
   // A partial plugin checkout (a spec file missing) must be rejected before the
   // backup branch renameSync-moves the user's ~/.claude/CLAUDE.md. Pre-fix the
