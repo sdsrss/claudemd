@@ -360,6 +360,10 @@ function extractEvents(filePath, cutoffMs = null, unreadable = null, malformed =
         text: texts.join('\n'),
         hasText: texts.length > 0,
         toolUses,
+        // Claude Code writes this record itself when the API drops the response
+        // (`isApiErrorMessage: true`, model `<synthetic>`, text "API Error: …").
+        // The agent did not write it and did not choose the stop it marks.
+        apiError: obj.isApiErrorMessage === true,
         sidechain,
       });
       continue;
@@ -1253,7 +1257,12 @@ function scanSequence(events) {
     if (e.kind === 'assistant') {
       if (e.toolUses.length > 0) toolUseInTurn = true;
       if (e.toolUses.some(tu => SPAWN_TOOL_RE.test(String(tu.name || '')))) spawnInTurn = true;
-      if (e.hasText) priorText = e.text;
+      // An API error ended the turn, so the stop is not the agent's: clear the
+      // prior text and let yieldTellSuppressed's no-text arm (a turn cut off
+      // externally) apply. Reading the error text as the agent's last words was
+      // all three §11-turn-yield hits in the 2026-11-01 labeling pass.
+      if (e.apiError) priorText = '';
+      else if (e.hasText) priorText = e.text;
     }
     if (e.kind === 'user-typed' && !e.compactSummary) {
       if (toolUseInTurn) {

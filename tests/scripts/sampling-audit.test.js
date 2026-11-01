@@ -787,6 +787,27 @@ test('turn-yield-asked fixture: opportunities counted, tells suppressed', async 
   }
 });
 
+// The 2026-11-01 labeling pass: all three §11-turn-yield hits in every
+// retained transcript followed a record Claude Code itself wrote when the API
+// dropped the response (`isApiErrorMessage: true`, model `<synthetic>`). Its
+// text was read as the agent's last words, so the tell fired on a stop the
+// agent did not make. The second turn is the control: an ordinary stop with no
+// ask, no report and no error still counts, so the suppression is not global.
+test('turn-yield-api-error fixture: a stop the API made is not a tell', async () => {
+  const dir = stageFixture('turn-yield-api-error');
+  try {
+    const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
+    assert.equal(r.byRule['§11-turn-yield'].opportunities, 2, 'both 继续 messages follow tool-active turns');
+    assert.equal(
+      r.byRule['§11-turn-yield'].violations,
+      1,
+      'the API-error stop is suppressed; the ordinary mid-task stop is not'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('CALIBRATION closure: six detectors report closed with a reason, two stay collecting', async () => {
   const dir = stageFixture('clean');
   try {
