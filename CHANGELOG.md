@@ -8,6 +8,36 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.0] - 2026-11-01
+
+**`/claudemd-sampling-audit` reports all eight detectors closed and no longer reads a dropped API response as the agent stopping; `/claudemd-doctor` no longer exits 3 on a row whose compared root is only a guess; no hook changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, four shipped files change: `scripts/sampling-audit.js`, `scripts/doctor.js`, and one sentence each in `commands/claudemd-audit.md` and `commands/claudemd-sampling-audit.md`.
+
+**What changes for users.** `/claudemd-sampling-audit` and the `selfCompliance` section of `/claudemd-audit` now report `status: "closed"` with a `closedReason` for §10-V and §11-turn-yield, as they already did for the other six; their rates were withheld before and still are, so no number you could see changes, and the counts are still emitted. §11-turn-yield stops counting a "继续" typed after Claude Code's own `API Error: …` record. `/claudemd-doctor`: when `installed_plugins.json` names no usable claudemd install, three rows that compare against the newest version directory in the plugin cache (`hook-drift`, `plugin cache:staleness`, `plugin-root:stale-registration`) still print their red line but carry `advisory: true`, say they do not count, and no longer set exit code 3. With a usable registry entry nothing changes, and `hook-drift` also stays counted whenever a hook has recorded the root it runs from. No action is needed; to go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Sampling audit** (869f04e, 98cb71d). The two detectors the 2026-07-24 pass left `collecting` were waiting for a re-label of ~50 flagged samples each (the pre-registered calibration gate). Every transcript still on disk — 151 main sessions across all projects, from 2026-10-06, since Claude Code deletes transcripts after 30 days — held 3 flags for each: 3 of 8197 opportunities for §10-V, 3 of 1032 for §11-turn-yield. At that rate 50 can never accumulate, so the pass labeled the whole flagged population: three blind raters, who saw neither which items were flagged nor each other's labels, labeled the 6 flagged items plus 9 unflagged turn-yield controls. 0 of the 6 were violations, unanimous on all six.
+- §10-V: two quoted mentions of a banned word (a test commit message, a discussion of the word list) and one remark about the statistical significance of an external metric. With none of the three a violation, the 95% upper bound on its precision is 0.71, below the 0.8 gate. Closed.
+- §11-turn-yield: all three followed the record Claude Code writes when the API drops a response (`isApiErrorMessage: true`, model `<synthetic>`). The scanner took its text as the agent's last words. The record now clears the prior text, so the existing exemption for a turn cut off externally applies; across the same transcripts the detector goes from 3 flags to 0 of 1035. With nothing left to calibrate, closed.
+
+The record is the 2026-11-01 section of `tasks/sampling-detector-labeling-2026-07-24.md`; `spec/OPERATOR.md` already listed the A4 measurement track as closed. H4's `ASK_RATE_PRECISION` is outside this pass and stays null.
+
+**Doctor** (bba4536). With no hook record and no usable registry entry, `activePluginRoot()` and `runningPluginRoot()` fall through to `plugin-cache`: the newest semver directory in the cache, which nothing checks Claude Code loaded. In a sandbox HOME with a checkout, a healthy install and an interrupted install's partial `0.200.0` directory, `hook-drift` was the only counted red row — "33 hook script(s) differ" against a directory nothing runs — and doctor exited 3; with that leftover's `package.json` present, `plugin cache:staleness` joined it, and `plugin-root:stale-registration` reads the same guess from a cache dir. 0.85.0 made `hook-drift` count again because the running root had become measurable; on this basis it is not. The three rows now carry `advisory: true` on this basis, and the CLI exit code is computed by the newly exported `countsTowardExit`, which skips them. `installed-plugins` and `hook-fired` stay counted. The decision record, `tasks/hook-drift-plugin-cache-basis-not-verified.md`, is now tracked.
+
+**Statusline tests** (64c4c6d). The four coverage gaps the v0.26.0 review listed: the `code-graph` / `claudemd` id exclusions in `manualPsCandidates` now decide a case; `cgRead` prefers the primary when primary and mirror disagree; `detect()`'s `providers[]` is asserted; and the four `install.js` statusline notes are asserted by text. No product code changes.
+
+**Not changed.**
+- `hooks/` and `spec/`. The §8 gate: F27 (a backtick before quoted prose read as a command position) and F34 (a fetch-and-execute inside a `case` arm) stay accepted residuals in `docs/S8-RESIDUALS.md`; the two notes that asked for a decision now record it.
+- `commands/claudemd-doctor.md` does not mention the new `advisory` field; the row's own text says it does not count.
+- `remove()` still leaves `~/.claude/claudemd-statusline.sh` when the slot is a composite host that does not list claudemd. Deleting it there was proposed in July; on the maintainer's machine code-graph runs that renderer under its own `_previous` provider id, so the file is in use in exactly that state. The same state keeps claudemd from refreshing the file or reporting it stale; that is a separate change.
+
+**Tests.**
+- `tests/scripts/sampling-audit.test.js`: a fixture with an API-error stop and an ordinary mid-task stop; before the change it scored 2 violations, now 1 (the control). The closure cases now expect all eight detectors closed.
+- `tests/scripts/audit.test.js`: the `selfCompliance` closed list mirrors the eight.
+- `tests/scripts/doctor.test.js`: the inferred basis prints, carries `advisory`, and exits 0, with a registry control arm that still exits 3; stale registration on the inferred basis is advisory. Dropping any of the three flags, or the predicate's check of it, fails these cases (4 of 4 mutants).
+- `tests/scripts/statusline-hosts.test.js`, `statusline-adopt.test.js`, `install.test.js`: the statusline cases above; the pre-change suite let all three code mutants through, the new cases catch each, and each of the four notes.
+- @@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.116.6] - 2026-10-25
 
 **`CLAUDEMD_SPEC_ACTION=restore` passes over a backup that holds only spec files; no hook or command changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, five shipped files change: `scripts/uninstall.js`, `scripts/lib/backup.js` (the test restore applies, and a comment), `scripts/doctor.js` (the text of one check and a comment), and `scripts/update.js` and `scripts/install.js` (a comment each).
