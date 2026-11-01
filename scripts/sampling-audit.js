@@ -17,7 +17,8 @@
 // Calibration gate (A4, pre-registered): every detector is a heuristic. Its
 // rate may be PRESENTED as compliance evidence (audit selfCompliance `rate`
 // non-null) only after hand-labeling ~50 flagged + ~50 unflagged samples
-// yields precision ≥ PRECISION_GATE. Until then status = 'collecting' and the
+// yields precision ≥ PRECISION_GATE. Until then status = 'collecting' (or
+// 'closed' once a labeling pass rules the gate out, see CALIBRATION) and the
 // dashboard withholds the rate. Thresholds were fixed BEFORE data collection —
 // do not adjust them to fit the data.
 //
@@ -95,7 +96,8 @@ const CALIBRATION = {
     precision: null,
     labeledAt: '2026-11-01',
     closed:
-      'every flagged turn in the retained transcripts (3 of 8197 opportunities, all projects) labeled by ' +
+      'every flagged turn in the retained transcripts (3 of 8293 opportunities, all projects, through ' +
+      '2026-11-01T07:40Z) labeled by ' +
       'three blind raters: 0/3 violations (two quoted mentions of a banned word, one statistical ' +
       '"significantly" about an external metric); 95% upper bound 0.71, below the gate. At ~3 flags per ' +
       '30-day transcript retention window the ~50-sample calibration cannot accumulate',
@@ -105,8 +107,9 @@ const CALIBRATION = {
     labeledAt: '2026-11-01',
     closed:
       'every flagged stop in the retained transcripts labeled by three blind raters: 0/3 violations, all ' +
-      'three after an API-error record Claude Code wrote (suppressed since 0.117.0); with that fixed, 0 ' +
-      'flagged in 1035 opportunities across all projects, so there is nothing to calibrate',
+      'three after an API-error record Claude Code wrote (suppressed since 0.117.0); on the same window ' +
+      '(through 2026-11-01T07:40Z, all projects) 3 of 1042 opportunities flagged before that fix and 0 ' +
+      'after, so there is nothing to calibrate',
   },
   '§iron-law-2': {
     precision: null,
@@ -775,7 +778,7 @@ const READ_WINDOW = 10;
 
 // §5 hard-AUTH: narrow, low-FP hard-op triggers only (advisory-grade — the
 // plan pre-declares this detector FP-heavy under bypassPermissions where AUTH
-// often happens in prose; it stays 'collecting' until labeled).
+// often happens in prose; closed by the 2026-07-24 labeling, see CALIBRATION).
 function isHardOp(tu) {
   const input = tu.input || {};
   if (tu.name === 'Write' || tu.name === 'Edit' || tu.name === 'NotebookEdit') {
@@ -1921,9 +1924,11 @@ export function formatMarkdown(r) {
     integrityLine(r),
     '',
     '> Metric contract (pre-registered): compliance = 1 − violations/opportunities.',
-    '> A rate without its denominator is not evidence. Detector rates stay',
-    '> `collecting` until hand-labeled precision ≥ 0.8 (~50 flagged + ~50 unflagged',
-    '> samples per rule) — plan A2/A4, docs/spec-optimization-plan-2026-07-10.md.',
+    "> A rate without its denominator is not evidence. A detector's rate counts as",
+    '> compliance evidence only at hand-labeled precision ≥ 0.8 (~50 flagged + ~50',
+    '> unflagged samples per rule) — plan A2/A4, docs/spec-optimization-plan-2026-07-10.md.',
+    '> A `closed` detector failed that labeling or cannot reach it (`closedReason` in',
+    '> --json); its Rate column is collection data, not compliance evidence.',
     '',
     '## Aggregate by rule',
     '',
@@ -2035,7 +2040,9 @@ Retrospective batch scan of historical transcripts for 8 self-enforced HARD rule
   text detectors    §10-V banned vocab / §iron-law-2 / §10-four-section-order / §10-honesty
   sequence/claim    §11-turn-yield / §7-bugfix-anchor / §11-post-compaction / §5-hard-auth
 Every rule reports violations WITH its opportunity denominator (A2 metric
-contract); heuristic rates stay 'collecting' until hand-labeled precision ≥ 0.8.
+contract); a heuristic rate counts as compliance evidence only at hand-labeled
+precision ≥ 0.8, and a detector that failed or cannot reach that labeling reports
+status 'closed' with its closedReason.
 Also collects the C1 over-ceremony measure: ceremony-skill invocations
 (sp:brainstorming / test-driven-development / …) on L0/L1-shaped task segments.
 Plus the H4 default-ASK measure: answered asks per task and how many the user

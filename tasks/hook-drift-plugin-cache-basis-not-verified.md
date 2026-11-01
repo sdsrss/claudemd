@@ -1,13 +1,13 @@
 # `hook-drift` can name a `plugin-cache` root that nothing is running
 
-Status: OPEN — Low. Found during the 0.89.0 pre-ship review.
+Status: DECIDED 2026-11-01 (0.117.0) — see the last section. Found during the 0.89.0 pre-ship review.
 **Pre-existing, not a 0.89.0 regression**: the same state was equally red
 before `78661c7`, verified by the reviewer.
 
 ## What it is
 
 When `runningPluginRoot()` falls through to `activePluginRoot()` and that
-resolves via the `plugin-cache` arm (`scripts/lib/paths.js:384-391`), the root
+resolves via the `plugin-cache` arm (`scripts/lib/paths.js:446-471`; 384-391 when this was filed), the root
 is simply the newest semver directory under the cache. Nothing checks that it
 is the directory Claude Code actually loaded.
 
@@ -56,3 +56,5 @@ Measured before deciding, in a sandbox HOME (session scratchpad): `install.js` f
 Done in bba4536: on `ACTIVE.source` / `RUNNING.source === 'plugin-cache'` the three rows print as before, carry `advisory: true` plus a sentence saying they do not count, and the CLI's exit predicate (`countsTowardExit`, exported) skips them. `installed-plugins` and `hook-fired` stay counted; the tests carry a registry control arm that still exits 3. Mutation check: 4/4 mutants caught.
 
 Considered and rejected: verifying the candidate (no signal reaches a doctor process: `${CLAUDE_PLUGIN_ROOT}` is expanded, never exported), and dropping the rows on that basis (spends the line a maintainer can still read).
+
+Round-1 pre-tag review (M1): the `stale-registration` skip on `hook-drift` still let the guess silence a measured row — doctor from a cache dir, no registry, a hook record naming a checkout whose hooks differ, and a partial newer leftover exited 0, the same tree without the leftover 3. Repaired in the same release: the skip applies only when the registration is not the guess (`staleRegistration && !activeGuess`), with that state as a test.

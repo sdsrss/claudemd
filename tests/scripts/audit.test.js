@@ -398,15 +398,15 @@ test('A5 selfCompliance: section present, rate withheld while precision uncalibr
     assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
     assert.equal(typeof v.violations, 'number', `${k} missing violations`);
     assert.equal(v.rate, null, `${k} rate must be withheld (null) until precision ≥ 0.8`);
-    if (CLOSED.includes(k)) {
-      assert.equal(v.status, 'closed', `${k} must report closed, got: ${v.status}`);
-      assert.ok(
-        typeof v.closedReason === 'string' && v.closedReason.length > 0,
-        `${k} must carry its closedReason`
-      );
-    } else {
-      assert.match(v.status, /collecting/, `${k} status must say collecting`);
-    }
+    // Every rule is closed since 2026-11-01, so a rule missing from the list is
+    // the drift this mirror exists to catch (a collecting arm here could never
+    // run — 0.117.0 pre-tag review L9).
+    assert.ok(CLOSED.includes(k), `${k} is not in the CLOSED mirror of CALIBRATION`);
+    assert.equal(v.status, 'closed', `${k} must report closed, got: ${v.status}`);
+    assert.ok(
+      typeof v.closedReason === 'string' && v.closedReason.length > 0,
+      `${k} must carry its closedReason`
+    );
   }
 });
 
