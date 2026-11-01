@@ -84,7 +84,8 @@ export const PRECISION_GATE = 0.8;
 // 2026-11-01 labeling pass (D#576): the re-measurement those two were waiting
 // for cannot happen as pre-registered. Across every transcript still on disk
 // (all projects; Claude Code deletes transcripts after 30 days) each flagged 3.
-// Three blind raters labeled all six plus nine unflagged turn-yield controls:
+// Three raters, each without the others' labels, labeled all six (the three
+// turn-yield items mixed with nine unflagged controls):
 // 0 of 6 flagged were violations, unanimous on all six. §10-V fails the gate on
 // those three alone (0/3 has a 95% upper bound of 0.71). §11-turn-yield's three
 // shared one cause, repaired this release (see `apiError`), which leaves it at
@@ -98,7 +99,7 @@ const CALIBRATION = {
     closed:
       'every flagged turn in the retained transcripts (3 of 8293 opportunities, all projects, through ' +
       '2026-11-01T07:40Z) labeled by ' +
-      'three blind raters: 0/3 violations (two quoted mentions of a banned word, one statistical ' +
+      'three independent raters (all three items were flagged, so not blind to that): 0/3 violations (two quoted mentions of a banned word, one statistical ' +
       '"significantly" about an external metric); 95% upper bound 0.71, below the gate. At ~3 flags per ' +
       '30-day transcript retention window the ~50-sample calibration cannot accumulate',
   },
@@ -106,7 +107,8 @@ const CALIBRATION = {
     precision: null,
     labeledAt: '2026-11-01',
     closed:
-      'every flagged stop in the retained transcripts labeled by three blind raters: 0/3 violations, all ' +
+      'every flagged stop in the retained transcripts labeled by three raters, blind to which of 12 items ' +
+      'were flagged: 0/3 violations, all ' +
       'three after an API-error record Claude Code wrote (suppressed since 0.117.0); on the same window ' +
       '(through 2026-11-01T07:40Z, all projects) 3 of 1042 opportunities flagged before that fix and 0 ' +
       'after, so there is nothing to calibrate',

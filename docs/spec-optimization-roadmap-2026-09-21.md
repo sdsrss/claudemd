@@ -56,7 +56,7 @@ hook 侧实测在工作的是另一类:§8-rm-rf-var 552 deny、§8-npx、§8-cu
 | 项 | 预登记处置 | 当前数据 | 建议动作 |
 |---|---|---|---|
 | **C2**(P3 superpowers 冲突) | over-ceremony < 5% → 保留,关闭 P3 | `sampling-audit-2026-09-07`:354 段 / 24 个 L0/L1 段 / ceremony 命中 **0** | **关闭 P3**;n=24 偏小,记入关闭说明 |
-| **A4**(检测器标定) | precision ≥ 0.8 才进 dashboard | **已于 2026-07-24 完成**:178 个 flagged 全量标注,≥147 FP,precision 上界 **≤0.17**;6 个检测器 `closed`,§10-V 与 §11-turn-yield 修复后重新 `collecting` | **无逾期。** 本文档接受 closed 判定,**不引用任何 closed 检测器的率**(3.4) |
+| **A4**(检测器标定) | precision ≥ 0.8 才进 dashboard | **已于 2026-07-24 完成**:178 个 flagged 全量标注,≥147 FP,precision 上界 **≤0.17**;6 个检测器 `closed`,§10-V 与 §11-turn-yield 修复后重新 `collecting`（2026-11-01 补记：两条都已在 0.117.0 关闭，见 `tasks/sampling-detector-labeling-2026-07-24.md` 2026-11-01 一节） | **无逾期。** 本文档接受 closed 判定,**不引用任何 closed 检测器的率**(3.4) |
 | **D1**(Provisional 升级正式化) | anchor 30d 命中 ≥3 sessions → core 放宽 | 未见命中统计 | 跑一次计数;够则走 §13 META(需 paired deletion),不够维持 anchor |
 
 > **H4**(Default-ASK):42 次已回答的 ask,assent 0——每次 ask 都带来了方向性信息,不是纯仪式。维持收集;对 G7 的含义见 4.5。
@@ -138,7 +138,7 @@ node scripts/sampling-audit.js --global --days=30 --until=1790021507 --json
 
 ### 3.4 仓库自有仪器的现状——为什么不引用它的遵从率
 
-`sampling-audit-2026-09-07` 报 §iron-law-2 = 8/30 = 0.267 等,但这些检测器已 **closed**(`scripts/sampling-audit.js` CALIBRATION 表):§iron-law-2 指纹认不出 `**264**` 与 N/N,标注 1/1 FP;§5-hard-auth ≤0.16;§7-bugfix-anchor ≤0.25;§11-post-compaction ≤0.41;§10-honesty 分母 4;§10-four-section-order 零正样本。仅 §10-V、§11-turn-yield 在 `collecting`。**仓库当前没有任何一条自执行 HARD 规则有可用的遵从率。**
+`sampling-audit-2026-09-07` 报 §iron-law-2 = 8/30 = 0.267 等,但这些检测器已 **closed**(`scripts/sampling-audit.js` CALIBRATION 表):§iron-law-2 指纹认不出 `**264**` 与 N/N,标注 1/1 FP;§5-hard-auth ≤0.16;§7-bugfix-anchor ≤0.25;§11-post-compaction ≤0.41;§10-honesty 分母 4;§10-four-section-order 零正样本。仅 §10-V、§11-turn-yield 在 `collecting`（2026-11-01 补记：0.117.0 起也已关闭）。**仓库当前没有任何一条自执行 HARD 规则有可用的遵从率。**
 
 关键教训(直接决定 G1b 的设计):这批检测器全部是**从 prose 里认证据**——找 `Checked:`、找数字、找 `passed`——而 prose 的形态无穷(加粗、比值、中文、表格),precision 因此崩塌。**可机械判定的不是"prose 说了有证据",而是"transcript 里存在证据"。**
 

@@ -281,7 +281,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // On that basis they still print, carry `advisory: true`, and stop counting
   // (countsTowardExit; tasks/hook-drift-plugin-cache-basis-not-verified.md).
   // `installed-plugins` is Claude Code's own record and `hook-fired` a
-  // measurement; both stay counted.
+  // measurement; rows on either basis stay counted.
   const GUESS_NOTE =
     ' Advisory: installed_plugins.json names no usable claudemd install, so the root compared here is only ' +
     'the newest version directory in the plugin cache; this row does not count toward the exit code.';

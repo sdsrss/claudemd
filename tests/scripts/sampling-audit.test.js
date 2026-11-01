@@ -810,7 +810,7 @@ test('turn-yield-api-error fixture: a stop the API made is not a tell', async ()
 
 // Six closed on 2026-07-24; §10-V and §11-turn-yield joined them on 2026-11-01
 // (D#576: 3 flags each across every retained transcript, 0/6 violations by
-// three blind raters), so no detector presents itself as pending calibration.
+// three independent raters), so no detector presents itself as pending calibration.
 test('CALIBRATION closure: all eight detectors report closed with a reason', async () => {
   const dir = stageFixture('clean');
   try {

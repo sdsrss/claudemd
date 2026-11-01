@@ -53,7 +53,7 @@ Measured before deciding, in a sandbox HOME (session scratchpad): `install.js` f
 
 0.85.0's own reason for counting `hook-drift` again was that the running root became measurable (`hook-fired`); `plugin-cache` is the one basis that reason does not cover, and 0.84.0's reason for demoting the row (it compares against "an unrelated leftover") is exactly this state.
 
-Done in bba4536: on `ACTIVE.source` / `RUNNING.source === 'plugin-cache'` the three rows print as before, carry `advisory: true` plus a sentence saying they do not count, and the CLI's exit predicate (`countsTowardExit`, exported) skips them. `installed-plugins` and `hook-fired` stay counted; the tests carry a registry control arm that still exits 3. Mutation check: 4/4 mutants caught.
+Done in bba4536: on `ACTIVE.source` / `RUNNING.source === 'plugin-cache'` the three rows print as before, carry `advisory: true` plus a sentence saying they do not count, and the CLI's exit predicate (`countsTowardExit`, exported) skips them. Rows on the `installed-plugins` and `hook-fired` bases stay counted; the tests carry a registry control arm that still exits 3. Mutation check: 4/4 mutants caught.
 
 Considered and rejected: verifying the candidate (no signal reaches a doctor process: `${CLAUDE_PLUGIN_ROOT}` is expanded, never exported), and dropping the rows on that basis (spends the line a maintainer can still read).
 
