@@ -25,7 +25,7 @@ Run Step 0. Report `verdict`, `current`, and whether `~/.claude/claudemd-statusl
 
 ## `remove` mode
 
-Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer, unless another provider still runs it (`rendererRunBy`), which keeps it; the host keeps the slot. Then run:
+Show the transition first: run `detect --json`; if `verdict` is `claudemd`, state what `settings.statusLine` will become (the prior statusLine as it was saved — the whole object, `padding` included — if one was saved, else removed) and that `~/.claude/claudemd-statusline.sh` will be deleted. If `verdict` is `host` and `guestRegistered`, remove unregisters claudemd from the host's registry (restoring a superseded provider if one was saved) and deletes the renderer unless another provider runs it once the remove is done: one listed in `rendererRunBy`, or a superseded provider the remove restores; then the file stays and the result's `rendererKept` names that provider. The host keeps the slot. Then run:
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js remove --json`
 Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any, and `rendererKept` (the providers the renderer was kept for) if set. If `not-ours`, nothing was changed.
 

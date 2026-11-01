@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# All five runs the gate reads (--limit 5) are failed Dependabot jobs: no
+# counted run is visible, so there is no baseline and no status to record.
+r() { printf '{"databaseId":%s,"status":"completed","conclusion":"failure","event":"dynamic","workflowName":"Dependabot Updates","displayTitle":"npm_and_yarn in /. for minimatch - Update #%s","url":"https://example/%s"}' "$1" "$1" "$1"; }
+echo "[$(r 5),$(r 4),$(r 3),$(r 2),$(r 1)]"

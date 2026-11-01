@@ -679,6 +679,17 @@ sb609 named-dependabot-push
 DEC=$(echo "$SB609_OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 66 a push-triggered workflow named Dependabot Updates stays red" \
   || { echo "FAIL: 66 (expected deny, got: $SB609_OUT)"; FAIL=$((FAIL + 1)); }
+# Cases 67-68 (0.117.1 pre-tag review): the two other outcomes of passing over
+# Dependabot runs. 67: a green Dependabot run in front of a red CI run is now
+# denied (0.117.0 read the Dependabot run's colour and passed). 68: a window of
+# only Dependabot runs has no counted run, so nothing to gate on and no status.
+sb609 dependabot-green-over-red
+DEC=$(echo "$SB609_OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" && "$SB609_ROWS" == "deny" ]] && echo "PASS: 67 green Dependabot job newest, red CI behind it → deny" \
+  || { echo "FAIL: 67 (want deny + deny row; out: $SB609_OUT; rows: '$SB609_ROWS')"; FAIL=$((FAIL + 1)); }
+sb609 dependabot-window-full
+[[ -z "$SB609_OUT" && "$SB609_ROWS" == "pending-no-baseline:unknown" ]] && echo "PASS: 68 five Dependabot jobs fill the window → no baseline, status unknown" \
+  || { echo "FAIL: 68 (want silent + pending-no-baseline:unknown; out: $SB609_OUT; rows: '$SB609_ROWS')"; FAIL=$((FAIL + 1)); }
 
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same

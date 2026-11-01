@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The newest completed run is a Dependabot security-update job that SUCCEEDED,
+# with the repo's own red CI behind it: the gate must read the CI run.
+echo '[{"databaseId":9,"status":"completed","conclusion":"success","event":"dynamic","workflowName":"Dependabot Updates","displayTitle":"npm_and_yarn in /. for minimatch - Update #1","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"failure","event":"push","workflowName":"ci","displayTitle":"CI main","url":"https://example/8"}]'
