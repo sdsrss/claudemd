@@ -86,3 +86,7 @@ Source: user audit dated 2026-05-24, session 25/05 ultrathink analysis of "claud
 **Mixed.** P5 closed, P6 shipped (0.21.6), the hard-rules.json `_doc` drift fixed, P2 covered by 0.30.0's promote-to-durable. P1: trigger not met (1 of 4 large projects over 70% `feedback_*`). P4: trigger met (58-line index) but the doctor 12 KB budget (0.35.0) took the sub-index's place; no decision says so.
 
 Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.
+
+## Decision 2026-11-01 — P4 closed: the doctor budget replaced the sub-index
+
+P4's trigger (40 lines or 10 KB) fired on lines: the claudemd index is 58 lines / 9,087 bytes today. The sub-index it proposed was a hedge against Claude Code's 200-line `MEMORY.md` truncation; doctor's `memory-index-size` row (12 KB default, 0.35.0) now bounds the index well below that — at today's mean 157 bytes per line, 12 KB is ~78 lines — and reports when it is crossed. Re-open if that row goes red and pruning cannot bring it back.

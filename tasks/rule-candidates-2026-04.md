@@ -228,3 +228,14 @@ not fire and the date governs.
 **Decision pending.** Parallel-path promoted (v6.11.10); the macOS and Sizing items closed; model-tiering obsolete. Open for the maintainer: promote the shared-symbol edit guard (its repro bar was met, 4 against 3, at the 08-24 batch review), or close it as covered by core "Export-surface edit → impact analysis first".
 
 Two read-only subagents re-checked each item against HEAD 8e71e6c (v0.116.4); the §8 shapes, the restore path and the statusline items were re-run by the main session.
+
+## Decision 2026-11-01 — §9 Shared-symbol edit guard: CLOSED as covered
+
+Not promoted. The four repros, each against what already covers it:
+
+1. mem `OBS_FTS_COLUMNS` — an exported constant edited without its references: core §2.1 "Export-surface edit → impact analysis first".
+2. `feedback_extraction_needs_consumer_gate` — closed by a gate (`subject-set-drift.test.js`), as the 08-24 review noted.
+3. `feedback_code_graph_impact_aliased_imports` — a tool blind spot; the project CLAUDE.md code-graph block now says an empty answer is not proof and to confirm with grep before deleting or renaming.
+4. `feedback_fix_creates_same_class_instance` — closed by the same gate; core §1 "look for the same defect elsewhere" names the habit.
+
+Against promotion: core is 23,422 / 25,000 bytes and §0.1 wants a paired net-delete for any addition; three of four repros were closed mechanically, which spends no core bytes; and a memory search on 2026-11-01 found no new repro of this shape since the 08-24 review. Re-open on a new repro that none of the four covers names.
