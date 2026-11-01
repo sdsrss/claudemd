@@ -418,8 +418,13 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         'statusline',
         false,
         `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline runs it` : 'the statusLine still points at it'} — ` +
-          `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer), ` +
-          `or /claudemd-statusline remove to unwire it.`
+          `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer)` +
+          // remove() unwires only our slot or our guest entry; a host provider
+          // running our file under its own id is the host's, and remove() returns
+          // not-ours there (D#599).
+          (sl.verdict === 'claudemd' || sl.guestRegistered
+            ? `, or /claudemd-statusline remove to unwire it.`
+            : `.`)
       );
     } else if (!sl.dest.matchesShipped) {
       // Stale, not broken: it renders, just not what this version ships.

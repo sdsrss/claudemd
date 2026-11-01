@@ -141,6 +141,7 @@ test('statusline: flags a renderer that settings points at but disk does not hav
   assert.equal(c.ok, false);
   assert.match(c.detail, /missing but the statusLine still points at it/);
   assertAdvises(c.detail, '/claudemd-install');
+  assert.match(c.detail, /, or \/claudemd-statusline remove to unwire it\.$/);
 });
 
 test('statusline: flags a missing renderer under a composite host too', async () => {
@@ -150,6 +151,7 @@ test('statusline: flags a missing renderer under a composite host too', async ()
   assert.equal(c.ok, false, 'a guest-registered renderer is just as load-bearing');
   assert.match(c.detail, /missing but the code-graph statusline runs it/);
   assertAdvises(c.detail, '/claudemd-install');
+  assert.match(c.detail, /, or \/claudemd-statusline remove to unwire it\.$/);
 });
 
 // D#599: code-graph keeps a slot it took over as provider `_previous`, so our
@@ -195,6 +197,34 @@ test('statusline: a renderer the host runs under another id is checked, and /cla
   const after = (await doctor({})).checks.find(x => x.name === 'statusline');
   assert.equal(after.ok, true, after.detail);
   assert.match(after.detail, /renderer present and matches shipped \(host\)/);
+});
+
+// In that same state `/claudemd-statusline remove` returns not-ours and changes
+// nothing (the `_previous` entry is code-graph's), so the missing-renderer row
+// must not offer it as the way to unwire the file.
+test('statusline: a missing renderer the host runs under another id is advised /claudemd-install only', async () => {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  const c = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(c.ok, false, c.detail);
+  assert.match(
+    c.detail,
+    /missing but the code-graph statusline runs it — every render prints "No such file or directory"\. Fix: run \/claudemd-install \(recopies the renderer\)\.$/
+  );
+  assert.doesNotMatch(c.detail, /claudemd-statusline remove/);
 });
 
 test('statusline: the advice names a command that actually recopies the renderer', () => {
