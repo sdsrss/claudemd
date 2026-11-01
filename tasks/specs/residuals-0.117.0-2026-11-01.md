@@ -29,9 +29,9 @@
 
 - [x] S1：turn-yield 修复（先红后绿）— 覆盖 AC1 — 869f04e
 - [x] S2：两条检测器关闭、测试与两份命令页 — 覆盖 AC2 — 98cb71d
-- [x] S3：doctor 三行（先红后绿，变异检验）— 覆盖 AC3 — 308d32d
-- [x] S4：statusline 覆盖测试 — 覆盖 AC4 — 024de12
-- [x] S5：笔记写决定、跟踪 hook-drift 笔记 — 4fa2959
+- [x] S3：doctor 三行（先红后绿，变异检验）— 覆盖 AC3 — bba4536
+- [x] S4：statusline 覆盖测试 — 覆盖 AC4 — 64c4c6d
+- [x] S5：笔记写决定、跟踪 hook-drift 笔记 — 7d59dcf
 - [ ] S6：发 0.117.0（版本号七处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC5
 
 ## 决策与进展
