@@ -8,6 +8,38 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.1] - 2026-11-01
+
+**The ship-baseline gate no longer reads GitHub's failed Dependabot security-update job as red CI; claudemd's status-line renderer is refreshed and checked when code-graph runs it under another provider id, and `/claudemd-statusline` no longer adds a second claudemd segment there; one `/claudemd-doctor` sentence no longer calls a checkout a real install; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, four shipped files change: `hooks/ship-baseline-check.sh`, `scripts/lib/statusline.js`, `scripts/doctor.js` and `commands/claudemd-statusline.md`.
+
+**What changes for users.**
+- A `git push` that the ship-baseline gate checks is no longer denied when the newest completed run on the branch is GitHub's Dependabot security-update job (event `dynamic`, workflow `Dependabot Updates`), which fails whenever no fix can be applied. The gate passes over runs that have both of those values when it picks the baseline run and when it records the status for `pending-no-baseline`. Every other run counts as before, including other `dynamic` runs and a repository workflow named `Dependabot Updates`.
+- code-graph's composite status line can hold claudemd's command under its own provider id (`_previous`, kept when code-graph took over a slot claudemd had). claudemd is then not a registered guest, so nothing refreshed `~/.claude/claudemd-statusline.sh` and doctor said the renderer was not required. In that state, install now refreshes the file (`statusline.action: renderer-refreshed`) without touching `settings.json`, the host's registry or its mirror, and no longer prints the note that tells you to add a claudemd segment; `statusline-adopt.js detect --json` has a new `rendererInUse` field; doctor's `statusline` row checks the file, so a missing or stale copy is a red row that counts, as it already was for a registered guest; and `/claudemd-statusline` reports the provider id and stops, where it used to register a guest that showed claudemd's segment twice.
+- `/claudemd-doctor`'s `hook-drift` row, when it compares against the root a hook recorded, no longer says "Both sides are real installs": the record can name a checkout.
+
+No action is needed. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Ship-baseline** (cdfdb56). On 2026-11-01 the Dependabot job for alert #5 (minimatch, a dev dependency whose only fix is a new major version) failed on `main` after v0.117.0's tag, became the newest completed run there, and the gate denied a push whose CI was green; that push went out with a `known-red baseline:` line. The gate now asks `gh` for two more JSON fields, `event` and `workflowName`; both exist in every `gh` that has `displayTitle`, which the request already needed (2.16.0 and later). The `pending-no-baseline` row in `docs/RULE-HITS-SCHEMA.md` says which run's status it carries.
+
+**Statusline** (03d0c8c, ba19345, 274aa69). A host provider runs the renderer when its command contains `claudemd-statusline.sh`, the same test `detect()` applies to the slot, whatever the provider's id. `guestRegistered` keeps its meaning (our own entry). In this state `/claudemd-statusline remove` still returns `not-ours` and keeps the file, which the host's entry runs; so when the file is missing, doctor's advice is `/claudemd-install` alone, without the `/claudemd-statusline remove` alternative it gives for our own slot and our guest entry. The command page change restores documented behaviour: the command says it registers idempotently. The decision record is `tasks/statusline-host-wrap-deferred.md`.
+
+**Doctor** (427da14). The `hook-drift` text for a hook-recorded root dropped the clause; the rest of the sentence and both fixes it names hold for either kind of root.
+
+**Not changed.**
+- With `CLAUDEMD_NO_STATUSLINE=1`, install leaves the status line alone, so a stale or missing renderer stays red in doctor and `/claudemd-install` does not recopy it. That was already so for our own slot and a registered guest; it now also applies in the `_previous` state.
+- Dependabot alert #5 stays open: its fix is a new major version of a dev dependency.
+- `hooks/` apart from `ship-baseline-check.sh`, and `spec/`.
+
+**Tests.**
+- `tests/hooks/ship-baseline.test.sh`: cases 63–64 (a failed Dependabot job newest with green CI behind it; only a Dependabot job completed) were denied before the change; controls 65–66 (another `dynamic` run; a push-triggered workflow with that name) stay denied, and each fails when its half of the condition is removed.
+- `tests/scripts/statusline-adopt.test.js`: in the `_previous` state, install-time adopt refreshes the file and writes nothing else (it failed before 03d0c8c), its dry run writes nothing, and `remove()` returns `not-ours` with the file and registry kept.
+- `tests/scripts/doctor.test.js`: the `_previous` state end to end (stale renderer, red row, `scripts/install.js`, green row, no segment note; before 03d0c8c the row said "renderer not required"); a missing renderer in that state is advised `/claudemd-install` only (failed before 274aa69), and the own-slot and guest cases now assert the remove clause; a hook-recorded checkout no longer reads "real installs" (failed before 427da14 on that assertion).
+- `tests/scripts/command-page-behaviour.test.js`: the page's three host-branch lines, with `detect --json` and `adopt --empty-only` run on the `_previous` state in a sandbox HOME (failed before ba19345: the page lacked the line).
+- Mutants that drop `detect()`'s provider-command test, the install-time refresh branch, or the remove clause's condition each fail a named case.
+- @@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.117.0] - 2026-11-01
 
 **`/claudemd-sampling-audit` reports all eight detectors closed and no longer reads a dropped API response as the agent stopping; `/claudemd-doctor` no longer exits 3 on a row whose compared root is only a guess; no hook changes; spec unchanged (v8.3.0).** Apart from the version in the two `.claude-plugin/` manifests, four shipped files change: `scripts/sampling-audit.js`, `scripts/doctor.js`, and one sentence each in `commands/claudemd-audit.md` and `commands/claudemd-sampling-audit.md`.
