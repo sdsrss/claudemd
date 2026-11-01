@@ -704,7 +704,9 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         (hookFired ? 'the root that fired hooks' : 'the plugin root resolved from the filesystem') +
         ` (via ${basis}): ${sample}${more}. ` +
         (hookFired
-          ? `Both sides are real installs, and the record is global and last-writer-wins, so a session running a different root may have written it. ` +
+          ? // No claim about what kind of root either side is: the record can name
+            // a checkout a session loaded the plugin from (D#603).
+            `The record is global and last-writer-wins, so a session running a different root may have written it. ` +
             `Fix: if this tree is what should be running, ${REINSTALL}. ` +
             `If the other root is, start a session from it — only its SessionStart rewrites the record.`
           : // Says only what `source` knows. The previous wording opened with

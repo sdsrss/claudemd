@@ -2103,6 +2103,29 @@ test('hook-drift names the root that fired hooks, not the one the registry lists
   assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z \(sid abc123\)/);
 });
 
+test('hook-drift does not call a checkout a real install when a checkout fired the hooks', async () => {
+  // 0.117.0 round-2 review L-6 (D#603): a session started with the plugin
+  // loaded from a checkout writes that checkout into the record, and doctor run
+  // from the install then said "Both sides are real installs". One side is a
+  // working tree. The rest of the sentence (the record is global and
+  // last-writer-wins) and the two fixes hold for either kind of root.
+  const installed = seedRunnableRoot(box, '0.85.0', { withScripts: true });
+  const checkout = seedCheckout(box, '0.85.0');
+  fs.appendFileSync(path.join(checkout, 'hooks/pre-bash-safety-check.sh'), '\n# local edit\n');
+  fs.writeFileSync(
+    path.join(box.stateDir, 'hook-root.json'),
+    JSON.stringify({ root: checkout, ts: '2026-09-11T00:00:00Z', version: '0.85.0', sid: 'devtree' })
+  );
+
+  const drift = runDoctorFrom(box, installed).checks.find(x => x.name === 'hook-drift');
+  assert.equal(drift.ok, false, drift.detail);
+  assert.ok(drift.detail.includes(checkout), `names the checkout that fired hooks: ${drift.detail}`);
+  assert.match(drift.detail, /via hook-fired at 2026-09-11T00:00:00Z \(sid devtree\)/);
+  assert.match(drift.detail, /the record is global and last-writer-wins/i);
+  assert.match(drift.detail, /only its SessionStart rewrites the record/);
+  assert.doesNotMatch(drift.detail, /real installs/);
+});
+
 test('hook-drift moves the exit code again, and a matching tree leaves it at 0', async () => {
   // The user-visible half of 0.85.0, asserted through the CLI branch rather than
   // through the row: `isAdvisoryCheck` above pins the predicate, this pins what a
