@@ -4,9 +4,10 @@
 // 2026-09-02 audit R11-33, the one item in that batch that needed authorisation
 // (§5 hard: CI config). `actions/checkout@v6` is a branch-like ref the upstream
 // owner can repoint at any commit at any time. npm-publish.yml's publish job
-// has `id-token: write` and `secrets.NPM_TOKEN`, so a repointed tag in any step
-// of that job executes attacker-chosen code in a job that can mint a
-// provenance attestation and publish to npm under this package's name. The
+// has `id-token: write`, which npm trusted publishing exchanges for a publish
+// credential, so a repointed tag in any step of that job executes
+// attacker-chosen code that can publish to npm under this package's name and
+// mint its provenance attestation. The
 // marketplace channel is worse in one respect: it serves the tag directly and
 // `ci.yml` only reports, so nothing about a compromised run would look red.
 //
@@ -162,8 +163,8 @@ test('R11-33: every third-party action is pinned to an immutable digest', t => {
     [],
     'GitHub Action(s) referenced by a mutable tag or branch:\n      ' +
       unpinned.join('\n      ') +
-      "\n      A tag is a pointer its owner can repoint; npm-publish.yml's publish job runs with " +
-      'id-token: write and NPM_TOKEN in scope. Pin an action to its full commit SHA (and a container to its ' +
+      "\n      A tag is a pointer its owner can repoint; npm-publish.yml's publish job publishes with " +
+      'id-token: write (npm trusted publishing). Pin an action to its full commit SHA (and a container to its ' +
       '@sha256: digest), and keep a trailing `# vX.Y.Z` comment.'
   );
 });
@@ -356,4 +357,45 @@ test('M1: the patterns see the shapes they guard and skip comments (mutation con
   assert.ok(IGNORE_SCRIPTS_RE.test('npm ci --ignore-scripts=true'));
   assert.ok(!IGNORE_SCRIPTS_RE.test('npm install --ignore-scripts=false --no-audit'));
   assert.equal(code('          tag="${GITHUB_REF_NAME#v}"'), '          tag="${GITHUB_REF_NAME#v}"');
+});
+
+// ── npm trusted publishing (OIDC) ──
+// npm tries OIDC first and, when the exchange fails, falls back to a token in
+// the environment, logging the failure only in verbose output. While
+// NODE_AUTH_TOKEN carried secrets.NPM_TOKEN into the publish step, a wrong
+// trust configuration on npmjs.com would still have published, with the job
+// green. No workflow names either variable outside a comment, so a broken
+// configuration fails the publish instead. `codeLines` is the M1 helper above.
+const TOKEN_RE = /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b/;
+
+test('trusted publishing: no workflow names NPM_TOKEN or NODE_AUTH_TOKEN outside a comment', t => {
+  const hits = [];
+  let judged = 0;
+  for (const f of workflowFiles()) {
+    for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
+      if (code.trim() === '') continue;
+      judged++;
+      if (TOKEN_RE.test(code)) hits.push(`${f}:${line}: ${code.trim()}`);
+    }
+  }
+  t.diagnostic(`${judged} non-comment workflow line(s) judged`);
+  assert.ok(judged >= 100, `only ${judged} non-comment line(s) read — the scan is not reading the workflows`);
+  assert.deepEqual(
+    hits,
+    [],
+    'npm token reference(s) in a workflow:\n      ' +
+      hits.join('\n      ') +
+      '\n      npm-publish.yml publishes through npm trusted publishing. With a token in the ' +
+      'environment npm falls back to it when the OIDC exchange fails, so a wrong trust ' +
+      'configuration publishes anyway and the job stays green. Fix the npmjs.com trusted ' +
+      'publisher (organization or user, repository, workflow filename, environment) instead.'
+  );
+});
+
+test('trusted publishing: the token pattern sees code and skips comments (mutation control)', () => {
+  const code = s => codeLines(s)[0].code;
+  assert.ok(TOKEN_RE.test(code('          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}')));
+  assert.ok(TOKEN_RE.test(code('        env: { NODE_AUTH_TOKEN: x }')));
+  assert.ok(!TOKEN_RE.test(code('# Required repo secret: NPM_TOKEN')));
+  assert.ok(!TOKEN_RE.test(code('  id-token: write  # replaces NPM_TOKEN')));
 });

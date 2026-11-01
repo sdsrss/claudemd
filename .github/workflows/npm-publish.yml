@@ -2,21 +2,29 @@ name: npm-publish
 
 # Auto-publish to npm on tag push (v0.9.1+).
 #
-# Actions here are SHA-pinned: the publish job holds NPM_TOKEN and `id-token:
-# write`, so a repointed upstream tag in any of its steps would run attacker
-# code in a job that can mint a provenance attestation and publish under this
-# package's name. Update procedure + the gate live in ci.yml's header (audit
-# R11-33).
+# Actions here are SHA-pinned: the publish job has `id-token: write`, which npm
+# trusted publishing exchanges for a publish credential, so a repointed
+# upstream tag in any of its steps would run attacker code in a job that can
+# publish under this package's name and mint its provenance attestation.
+# Update procedure + the gate live in ci.yml's header (audit R11-33).
 #
 # Trigger: any tag matching `v*.*.*` pushed to origin. The atomic ship
 # workflow (commit + push main + git tag + git push tag + gh release create)
 # fires this action on the `git push origin v<X.Y.Z>` step. Manual `gh release`
 # creation also pushes the tag, so this works for both paths.
 #
-# Required repo secret: NPM_TOKEN
-#   Type: "Automation" token (npm dashboard → Access Tokens → Generate New Token).
-#   Permissions: publish for the `claudemd-cli` package (granular token scope).
-#   Lifetime: rotate on a schedule consistent with org policy.
+# Publishing uses npm trusted publishing (OIDC); no npm token is stored.
+#   npmjs.com → claudemd-cli → Settings → Trusted publishing → GitHub Actions:
+#   organization or user `sdsrss`, repository `claudemd`, workflow filename
+#   `npm-publish.yml`, environment empty (the publish job sets none).
+#   Requires npm >= 11.5.1 and Node >= 22.14.0 in the publish job (Node 24
+#   below; Node 20 and 22 bundle npm 10), a GitHub-hosted runner, and the
+#   publish job's `id-token: write`. npm tries OIDC first and falls back to a
+#   token in the environment when the exchange fails, logging that only in
+#   verbose output, so while a token is present a broken trust configuration
+#   still publishes and the job stays green. With none, the publish step fails:
+#   on a 401, 403 or 404 check the four values above and the job's
+#   permissions; do not add a token back.
 #
 # Pre-publish gate: `publish` needs BOTH the `static` job and every leg of the
 # `test` matrix — three Linux node legs plus one macOS leg (Round-14 audit
@@ -67,9 +75,10 @@ concurrency:
   group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
-# `id-token: write` is granted to the publish job only (below): the static job
-# installs devDependencies whose own dependencies are not locked (D#612), and
-# both gates run third-party code (0.117.2 pre-tag review M1).
+# `id-token: write` is granted to the publish job only (below): with npm
+# trusted publishing it is the publish credential, the static job installs
+# devDependencies whose own dependencies are not locked (D#612), and both
+# gates run third-party code (0.117.2 pre-tag review M1).
 permissions:
   contents: read
 
@@ -140,7 +149,8 @@ jobs:
   publish:
     needs: [test, static]
     runs-on: ubuntu-latest
-    # `id-token: write` mints the provenance attestation (`--provenance`).
+    # npm exchanges this job's OIDC token for a short-lived publish credential
+    # (trusted publishing) and signs the provenance attestation with it.
     permissions:
       contents: read
       id-token: write
@@ -151,9 +161,11 @@ jobs:
           # the tagged commit in the same object store.
           fetch-depth: 0
 
+      # Node 24, not 20: trusted publishing needs npm >= 11.5.1 and Node >=
+      # 22.14.0, and Node 20 and 22 bundle npm 10.
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Verify the tagged commit is on main
@@ -214,6 +226,11 @@ jobs:
         # hyphen, so `1.2.3+build-9` carries no prerelease and a `*-*` test over the
         # whole string would ship a release to `next`. After the strip, a `-` is the
         # prerelease separator.
+        #
+        # No token in the environment: npm authenticates through trusted
+        # publishing (see the header), and `--provenance` is generated either
+        # way. tests/scripts/actions-sha-pin.test.js keeps NPM_TOKEN and
+        # NODE_AUTH_TOKEN out of every workflow's non-comment lines.
         # tests/scripts/workflow-step-exec.test.js executes this body.
         run: |
           set -eu
@@ -224,5 +241,3 @@ jobs:
           esac
           echo "publishing $pkg to dist-tag $dist_tag"
           npm publish --provenance --access public --tag "$dist_tag"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
