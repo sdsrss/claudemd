@@ -83,6 +83,14 @@ export function detect(pluginRoot = null) {
       verdict = 'foreign';
     }
   }
+  // Whether anything renders through our file, whatever id it is under: the slot
+  // itself, our guest entry, or another provider running our command. code-graph
+  // keeps a slot it took over as provider `_previous`, so claudemd's command can
+  // run there with claudemd not registered (D#599). Same test as the slot's own.
+  const rendererInUse =
+    verdict === 'claudemd' ||
+    (verdict === 'host' &&
+      (guestRegistered || providers.some(p => typeof p?.command === 'string' && p.command.includes(MARKER))));
   const dest = destPath();
   const exists = fs.existsSync(dest);
   let matchesShipped = false;
@@ -99,6 +107,7 @@ export function detect(pluginRoot = null) {
     current: cmd,
     providers,
     guestRegistered,
+    rendererInUse,
     psCandidates,
     dest: { exists, matchesShipped },
   };
@@ -133,7 +142,7 @@ export function adopt({
         `would not be written. Replace it with an object (\`{}\` is valid) and re-run.`
     );
   }
-  const { verdict, current, host } = detect(pluginRoot);
+  const { verdict, current, host, rendererInUse } = detect(pluginRoot);
 
   if (verdict === 'claudemd') {
     if (dryRun) return { action: 'dry-run', from: current, to: current };
@@ -165,6 +174,14 @@ export function adopt({
         if (dryRun) return { action: 'dry-run', host: adapter.id, to: GUEST_COMMAND() };
         copyRenderer(pluginRoot);
         return { action: 'guest-refreshed', host: adapter.id, to: GUEST_COMMAND() };
+      }
+      // Not our guest entry, but a provider of the host runs our file (D#599):
+      // the file is still ours to refresh, and the host's registry is still not
+      // ours to touch. `to: null` because nothing is registered.
+      if (rendererInUse) {
+        if (dryRun) return { action: 'dry-run', host: adapter.id, to: null };
+        copyRenderer(pluginRoot);
+        return { action: 'renderer-refreshed', host: adapter.id, to: null };
       }
       return { action: 'host-detected', host: adapter.id, to: null };
     }

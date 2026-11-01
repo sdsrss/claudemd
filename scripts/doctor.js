@@ -386,10 +386,10 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // permanently, for as long as the settings entry survives it. doctor reported
   // exit 0 through all of it, because nothing here had ever looked at the file.
   //
-  // Wired-in means one of two shapes: our command in the slot, or a composite
-  // host (code-graph) that we guest-registered under and that will invoke the
-  // renderer on our behalf. When neither holds, claudemd does not own the
-  // statusline and an absent renderer is simply not our business.
+  // Wired-in means something renders through our file: our command in the slot,
+  // a composite host (code-graph) that we guest-registered under, or a provider
+  // of that host running our command under another id (D#599). When none holds,
+  // nothing runs the renderer and an absent one is simply not our business.
   // PLUGIN_ROOT, not ACTIVE.root, is the comparison baseline, and the reason is
   // the whole point of this release (v0.84.1, post-tag review H-3/M-4): BOTH
   // repair commands run `node ${CLAUDE_PLUGIN_ROOT}/scripts/…`, so they copy the
@@ -408,14 +408,16 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // already-ours renderer in both wired shapes without touching the slot.
   try {
     const sl = detectStatusline(PLUGIN_ROOT);
-    const wired = sl.verdict === 'claudemd' || (sl.verdict === 'host' && sl.guestRegistered);
+    // rendererInUse also covers a host provider that runs our file under an id
+    // other than ours (code-graph's `_previous`, D#599).
+    const wired = sl.rendererInUse;
     if (!wired) {
       push('statusline', true, `not claudemd-owned (${sl.verdict}) — renderer not required`);
     } else if (!sl.dest.exists) {
       push(
         'statusline',
         false,
-        `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline invokes claudemd as a guest` : 'the statusLine still points at it'} — ` +
+        `${claudeHome('claudemd-statusline.sh')} is missing but ${sl.verdict === 'host' ? `the ${sl.host} statusline runs it` : 'the statusLine still points at it'} — ` +
           `every render prints "No such file or directory". Fix: run /claudemd-install (recopies the renderer), ` +
           `or /claudemd-statusline remove to unwire it.`
       );

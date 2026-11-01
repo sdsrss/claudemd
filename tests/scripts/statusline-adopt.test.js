@@ -325,6 +325,59 @@ test('adopt: host + NOT registered + emptyOnly → host-detected, nothing writte
     false
   );
   assert.ok(!fs.existsSync(destFile()));
+  assert.equal(detect(pluginRoot).rendererInUse, false, 'no provider runs our renderer');
+});
+
+// D#599: code-graph keeps a slot it took over as a provider with id `_previous`,
+// so claudemd's OWN command can run inside the composite while claudemd is not
+// a registered guest. The file is ours and rendered every time, yet the refresh
+// above keyed on id `claudemd`: on the machine that found this, the renderer was
+// a 2026-09-05 copy missing the D#455 full-disk fix, and install kept telling
+// the user to add a claudemd segment that was already there.
+const PREV_STATE = () => {
+  seedCg([
+    { id: '_previous', command: CMD, needsStdin: true },
+    { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+  ]);
+  fs.writeFileSync(destFile(), '#!/usr/bin/env bash\n# an older claudemd renderer\n');
+  const files = [
+    settingsFile(),
+    path.join(tmpHome, '.cache/code-graph/statusline-registry.json'),
+    path.join(tmpHome, '.claude/statusline-providers.json'),
+  ];
+  return () => files.map(f => fs.readFileSync(f, 'utf8'));
+};
+
+test('adopt: host runs OUR renderer under another id + emptyOnly → refreshes it, registers nothing', () => {
+  const snapshot = PREV_STATE();
+  const before = snapshot();
+  const d = detect(pluginRoot);
+  assert.equal(d.guestRegistered, false, 'precondition: claudemd is not a registered guest');
+  assert.equal(d.rendererInUse, true, 'the _previous provider runs our renderer');
+
+  const dry = adopt({ pluginRoot, emptyOnly: true, dryRun: true });
+  assert.equal(dry.action, 'dry-run');
+  assert.equal(detect(pluginRoot).dest.matchesShipped, false, 'a dry run writes nothing');
+
+  const r = adopt({ pluginRoot, emptyOnly: true });
+  assert.equal(r.action, 'renderer-refreshed');
+  assert.equal(r.host, 'code-graph');
+  assert.equal(
+    fs.readFileSync(destFile(), 'utf8'),
+    fs.readFileSync(path.join(pluginRoot, 'scripts/statusline.sh'), 'utf8'),
+    'the renderer the host runs is refreshed'
+  );
+  assert.deepEqual(snapshot(), before, 'settings, registry and mirror are untouched');
+});
+
+test('remove: our renderer under another id → not-ours, renderer and registry kept', () => {
+  // The foreign entry is code-graph's; deleting the file it runs would break
+  // its composite (tasks/statusline-host-wrap-deferred.md, Decision 2026-11-01).
+  const snapshot = PREV_STATE();
+  const before = snapshot();
+  assert.equal(remove().action, 'not-ours');
+  assert.ok(fs.existsSync(destFile()), 'the renderer the host runs stays');
+  assert.deepEqual(snapshot(), before);
 });
 
 test('adopt: host (command) → registers claudemd at front, copies renderer', () => {

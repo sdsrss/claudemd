@@ -148,8 +148,53 @@ test('statusline: flags a missing renderer under a composite host too', async ()
   const r = await doctor({});
   const c = r.checks.find(x => x.name === 'statusline');
   assert.equal(c.ok, false, 'a guest-registered renderer is just as load-bearing');
-  assert.match(c.detail, /code-graph statusline invokes claudemd as a guest/);
+  assert.match(c.detail, /missing but the code-graph statusline runs it/);
   assertAdvises(c.detail, '/claudemd-install');
+});
+
+// D#599: code-graph keeps a slot it took over as provider `_previous`, so our
+// own command can run in the composite with claudemd NOT registered. The row
+// said "renderer not required" and nothing ever refreshed the file. The advice
+// it gives now has to work: install.js, run as the advice says, makes it green.
+test('statusline: a renderer the host runs under another id is checked, and /claudemd-install repairs it', async () => {
+  fs.writeFileSync(
+    box.claude('settings.json'),
+    JSON.stringify({
+      statusLine: { type: 'command', command: 'node "/cg/scripts/statusline-composite.js"' },
+    })
+  );
+  const reg = path.join(box.home, '.cache/code-graph/statusline-registry.json');
+  fs.mkdirSync(path.dirname(reg), { recursive: true });
+  fs.writeFileSync(
+    reg,
+    JSON.stringify([
+      { id: '_previous', command: 'bash "$HOME/.claude/claudemd-statusline.sh"', needsStdin: true },
+      { id: 'code-graph', command: 'node "/cg/statusline.js"', needsStdin: false },
+    ])
+  );
+  fs.writeFileSync(
+    box.claude('claudemd-statusline.sh'),
+    '#!/usr/bin/env bash\n# an older claudemd renderer\n'
+  );
+
+  const before = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(before.ok, false, before.detail);
+  assert.match(before.detail, /differs from the shipped renderer/);
+  assertAdvises(before.detail, '/claudemd-install');
+
+  const env = box.env();
+  delete env.CLAUDE_PLUGIN_ROOT;
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const installed = spawnSync(process.execPath, [path.join(repo, 'scripts/install.js')], {
+    env,
+    encoding: 'utf8',
+  });
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.doesNotMatch(installed.stderr, /add claudemd's segment/, 'the segment is already there');
+
+  const after = (await doctor({})).checks.find(x => x.name === 'statusline');
+  assert.equal(after.ok, true, after.detail);
+  assert.match(after.detail, /renderer present and matches shipped \(host\)/);
 });
 
 test('statusline: the advice names a command that actually recopies the renderer', () => {
