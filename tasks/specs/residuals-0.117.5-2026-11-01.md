@@ -1,6 +1,6 @@
 # 0.117.5：评审遗留攒批（doctor 关闭开关下的建议、三个命令页五处文字、两项评估收尾）
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -17,7 +17,7 @@
 - [x] AC1：`CLAUDEMD_NO_STATUSLINE=1` 下，renderer 过期或缺失时（自己的槽位、注册的 guest、宿主用 `_previous` 运行），statusline 行建议 `/claudemd-statusline`，不再写 "run /claudemd-install"；照旧建议跑 install.js 后行仍是红的，照 `/claudemd-statusline` 页面在该状态下给的命令（自己的槽位和 guest 是 `adopt`，宿主运行是 `adopt --empty-only`）跑后变绿，且设置文件逐字节不变；开关取 `0`、`true`、空值时建议不变。验证：`node --test tests/scripts/doctor.test.js`（7 条新用例；4 条 opt-out 用例在 v0.117.4 的 doctor.js 上全部失败；评审给出的 5 个变异体各至少 2 条失败）。
 - [x] AC2：三个命令页五处新句子与代码一致：`cachePruned.held` 及其两种 `reason`；restore 跳过较新的、含 `CLAUDE.md` 且只有 spec 文件的备份并列入 `skippedSpecOnly`，没有 `CLAUDE.md` 的 spec 备份不跳过；doctor 的 `advisory: true` 不计入退出码。验证：`node --test tests/scripts/command-page-behaviour.test.js`（4 条新用例；含整行锁定的 3 条在旧页面上失败）。
 - [x] AC3：两项评估的结论写进已跟踪的设计记录，数字可由本地材料复算。验证：`node tasks/r3-wtree-eval/analyze.mjs` 的输出与 `tasks/specs/wtree-evidence.md` 记的数一致。
-- [ ] AC4：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过；tag、GitHub Release、npm（`_npmUser` 为 GitHub Actions）。
+- [x] AC4：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过；tag、GitHub Release、npm（`_npmUser` 为 GitHub Actions）。
 
 ## 方案
 
@@ -33,7 +33,7 @@
 - [x] S4：doctor 修复（先红后绿、变异检验）— 覆盖 AC1 — e5dec8d
 - [x] S5：命令页五处（先红后绿）— 覆盖 AC2 — 7a6cc1a
 - [x] S6：两份设计记录写结果（e31937b）；runbook 记"评审遗留攒批"
-- [ ] S7：发 0.117.5（版本号五处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC4
+- [x] S7：发 0.117.5（版本号五处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC4 — tag v0.117.5（32c4e28）
 
 ## 决策与进展
 
@@ -54,3 +54,5 @@
 - `node --test tests/scripts/doctor.test.js tests/scripts/command-page-behaviour.test.js`（修复轮后）→ 通过（144/144）
 - 5c4d6b6 的树：`npm run check` → 通过（退出码 0，node 1749/1751，2 条跳过，shell 套件全部通过）；`npm run smoke` → 通过（2/2）
 - PR CI，4bd7e25（run 41346208317）→ 通过（7/7）
+- PR CI，32c4e28（run 41348306429）→ 通过（7/7）；tag v0.117.5 的 `ci`（41349854206）与 `npm-publish`（41349854144，`publish` job）→ 通过；`main` 推送的 ci（41349834974）→ 通过
+- `npm view claudemd-cli dist-tags` → `latest: 0.117.5`；`npm view claudemd-cli@0.117.5 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`
