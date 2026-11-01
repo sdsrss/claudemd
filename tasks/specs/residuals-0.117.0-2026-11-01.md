@@ -1,6 +1,6 @@
 # 0.117.0：遗留项收尾（检测器标注、doctor 推断依据、statusline 覆盖）
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -18,7 +18,7 @@
 - [x] AC2：§10-V、§11-turn-yield 报 `status: closed`，`closedReason` 带实测数字，`precision` 为 null；audit 的 `selfCompliance` 八条都是 closed。验证：`node --test tests/scripts/sampling-audit.test.js tests/scripts/audit.test.js`。
 - [x] AC3：依据是 `plugin-cache` 时，`hook-drift`、`plugin cache:staleness`、`plugin-root:stale-registration` 照常显示红行，带 `advisory: true` 和"不计入退出码"一句，退出码不因它们为 3；`installed-plugins` 依据的同一状态仍退出 3。验证：`node --test tests/scripts/doctor.test.js`（两条新用例，4 个变异体全抓到）。
 - [x] AC4：statusline 四处覆盖缺口各有用例，并能抓到对应变异体。验证：`node --test tests/scripts/install.test.js tests/scripts/statusline-adopt.test.js tests/scripts/statusline-hosts.test.js`。
-- [ ] AC5：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过。
+- [x] AC5：`npm run check`、`npm run smoke` 通过；PR CI 绿；打 tag 前评审通过。
 
 ## 方案
 
@@ -32,7 +32,7 @@
 - [x] S3：doctor 三行（先红后绿，变异检验）— 覆盖 AC3 — bba4536
 - [x] S4：statusline 覆盖测试 — 覆盖 AC4 — 64c4c6d
 - [x] S5：笔记写决定、跟踪 hook-drift 笔记 — 7d59dcf
-- [ ] S6：发 0.117.0（版本号七处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC5
+- [x] S6：发 0.117.0（版本号七处、CHANGELOG、`npm run check`、release 分支与草稿 PR、PR CI、打 tag 前评审、tag、GitHub Release、npm）— 覆盖 AC5 — tag v0.117.0（2e26e91）
 
 ## 决策与进展
 
@@ -50,3 +50,8 @@
 - `node --test tests/scripts/sampling-audit.test.js tests/scripts/audit.test.js tests/scripts/help-discoverability.test.js` → 通过（158/158）
 - `node --test tests/scripts/doctor.test.js`（修改前，新用例）→ 失败（`advisory` 为 undefined）；修改后 → 通过（117/117）；变异检验 4/4
 - `node --test tests/scripts/install.test.js tests/scripts/statusline-adopt.test.js tests/scripts/statusline-hosts.test.js` → 通过（110/110）；变异检验 7/7，改动前的测试 0/3
+- 打 tag 前评审第 1 轮（cb48629..d957506）→ 0 Critical / 0 High / 2 Medium / 9 Low；M1（猜测出的 stale-registration 仍让 `hook-drift` 跳过实测的漂移）2545d79 修复，新用例修复前失败；M2 与 Low 为文字，5d4ce43 修复
+- 打 tag 前评审第 2 轮（d957506..5d4ce43）→ 0 / 0 / 0 / 6 Low；五条文字在 2e26e91 修复（claim-drift 路线），一条早于本版的文字问题记为 D#603
+- `npm run check`（2e26e91）→ 通过（node 1707/1709，2 跳过；全部 shell 套件）；`npm run smoke` → 通过（2/2）
+- PR CI → 通过（d957506 run 41285606541、5d4ce43 run 41287148324、2e26e91 run 41288418863，各 7/7）
+- tag 的 `ci`（41289544207）与 `npm-publish`（41289544336）→ 通过；`npm view claudemd-cli dist-tags.latest` → 0.117.0（发布时间 2026-11-01T09:05:43Z）
