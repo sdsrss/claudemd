@@ -76,8 +76,10 @@ jobs:
       # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
       # devDependencies from one), and setup-node's npm cache keys on it.
       # package.json pins every devDependency to an exact version; their own
-      # dependencies resolve fresh on each run.
-      - run: npm install --no-audit --no-fund
+      # dependencies resolve fresh on each run, so their install scripts do
+      # not run (0.117.2 pre-tag review M1; none of the 120 packages the last
+      # lockfile held had one).
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - name: eslint (blocking)
         run: npm run lint:js
       - name: prettier (blocking)

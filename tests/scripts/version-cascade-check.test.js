@@ -139,7 +139,7 @@ test('CLI: unknown flag → exit 2 + argv-shape error', () => {
 
 test('REL-M3: ADDING-NEW-HOOK names as many semver sites as the gate enumerates', () => {
   // Round-17 REL-M3. The contributor doc told you to bump four sites; this gate
-  // has checked six since the lockfile pair was added, and its own failure text
+  // then checked six (the lockfile pair had been added), and its own failure text
   // still said "All four" — three statements of one number, two of them stale,
   // and the one that decides is the array. The array is the source here: the doc
   // is joined to `--json`'s own output, not to a second literal.
@@ -507,10 +507,11 @@ test('pluginSemver: each README claudemd-cli pin is a site, named by line', () =
 });
 
 // D#612: Claude Code installs a plugin's dependencies, devDependencies included,
-// whenever the plugin root holds package.json and a lockfile it reads (2.1.316:
-// bun.lock, npm-shrinkwrap.json, package-lock.json, bun.lockb; yarn.lock and
-// pnpm-lock.yaml get a "not supported" warning instead). It rebuilds both files
-// in a temp dir and runs `npm ci` there, so no .npmrc in this repo can stop it.
+// whenever the plugin root holds package.json and a lockfile it installs from
+// (2.1.316: package-lock.json or npm-shrinkwrap.json, through `npm ci` on a copy
+// of both files in a temp dir, so no .npmrc in this repo is read; bun.lock,
+// through `bun install`). bun.lockb, yarn.lock and pnpm-lock.yaml are refused
+// with a warning instead. All six stay untracked.
 // With package-lock.json tracked, every cached version carried 37M of eslint,
 // c8, prettier and jscpd that no hook or command loads (only the repo's own
 // lint and metrics tooling does). The devDependencies are

@@ -248,3 +248,63 @@ test('R11-33: both pin predicates can return false (mutation control)', () => {
   assert.ok(isLocal('./.github/actions/build'));
   assert.ok(!isLocal('actions/checkout@v6') && !isLocal('docker://alpine:3.14'));
 });
+
+// ── what the CI installs may run (0.117.2 pre-tag review M1) ──
+// Without a lockfile (D#612) the static jobs' `npm install` resolves the
+// devDependencies' own dependencies fresh on every run, with no integrity pin.
+// Their install scripts do not run, and the job that can mint an OIDC token
+// (provenance; with npm trusted publishing, the publish credential) installs
+// nothing: `id-token: write` belongs to npm-publish.yml's publish job only.
+
+// The code part of each line: a full-line comment becomes '', an inline one is
+// cut at a `#` that follows whitespace (`${GITHUB_REF_NAME#v}` keeps its `#`).
+function codeLines(text) {
+  return text.split('\n').map((l, i) => ({ line: i + 1, code: l.replace(/(^|\s)#.*$/, '') }));
+}
+
+test('M1: every npm install / npm ci in a workflow passes --ignore-scripts', () => {
+  const installs = [];
+  for (const f of workflowFiles()) {
+    for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
+      if (/\bnpm\s+(?:install|i|ci)\b/.test(code)) installs.push({ at: `${f}:${line}`, code: code.trim() });
+    }
+  }
+  assert.ok(
+    installs.length >= 2,
+    `only ${installs.length} npm install step(s) found — the scan is not reading them`
+  );
+  assert.deepEqual(
+    installs.filter(i => !/--ignore-scripts\b/.test(i.code)).map(i => `${i.at}: ${i.code}`),
+    [],
+    'an npm install without --ignore-scripts runs whatever install script an unlocked dependency ships'
+  );
+});
+
+test("M1: id-token: write is granted to npm-publish.yml's publish job only", () => {
+  const grants = [];
+  for (const f of workflowFiles()) {
+    for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
+      if (/\bid-token:\s*write\b/.test(code)) grants.push({ f, line });
+    }
+  }
+  const lines = fs.readFileSync(path.join(WORKFLOW_DIR, 'npm-publish.yml'), 'utf8').split('\n');
+  const start = lines.findIndex(l => /^ {2}publish:\s*$/.test(l));
+  assert.notEqual(start, -1, 'npm-publish.yml has no `publish:` job');
+  let end = lines.findIndex((l, i) => i > start && /^ {0,2}\S/.test(l));
+  if (end === -1) end = lines.length;
+  const inPublish = g => g.f === 'npm-publish.yml' && g.line > start && g.line <= end;
+  assert.deepEqual(
+    grants.filter(g => !inPublish(g)).map(g => `${g.f}:${g.line}`),
+    [],
+    'id-token: write granted outside the publish job'
+  );
+  assert.equal(grants.length, 1, `expected one id-token grant, found ${grants.length}`);
+});
+
+test('M1: the comment stripper keeps code and drops comments (mutation control)', () => {
+  const code = s => codeLines(s)[0].code;
+  assert.ok(/\bid-token:\s*write\b/.test(code('  id-token: write  # required for provenance')));
+  assert.ok(!/\bid-token:\s*write\b/.test(code('# id-token: write is granted below')));
+  assert.ok(/\bnpm\s+install\b/.test(code('      - run: npm install --ignore-scripts # x')));
+  assert.equal(code('          tag="${GITHUB_REF_NAME#v}"'), '          tag="${GITHUB_REF_NAME#v}"');
+});

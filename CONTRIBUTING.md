@@ -7,8 +7,8 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
   suites, integration, shellcheck, bash-3.2 construct gate). Node >= 20 and `jq` required;
   `shellcheck` recommended. No `npm install` needed for that.
 - **Lint / format / metrics** (these DO need `npm install` — devDependencies only, nothing
-  ships). The repo tracks no `package-lock.json`: Claude Code runs `npm ci` on a plugin
-  whose root has a lockfile, devDependencies included, so a tracked one put eslint, c8,
+  ships). The repo tracks no `package-lock.json`: Claude Code installs the dependencies of
+  a plugin whose root has one, devDependencies included, so a tracked one put eslint, c8,
   prettier and jscpd in every user's plugin cache (D#612). package.json pins each
   devDependency to an exact version instead, and the lockfile a local `npm install` writes
   is gitignored. `npm run lint` (= `lint:argv` · `version-check` · `lint:sh` shellcheck warning+ ·

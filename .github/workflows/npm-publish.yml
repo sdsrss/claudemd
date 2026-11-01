@@ -2,10 +2,11 @@ name: npm-publish
 
 # Auto-publish to npm on tag push (v0.9.1+).
 #
-# Actions here are SHA-pinned: this workflow holds NPM_TOKEN and `id-token:
-# write`, so a repointed upstream tag in any step would run attacker code in a
-# job that can mint a provenance attestation and publish under this package's
-# name. Update procedure + the gate live in ci.yml's header (audit R11-33).
+# Actions here are SHA-pinned: the publish job holds NPM_TOKEN and `id-token:
+# write`, so a repointed upstream tag in any of its steps would run attacker
+# code in a job that can mint a provenance attestation and publish under this
+# package's name. Update procedure + the gate live in ci.yml's header (audit
+# R11-33).
 #
 # Trigger: any tag matching `v*.*.*` pushed to origin. The atomic ship
 # workflow (commit + push main + git tag + git push tag + gh release create)
@@ -66,9 +67,11 @@ concurrency:
   group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
+# `id-token: write` is granted to the publish job only (below): the static job
+# installs devDependencies whose own dependencies are not locked (D#612), and
+# both gates run third-party code (0.117.2 pre-tag review M1).
 permissions:
   contents: read
-  id-token: write  # required for npm provenance attestation (--provenance)
 
 jobs:
   # Mirrors ci.yml's `static` job, and exists because this gate did not run it
@@ -86,7 +89,7 @@ jobs:
         with:
           node-version: 24
       # No lockfile is tracked (D#612): see ci.yml's static job.
-      - run: npm install --no-audit --no-fund
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - name: eslint (blocking)
         run: npm run lint:js
       - name: prettier (blocking)
@@ -137,6 +140,10 @@ jobs:
   publish:
     needs: [test, static]
     runs-on: ubuntu-latest
+    # `id-token: write` mints the provenance attestation (`--provenance`).
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
