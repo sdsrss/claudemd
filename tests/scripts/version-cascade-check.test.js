@@ -508,8 +508,9 @@ test('pluginSemver: each README claudemd-cli pin is a site, named by line', () =
 
 // D#612: Claude Code installs a plugin's dependencies, devDependencies included,
 // whenever the plugin root holds package.json and a lockfile it installs from
-// (2.1.316: package-lock.json or npm-shrinkwrap.json, through `npm ci` on a copy
-// of both files in a temp dir, so no .npmrc in this repo is read; bun.lock,
+// (2.1.316: package-lock.json or npm-shrinkwrap.json, through `npm ci` on a
+// rebuilt package.json and lockfile in a temp dir, so no .npmrc in this repo is
+// read; bun.lock,
 // through `bun install`). bun.lockb, yarn.lock and pnpm-lock.yaml are refused
 // with a warning instead. All six stay untracked.
 // With package-lock.json tracked, every cached version carried 37M of eslint,

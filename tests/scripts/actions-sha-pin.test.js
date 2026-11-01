@@ -3,9 +3,9 @@
 //
 // 2026-09-02 audit R11-33, the one item in that batch that needed authorisation
 // (§5 hard: CI config). `actions/checkout@v6` is a branch-like ref the upstream
-// owner can repoint at any commit at any time. npm-publish.yml grants
-// `id-token: write` and holds `secrets.NPM_TOKEN`, so a repointed tag in any
-// step of that workflow executes attacker-chosen code in a job that can mint a
+// owner can repoint at any commit at any time. npm-publish.yml's publish job
+// has `id-token: write` and `secrets.NPM_TOKEN`, so a repointed tag in any step
+// of that job executes attacker-chosen code in a job that can mint a
 // provenance attestation and publish to npm under this package's name. The
 // marketplace channel is worse in one respect: it serves the tag directly and
 // `ci.yml` only reports, so nothing about a compromised run would look red.
@@ -162,8 +162,8 @@ test('R11-33: every third-party action is pinned to an immutable digest', t => {
     [],
     'GitHub Action(s) referenced by a mutable tag or branch:\n      ' +
       unpinned.join('\n      ') +
-      '\n      A tag is a pointer its owner can repoint; npm-publish.yml runs with id-token: write ' +
-      'and NPM_TOKEN in scope. Pin an action to its full commit SHA (and a container to its ' +
+      "\n      A tag is a pointer its owner can repoint; npm-publish.yml's publish job runs with " +
+      'id-token: write and NPM_TOKEN in scope. Pin an action to its full commit SHA (and a container to its ' +
       '@sha256: digest), and keep a trailing `# vX.Y.Z` comment.'
   );
 });
@@ -251,10 +251,10 @@ test('R11-33: both pin predicates can return false (mutation control)', () => {
 
 // ── what the CI installs may run (0.117.2 pre-tag review M1) ──
 // Without a lockfile (D#612) the static jobs' `npm install` resolves the
-// devDependencies' own dependencies fresh on every run, with no integrity pin.
-// Their install scripts do not run, and the job that can mint an OIDC token
-// (provenance; with npm trusted publishing, the publish credential) installs
-// nothing: `id-token: write` belongs to npm-publish.yml's publish job only.
+// devDependencies' own dependencies fresh on every run, with no integrity pin,
+// so every install passes `--ignore-scripts`, and the job that can mint an OIDC
+// token (provenance; with npm trusted publishing, the publish credential)
+// installs nothing: `id-token: write` belongs to npm-publish.yml's publish job.
 
 // The code part of each line: a full-line comment becomes '', an inline one is
 // cut at a `#` that follows whitespace (`${GITHUB_REF_NAME#v}` keeps its `#`).
@@ -262,11 +262,24 @@ function codeLines(text) {
   return text.split('\n').map((l, i) => ({ line: i + 1, code: l.replace(/(^|\s)#.*$/, '') }));
 }
 
+// npm's install family with every alias `npm <cmd> --help` lists (npm 11.19.0:
+// install, ci, install-test, install-ci-test), as a word anywhere after `npm`,
+// so options in front of it (`npm --prefix . install`) do not hide it (round 2
+// L2: `npm add`, `npm cit` and that shape went unseen).
+const NPM_INSTALL_RE =
+  /\bnpm\b[^\n]*?\s(?:install|add|i|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall|ci|clean-install|ic|install-clean|isntall-clean|install-test|it|install-ci-test|cit|clean-install-test|sit)(?=\s|$)/;
+// `--ignore-scripts` or `--ignore-scripts=true`; `=false` turns scripts back on.
+const IGNORE_SCRIPTS_RE = /\s--ignore-scripts(?:=true)?(?=\s|$)/;
+// A grant of the OIDC token: `id-token: write` in block or flow form, quoted
+// or not, or `permissions: write-all`, which grants every scope.
+const ID_TOKEN_GRANT_RE =
+  /\bid-token\s*:\s*(['"]?)write\1(?=[\s,}]|$)|\bpermissions\s*:\s*(['"]?)write-all\2(?=[\s,}]|$)/;
+
 test('M1: every npm install / npm ci in a workflow passes --ignore-scripts', () => {
   const installs = [];
   for (const f of workflowFiles()) {
     for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
-      if (/\bnpm\s+(?:install|i|ci)\b/.test(code)) installs.push({ at: `${f}:${line}`, code: code.trim() });
+      if (NPM_INSTALL_RE.test(code)) installs.push({ at: `${f}:${line}`, code: code.trim() });
     }
   }
   assert.ok(
@@ -274,7 +287,7 @@ test('M1: every npm install / npm ci in a workflow passes --ignore-scripts', () 
     `only ${installs.length} npm install step(s) found — the scan is not reading them`
   );
   assert.deepEqual(
-    installs.filter(i => !/--ignore-scripts\b/.test(i.code)).map(i => `${i.at}: ${i.code}`),
+    installs.filter(i => !IGNORE_SCRIPTS_RE.test(i.code)).map(i => `${i.at}: ${i.code}`),
     [],
     'an npm install without --ignore-scripts runs whatever install script an unlocked dependency ships'
   );
@@ -284,7 +297,7 @@ test("M1: id-token: write is granted to npm-publish.yml's publish job only", () 
   const grants = [];
   for (const f of workflowFiles()) {
     for (const { line, code } of codeLines(fs.readFileSync(path.join(WORKFLOW_DIR, f), 'utf8'))) {
-      if (/\bid-token:\s*write\b/.test(code)) grants.push({ f, line });
+      if (ID_TOKEN_GRANT_RE.test(code)) grants.push({ f, line });
     }
   }
   const lines = fs.readFileSync(path.join(WORKFLOW_DIR, 'npm-publish.yml'), 'utf8').split('\n');
@@ -301,10 +314,46 @@ test("M1: id-token: write is granted to npm-publish.yml's publish job only", () 
   assert.equal(grants.length, 1, `expected one id-token grant, found ${grants.length}`);
 });
 
-test('M1: the comment stripper keeps code and drops comments (mutation control)', () => {
+test('M1: the patterns see the shapes they guard and skip comments (mutation control)', () => {
   const code = s => codeLines(s)[0].code;
-  assert.ok(/\bid-token:\s*write\b/.test(code('  id-token: write  # required for provenance')));
-  assert.ok(!/\bid-token:\s*write\b/.test(code('# id-token: write is granted below')));
-  assert.ok(/\bnpm\s+install\b/.test(code('      - run: npm install --ignore-scripts # x')));
+  for (const yes of [
+    '  id-token: write  # required for provenance',
+    "  id-token: 'write'",
+    '  id-token: "write"',
+    '    permissions: { contents: read, id-token: write }',
+    'permissions: write-all',
+    "    permissions: 'write-all'",
+  ]) {
+    assert.ok(ID_TOKEN_GRANT_RE.test(code(yes)), `grant not seen: ${yes}`);
+  }
+  for (const no of [
+    '# id-token: write is granted below',
+    '  id-token: read',
+    '  id-token: none',
+    'permissions: read-all',
+  ]) {
+    assert.ok(!ID_TOKEN_GRANT_RE.test(code(no)), `not a grant: ${no}`);
+  }
+  for (const yes of [
+    '      - run: npm install --ignore-scripts # x',
+    '      - run: npm ci',
+    '      - run: npm --prefix . install',
+    '      - run: npm add eslint',
+    '      - run: npm cit',
+    '      - run: npm i',
+  ]) {
+    assert.ok(NPM_INSTALL_RE.test(code(yes)), `install not seen: ${yes}`);
+  }
+  for (const no of [
+    '        run: npm run lint:js',
+    '          npm publish --provenance --access public --tag "$dist_tag"',
+    '      - run: npm run install-deps',
+    '  group: npm-publish-${{ github.ref }}',
+  ]) {
+    assert.ok(!NPM_INSTALL_RE.test(code(no)), `not an install: ${no}`);
+  }
+  assert.ok(IGNORE_SCRIPTS_RE.test('npm install --ignore-scripts --no-audit'));
+  assert.ok(IGNORE_SCRIPTS_RE.test('npm ci --ignore-scripts=true'));
+  assert.ok(!IGNORE_SCRIPTS_RE.test('npm install --ignore-scripts=false --no-audit'));
   assert.equal(code('          tag="${GITHUB_REF_NAME#v}"'), '          tag="${GITHUB_REF_NAME#v}"');
 });

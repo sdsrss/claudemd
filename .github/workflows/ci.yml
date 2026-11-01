@@ -2,9 +2,10 @@ name: ci
 
 # Third-party actions are pinned to a full commit SHA, with the release they
 # were pinned at in a trailing comment (2026-09-02 audit R11-33). `@v6` is a
-# pointer the upstream owner can repoint at any commit; npm-publish.yml runs
-# with `id-token: write` and NPM_TOKEN in scope, so that pointer is a publish
-# credential. tests/scripts/actions-sha-pin.test.js enforces both halves.
+# pointer the upstream owner can repoint at any commit; npm-publish.yml's
+# publish job runs with `id-token: write` and NPM_TOKEN in scope, so that
+# pointer is a publish credential. tests/scripts/actions-sha-pin.test.js
+# enforces both halves.
 #
 # To update one: `git ls-remote --tags https://github.com/<owner>/<repo> 'vN*'`,
 # take the SHA of the release you want, then edit both the SHA and its comment.
@@ -46,8 +47,8 @@ concurrency:
 # a settings change can widen without touching this file — and this workflow
 # runs on `pull_request`, so that token is reachable from a fork's branch name
 # and from whatever the matrix executes. It only reports: it checks out, installs
-# and runs the suite, and writes nothing back. npm-publish.yml declares its own
-# wider set (`id-token: write`) for provenance; nothing here needs it.
+# and runs the suite, and writes nothing back. npm-publish.yml's publish job
+# declares a wider set (`id-token: write`) for provenance; nothing here needs it.
 permissions:
   contents: read
 
@@ -76,9 +77,10 @@ jobs:
       # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
       # devDependencies from one), and setup-node's npm cache keys on it.
       # package.json pins every devDependency to an exact version; their own
-      # dependencies resolve fresh on each run, so their install scripts do
-      # not run (0.117.2 pre-tag review M1; none of the 120 packages the last
-      # lockfile held had one).
+      # dependencies resolve fresh on each run, with no integrity pin, so
+      # `--ignore-scripts` keeps their install scripts from running (0.117.2
+      # pre-tag review M1; none of the 120 packages the last lockfile held had
+      # one).
       - run: npm install --ignore-scripts --no-audit --no-fund
       - name: eslint (blocking)
         run: npm run lint:js
