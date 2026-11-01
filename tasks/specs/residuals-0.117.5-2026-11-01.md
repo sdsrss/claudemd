@@ -52,3 +52,5 @@
 - 发版前评审第 1 轮（17eac21..4bd7e25，新开的 release-reviewer）：0 Critical、0 High、1 Medium、6 Low。逐条对照代码核实后修复：M1（restore 只跳过含 `CLAUDE.md` 的 spec 备份，`scripts/lib/backup.js:360`）、L2（用户内容扫描连带三个 spec 文件，`scripts/install.js:569-573`）、L3（keep 3 = 当前版本加最新的其他版本）、L4（读不成数字的标记每次都保留）、L1（各状态的命令不同）、L5（4 个变异体存活，测试改为锁整句并锁 `=== '1'`）、L6（第 4 条用例在 v0.117.4 上也失败，已复现）。修复只有文字、测试和一处 `doctor.js` 注释，按 runbook 走 claim-drift 自查，不再派第二轮评审。e5dec8d、7a6cc1a 已推送，提交信息保留原措辞，CHANGELOG 的评审段写明。
 - `node --test --test-name-pattern=CLAUDEMD_NO_STATUSLINE tests/scripts/doctor.test.js`（修复轮后）→ 通过（7/7）；评审的 5 个变异体 → 失败（4、2、2、4、2 条）
 - `node --test tests/scripts/doctor.test.js tests/scripts/command-page-behaviour.test.js`（修复轮后）→ 通过（144/144）
+- 5c4d6b6 的树：`npm run check` → 通过（退出码 0，node 1749/1751，2 条跳过，shell 套件全部通过）；`npm run smoke` → 通过（2/2）
+- PR CI，4bd7e25（run 41346208317）→ 通过（7/7）
