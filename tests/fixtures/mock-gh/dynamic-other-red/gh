@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Control: a dynamic run that is NOT Dependabot (CodeQL default setup) failing.
+echo '[{"databaseId":9,"status":"completed","conclusion":"failure","event":"dynamic","workflowName":"CodeQL","displayTitle":"CodeQL","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"success","event":"push","workflowName":"ci","displayTitle":"CI main","url":"https://example/8"}]'

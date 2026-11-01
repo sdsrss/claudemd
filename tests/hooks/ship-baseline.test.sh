@@ -646,6 +646,40 @@ f177_hook "$C62_PATH" "$F177_GH"
 [[ "$C62_CONTROL" == "gh-failed" && -z "$F177_OUT" && -z "$F177_ROWS" ]] && echo "PASS: 62 gh not installed → no row (control with a failing gh: gh-failed)" \
   || { echo "FAIL: 62 (control rows '$C62_CONTROL' want gh-failed; no-gh out: $F177_OUT; rows: '$F177_ROWS')"; FAIL=$((FAIL + 1)); }
 
+# Cases 63-66 (D#609): GitHub's own Dependabot security-update job runs on the
+# default branch as `event: dynamic`, `workflowName: "Dependabot Updates"`, and
+# fails whenever no fix can be applied (2026-11-01: minimatch, whose only fix was
+# a new major). Pre-fix it was the newest completed run on main, so a push after
+# a green CI was denied as red. Only that exact pair is skipped; 65 and 66 keep
+# each half of it alone red. Own HOME and a session id that writes rows, so the
+# event each verdict recorded is part of the assertion.
+SB609="$TMP_HOME/d609"
+SB609_N=0
+sb609() {  # <mock> — sets SB609_OUT, SB609_ROWS ("event[:status]" per row)
+  SB609_N=$((SB609_N + 1))
+  local h="$SB609/home-$SB609_N" ev
+  mkdir -p "$h/.claude"
+  ev=$(jq -nc --arg d "$TMP_HOME" '{session_id:"d609",tool_name:"Bash",tool_input:{command:"git push origin main"},cwd:$d}')
+  SB609_OUT=$(HOME="$h" PATH="$MOCKS/$1:$PATH" bash "$HOOK" <<<"$ev" 2>&1)
+  SB609_ROWS=$(jq -r 'select(.hook=="ship-baseline") | .event + (if .extra.status then ":" + .extra.status else "" end)' \
+    "$h/.claude/logs/claudemd.jsonl" 2>/dev/null | tr '\n' ' ')
+  SB609_ROWS=${SB609_ROWS% }
+}
+sb609 dependabot-red
+[[ -z "$SB609_OUT" && "$SB609_ROWS" == "pass" ]] && echo "PASS: 63 failed Dependabot job newest, green CI behind it → pass" \
+  || { echo "FAIL: 63 (want silent + pass row; out: $SB609_OUT; rows: '$SB609_ROWS')"; FAIL=$((FAIL + 1)); }
+sb609 dependabot-only
+[[ -z "$SB609_OUT" && "$SB609_ROWS" == "pending-no-baseline:in_progress" ]] && echo "PASS: 64 only a Dependabot job completed → no baseline yet, CI's status recorded" \
+  || { echo "FAIL: 64 (want silent + pending-no-baseline:in_progress; out: $SB609_OUT; rows: '$SB609_ROWS')"; FAIL=$((FAIL + 1)); }
+sb609 dynamic-other-red
+DEC=$(echo "$SB609_OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 65 a dynamic run that is not Dependabot stays red" \
+  || { echo "FAIL: 65 (expected deny, got: $SB609_OUT)"; FAIL=$((FAIL + 1)); }
+sb609 named-dependabot-push
+DEC=$(echo "$SB609_OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
+[[ "$DEC" == "deny" ]] && echo "PASS: 66 a push-triggered workflow named Dependabot Updates stays red" \
+  || { echo "FAIL: 66 (expected deny, got: $SB609_OUT)"; FAIL=$((FAIL + 1)); }
+
 # Total is DERIVED from the assertions in this file rather than hand-written:
 # the literal 35 had to be bumped by hand on every addition, which is the same
 # drift class the 2026-07-27 audit found in memory-read-check.test.sh.

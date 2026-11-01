@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The newest completed run is GitHub's Dependabot security-update job failing
+# ("security update not possible"), with the repo's own green CI behind it.
+echo '[{"databaseId":9,"status":"completed","conclusion":"failure","event":"dynamic","workflowName":"Dependabot Updates","displayTitle":"npm_and_yarn in /. for minimatch - Update #1","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"success","event":"push","workflowName":"ci","displayTitle":"CI main","url":"https://example/8"}]'

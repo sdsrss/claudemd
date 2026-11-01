@@ -190,9 +190,9 @@ BRANCH=$(git -C "$SB_DIR" branch --show-current 2>/dev/null)
 # `gh run list --branch B` in repo A would report A's runs for B's branch name.
 GH_RC=0
 if [[ -n "$BRANCH" ]]; then
-  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || GH_RC=$?
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --branch "$BRANCH" --limit 5 --json databaseId,status,conclusion,displayTitle,url,event,workflowName 2>/dev/null) || GH_RC=$?
 else
-  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url 2>/dev/null) || GH_RC=$?
+  RUN_JSON=$(cd "$SB_DIR" && platform_timeout 2 gh run list --limit 5 --json databaseId,status,conclusion,displayTitle,url,event,workflowName 2>/dev/null) || GH_RC=$?
 fi
 # A gh that timed out or failed leaves no CI colour to gate on, so the push goes
 # through — and until defect 177 it went through with no row, while a missing jq
@@ -235,11 +235,19 @@ fi
 # it was supposed to evaluate, and every downstream count built on those rows
 # was inflated. Selecting the newest completed run gives the question a real
 # answer; `--limit 5` provides the lookback for it.
-COMPLETED_RUN=$(printf '%s' "$RUN_JSON" | jq -c '[.[] | select(.status == "completed")][0] // empty' 2>/dev/null)
+#
+# GitHub's own Dependabot security-update job is not this repo's CI: it runs on
+# the default branch as `event: dynamic` and fails whenever no fix can be
+# applied (D#609, 2026-11-01: minimatch, whose only fix was a new major), which
+# says nothing about any commit. It made a green main read as red. Only that
+# exact pair is skipped, so a repo workflow that shares the name, and every
+# other dynamic run (CodeQL default setup, Pages), still counts.
+SB_IS_CI='(.event != "dynamic" or .workflowName != "Dependabot Updates")'
+COMPLETED_RUN=$(printf '%s' "$RUN_JSON" | jq -c "[.[] | select(.status == \"completed\" and $SB_IS_CI)][0] // empty" 2>/dev/null)
 if [[ -z "$COMPLETED_RUN" ]]; then
   # Nothing has finished yet — there is no color to gate on. Record the state
   # under its own event so it is never counted as a green baseline.
-  IN_FLIGHT=$(printf '%s' "$RUN_JSON" | jq -r '.[0].status // "unknown"' 2>/dev/null)
+  IN_FLIGHT=$(printf '%s' "$RUN_JSON" | jq -r "[.[] | select($SB_IS_CI)][0].status // \"unknown\"" 2>/dev/null)
   hook_record ship-baseline pending-no-baseline "{\"status\":\"$IN_FLIGHT\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
   exit 0
 fi

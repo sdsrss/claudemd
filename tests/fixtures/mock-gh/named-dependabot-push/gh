@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Control: a repo-defined workflow that happens to be named "Dependabot Updates",
+# triggered by a push, failing.
+echo '[{"databaseId":9,"status":"completed","conclusion":"failure","event":"push","workflowName":"Dependabot Updates","displayTitle":"CI main","url":"https://example/9"},{"databaseId":8,"status":"completed","conclusion":"success","event":"push","workflowName":"ci","displayTitle":"CI main","url":"https://example/8"}]'
