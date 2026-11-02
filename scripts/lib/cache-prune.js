@@ -29,15 +29,20 @@ import { readLogRows } from './rule-hits-parse.js';
 // `.in_use/<pid>` = {"pid":N,"procStart":"…"} in each version dir a process
 // loads, removes it when that process exits, and its own 14-day sweep skips a
 // dir while one of those names a live process ("Skipping orphan cleanup, in use
-// by live session"; read from the 2.1.309–2.1.316 binaries 2026-11-02, the docs
-// page above does not mention it). It works with the log off and for sessions
-// whose environment this install never sees.
+// by live session"; read from the 2.1.309, 2.1.310 and 2.1.316 binaries
+// 2026-11-02, the docs page above does not mention it). It works with the log
+// off and for sessions whose environment this install never sees. For a version
+// dir that is a symlink, Claude Code writes the record under
+// `~/.claude/plugins/.in_use-links/` instead, which this prune does not read.
 const HOLD_MS = 14 * 86400 * 1000;
 
-// Claude Code's own test, minus its writes: the pid answers signal 0 (EPERM
-// means it exists under another user), and when the marker has a procStart and
-// /proc can give the pid's start time (field 22 of /proc/<pid>/stat), the two
-// match, so a reused pid does not count. Without /proc (macOS, where Claude
+// The pid answers signal 0, and when the marker has a procStart string and /proc
+// can give the pid's start time (field 22 of /proc/<pid>/stat), the two match, so
+// a reused pid does not count. Where this differs from Claude Code 2.1.316 it
+// holds more: EPERM counts as alive here (the process exists under another user;
+// Claude Code counts any kill error as dead), and a marker with no procStart
+// string counts on its pid alone (Claude Code does that only when the field is
+// absent). Without /proc (macOS, where Claude
 // Code compares `ps -o lstart=` instead) the pid alone decides: a reused pid
 // holds one dir too many until Claude Code sweeps the dead marker. A pid that
 // is not a positive integer counts as dead: kill(0) and kill(-1) reach process
@@ -62,8 +67,12 @@ function isLive(marker) {
 }
 
 // Whether any `.in_use` entry of `dir` names a live process. An entry that does
-// not read or parse as JSON counts for nothing, as in Claude Code, which
-// deletes such entries; the prune only reads them.
+// not read or parse as JSON counts for nothing. Here this prune holds less than
+// Claude Code 2.1.316, which deletes an entry that does not parse but counts one
+// it cannot read as live, and a `.tmp.` one under 10 minutes old too (a record
+// being written). It also reads only regular files up to a size cap; this prune
+// reads any entry. The prune never writes or deletes an entry itself;
+// a dir it removes goes with its entries.
 function inUseByLiveProcess(dir) {
   const markers = path.join(dir, '.in_use');
   let names;

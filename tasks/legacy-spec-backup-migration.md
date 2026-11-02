@@ -65,4 +65,4 @@ restore 现在跳过只装着规范文件的目录（含 `CLAUDE.md`，每个条
 
 ## 分拣 2026-11-02
 
-空目录与只有 `hooks/` 的目录挡住 restore：不改。当前代码不再写这两种 `backup-` 目录，只剩更早版本留下的；restore 停在那里时 uninstall 报 `restore-empty`、退出码 3，个人备份留在原处。依据见 `tasks/specs/residuals-0.117.7-2026-11-02.md` 决策 6。
+空目录与只有 `hooks/` 的目录挡住 restore：不改。当前代码不再写只有 `hooks/` 的 `backup-` 目录；空目录只在 install 建好目录、还没把文件移进去时被停下才会留下；restore 停在那里时 uninstall 报 `restore-empty`、退出码 3，个人备份留在原处。依据见 `tasks/specs/residuals-0.117.7-2026-11-02.md` 决策 6。

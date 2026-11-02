@@ -16,7 +16,7 @@
 
 - [x] S1：本机记账（两份 PREREG 的 T0、检查点、三个开关）— 决策 2 到 4
 - [x] S2：五处版本号、CHANGELOG 条目（单独扫描通过）
-- [ ] S3：release 分支上 `npm run check`、`npm run smoke` 通过
+- [x] S3：release 分支上 `npm run check`、`npm run smoke` 通过（48af4d5）
 - [ ] S4：草稿 PR 的 CI 全绿
 - [ ] S5：发版前评审（新开的评审代理），修复轮
 - [ ] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
@@ -33,9 +33,18 @@
    - cross-repo-write：`tasks/specs/cross-repo-write.md` r9，37 天 4 次命中，全是授权的子代理工作，0 次未授权写入，评估已结束。
    - 后果：`tasks/g1b-g2-eval/PREREG.md` 从此在本机没有新数据，已写明"以后的版本不再在本文件追加附记"；`tasks/lang-drift/PREREG.md` 照旧追加。已在运行的会话读的是启动时的环境，会继续写这些行直到退出。恢复：把三个键加回 `env`，或从备份拷回。
 5. **evidence-gate 的声明检测不重做。** 误报主要来自声明检测（r2），但 R4(a) 测得本机真实代码回合里 Iron Law #2 违规 0/50（95% 上限约 6%），重做后能拦到的真阳性很少；本机开关也已关闭，没有新数据可标。出现真实违规样本时再开。
-6. **restore 被空目录或只有 `hooks/` 的目录挡住：不改。** 当前代码不再产生这两种 `backup-` 目录：install 在没有现存文件时走 `fresh`，不建备份（`scripts/install.js` `existing.length === 0`）；手装 hook 的迁移用自己的 `handhook-backup-` 命名空间（audit-2026-08-22 P1-1）。只剩更早版本留下的目录，且失败是可见的：uninstall 报 `warning: "restore-empty"`、退出码 3（`scripts/uninstall.js`），个人备份仍在原处。本机没有任何 `backup-*` 目录。
+6. **restore 被空目录或只有 `hooks/` 的目录挡住：不改。** 当前代码不再写只有 `hooks/` 的 `backup-` 目录（手装 hook 的迁移用自己的 `handhook-backup-` 命名空间，audit-2026-08-22 P1-1）；没有现存文件时 install 走 `fresh`，不建备份（`scripts/install.js` `existing.length === 0`）。空目录只在一种情况下留下：install 先 `reserveBackupDir` 建目录、再把文件移进去（`scripts/install.js` 第 621、636 行），中途被停（bootstrap 4s/10s 的 SIGKILL）或文件在这之间消失，目录就是空的（发版前评审 L5 指出原稿写成"不再产生"）。失败是可见的：uninstall 报 `warning: "restore-empty"`、退出码 3（`scripts/uninstall.js`），个人备份仍在原处。本机没有任何 `backup-*` 目录。
 7. **prune 按 `.orphaned_at` 的内容计时、Claude Code 按 mtime：不改。** Claude Code 写入时内容就是 `Date.now()`，两者一致；只有第三方程序改写该文件时才会分开，没有观察到。
 8. **D#656（技能复扫）：不在本批。** 42/62，下一份快照 2026-11-30 前存；它自己的记录写明没有决策在等它。
+
+- 2026-11-02T13:40Z 进度：分支已推送、草稿 PR #30 已开，PR CI run 41454835050 与发版前评审（新开的评审代理，范围 57fd12a..48af4d5）在跑；下一步是读评审报告、修复，然后 S6。
+
+9. **发版前评审（新开的评审代理，57fd12a..48af4d5）：Critical 0、High 0、Medium 1、Low 8。** 逐条对照代码核实后：
+   - M1（把 `some` 换成 `every` 的变异体能通过全部用例；本机就有空的 `.in_use/` 和同一目录里死活记录混杂的情况）：补 D#652.6，在该变异体下它是唯一失败的用例。
+   - L2（文字把"按 procStart 判定"写窄了）、L3（注释声称与 Claude Code 一致：2.1.316 把 kill 的任何错误都算死，读不出的条目、10 分钟内的 `.tmp.` 条目算活，只读一定大小以内的普通文件；二进制里能找到 `who=600000`、"treating it as live"、`isFile()&&size<=` 这几处）、L4（版本目录是符号链接时，记录写在 `~/.claude/plugins/.in_use-links/`）、L5（install 被停在建目录和移入文件之间时，会留下空的 `backup-` 目录）、L6（"从不删除记录"：删目录时记录跟着一起删了）、L7（"2.1.309–2.1.316"读起来像一个版本区间）：改 CHANGELOG、`cache-prune.js` 的注释（diff 只动注释）、决策 6 和 legacy 笔记。已推送的提交信息（4941a98）不改，以 CHANGELOG 为准。
+   - L1（`.in_use/` 里放一个 FIFO 会让 prune 卡住）：不修，在 CHANGELOG 的 Not changed 里写明。Claude Code 只写普通文件，评审说明这是它自己构造的输入；核心规范 §1 写了"不为不可能发生的情况加防御"。
+   - L8（comm 里 `)` 的解析没有测试）、L9（"EPERM 算死"的变异体只有非 root 运行时才会被抓到）：不修。真实的 comm 是 `claude`，不含空格；GitHub runner 不以 root 运行。
+   - 修复只有测试和文字，按 runbook 第 7 步跑 claim-drift，不再开第二轮评审。
 
 ## 验证记录
 
@@ -43,3 +52,5 @@
 - `diff` 新旧 `settings.json` → 只少三个键；写入后 `jq -e .env` 通过，`env` 只剩 `CLAUDE_MEM_METRICS`、`REPLY_LANGUAGE_CHECK`。
 - `git diff v0.117.6..HEAD -- hooks spec` → 0 行。
 - `node scripts/version-cascade-check.js` → `plugin semver 0.117.7 consistent across 5 site(s)`。
+- 48af4d5 上 `npm run check` → 通过（退出码 0；node 1759 条：1756 通过、3 跳过；shell 套件全部通过）。第一次在 8e37b54 之前的树上跑 → 失败 1 条（`every tracked spec carries a known status`，D#652 设计记录的状态行），第二次 → 失败 1 条（本文件缺 `- [ ]` 清单）；两处修好后通过。
+- 48af4d5 上 `npm run smoke` → 通过（2/2）。
