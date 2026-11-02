@@ -332,8 +332,8 @@ export DISABLE_HOOK_ROOT_RECORD=1          # stop SessionStart/SessionEnd rewrit
                                            # ~/.claude/.claudemd-state/hook-root.json,
                                            # the record of which plugin root actually
                                            # fired. Separate switch because
-                                           # DISABLE_RULE_HITS_LOG covers the jsonl and
-                                           # nothing else: a sandboxed probe that set
+                                           # DISABLE_RULE_HITS_LOG stops the jsonl and
+                                           # no other write: a sandboxed probe that set
                                            # only that one was still writing to the live
                                            # state dir. Setting it stops the rewrite
                                            # only: an existing hook-root.json is still
