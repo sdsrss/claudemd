@@ -12,6 +12,15 @@
 - 做：0.117.7 只带 D#652（4941a98、ebac656、75b5c12）、五处版本号和 CHANGELOG；本机记账（两份 PREREG 记 0.117.6 的 T0，删掉误报的检查点）；本机 `~/.claude/settings.json` 的三个开关（使用者授权，见决策 4）。
 - 不做：决策 5 到 8 列出的四项，各有依据；`hooks/`、`spec/` 不动（spec 仍是 v8.3.1）。
 
+## 计划
+
+- [x] S1：本机记账（两份 PREREG 的 T0、检查点、三个开关）— 决策 2 到 4
+- [x] S2：五处版本号、CHANGELOG 条目（单独扫描通过）
+- [ ] S3：release 分支上 `npm run check`、`npm run smoke` 通过
+- [ ] S4：草稿 PR 的 CI 全绿
+- [ ] S5：发版前评审（新开的评审代理），修复轮
+- [ ] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
+
 ## 决策与进展
 
 1. **D#652 随本批发版。** 改动、测试与变异检验在设计记录里；发版前在 release 分支上重跑 `npm run check` 与 `npm run smoke`。
