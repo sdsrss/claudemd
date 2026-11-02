@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.4.0 (minor, 2026-11-02)** — §11-O Worktree spawn: names the command shapes the harness refuses inside an `isolation: "worktree"` agent, asks for one plain command per step, and spawns work that needs a sandbox `HOME`, an old version beside the new or paths outside the repo without worktree isolation, in its own temp clone that never writes the main checkout. 877 commands were refused in such agents from 2026-10-06 to 11-02, in at least four projects; the rule named only the absolute path. Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`. No HARD rule added or removed.
+**v8.4.0 (minor, 2026-11-02)** — §11-O Worktree spawn: names the command shapes the harness refuses inside an `isolation: "worktree"` agent, asks for one plain command per step, and spawns work that needs a sandbox `HOME`, an old version beside the new or paths outside the repo without worktree isolation, in its own temp clone that never writes the main checkout. 877 tool calls were refused in such agents from 2026-10-06 to 11-02, in at least four projects; the rule named only the absolute path. Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`. No HARD rule added or removed.
 
-**Sizing** (v8.4.0, 2026-11-02, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23505 bytes (Δ 0); extended 36751 → 37361 bytes (Δ +610); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23505/25000 (**1495 bytes headroom**); extended 37361/50000 (**12639 bytes headroom**).
+**Sizing** (v8.4.0, 2026-11-02, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23505 bytes (Δ 0); extended 36751 → 37363 bytes (Δ +612); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23505/25000 (**1495 bytes headroom**); extended 37363/50000 (**12637 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

@@ -416,10 +416,10 @@ Claude Code's marketplace lifecycle does not fire `preUninstall`, so `/plugin un
 
 ```
 /claudemd-uninstall                    # clear manifest (+ state & log with CLAUDEMD_PURGE=1)
-/plugin uninstall claudemd@claudemd    # CC removes plugin cache itself
+/plugin uninstall claudemd@claudemd    # CC uninstalls it; the cache folder goes 14+ days later
 ```
 
-Reversing the order is the orphan-state vector — `${CLAUDE_PLUGIN_ROOT}` and `scripts/uninstall.js` are gone after `/plugin uninstall`, with no in-tree tool to clean up afterwards. `/claudemd-doctor` flags `[△] plugin cache: orphan manifest …` if you've already hit this.
+Reversing the order is the orphan-state vector — after `/plugin uninstall`, `${CLAUDE_PLUGIN_ROOT}` is no longer set (the cache folder stays on disk until Claude Code deletes it, but no command points at it), with no in-tree tool to clean up afterwards. `/claudemd-doctor` flags `[△] plugin cache: orphan manifest …` if you've already hit this.
 
 ### Spec disposition
 

@@ -116,16 +116,22 @@ test('refresh: page, script and README say other windows keep the old hooks and 
     'README.md lacks the other-windows note'
   );
   // The script itself deletes nothing: an older version dir in the sandbox
-  // cache is still there after a successful run, and stdout says so.
+  // cache is still there after a successful run, and stdout says so. The run
+  // gets CLAUDE_PLUGIN_ROOT as /claudemd-refresh gives it, at a version dir
+  // beside the old one, so a script that finds old versions from its own root
+  // (as install.js does) is pointed at the fixture too (0.118.0 review L2).
   const bin = box.dir('bin-ok');
   fs.writeFileSync(path.join(bin, 'claude'), '#!/usr/bin/env bash\nexit 0\n');
   fs.chmodSync(path.join(bin, 'claude'), 0o755);
-  const env = box.env({ PATH: [bin, '/usr/bin', '/bin'].join(':') });
-  const oldDir = path.join(env.HOME, '.claude/plugins/cache/claudemd/claudemd/0.0.1');
-  fs.mkdirSync(path.join(oldDir, 'hooks'), { recursive: true });
+  const cache = path.join(box.env().HOME, '.claude/plugins/cache/claudemd/claudemd');
+  const oldDir = path.join(cache, '0.0.1');
+  const curDir = path.join(cache, '0.0.2');
+  for (const d of [oldDir, curDir]) fs.mkdirSync(path.join(d, 'hooks'), { recursive: true });
+  const env = box.env({ PATH: [bin, '/usr/bin', '/bin'].join(':'), CLAUDE_PLUGIN_ROOT: curDir });
   const r = spawnSync('bash', [path.join(REPO, 'scripts/refresh-plugin.sh')], { encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(fs.existsSync(path.join(oldDir, 'hooks')), 'refresh-plugin.sh removed a cache dir');
+  for (const d of [oldDir, curDir])
+    assert.ok(fs.existsSync(path.join(d, 'hooks')), `refresh-plugin.sh removed ${d}`);
   const out = r.stdout.split('\n');
   const at = out.indexOf('Other open Claude Code windows: run /reload-plugins in EACH. Until then');
   assert.ok(at >= 0, r.stdout);
@@ -136,6 +142,25 @@ test('refresh: page, script and README say other windows keep the old hooks and 
     '',
   ]);
   assert.doesNotMatch(r.stdout, /removed|will error/);
+});
+
+// The same fact for `/plugin uninstall` (0.118.0 review M1): the uninstall page
+// and README §Uninstall said it deletes the plugin cache. Claude Code 2.1.309,
+// 2.1.310 and 2.1.316 write `.orphaned_at` there instead, and delete the folder
+// in a sweep once the mark is 14 days old and no live session holds it.
+test('uninstall: page and README say /plugin uninstall leaves the cache folder for Claude Code to delete later', () => {
+  for (const line of [
+    'After this command finishes, run `/plugin uninstall claudemd@claudemd` to uninstall the plugin itself. Claude Code then marks its cache folder for cleanup and deletes it at least 14 days later.',
+    '**Two-step rationale**: `${CLAUDE_PLUGIN_ROOT}`, the path the commands above run `scripts/uninstall.js` from, is only set while the plugin is still installed. `/plugin uninstall` takes it away; the cache folder stays on disk until Claude Code deletes it, but no command points at it any more, so the cleanup MUST run first. Reversing the order leaves the manifest, `~/.claude/.claudemd-state/`, and `~/.claude/logs/claudemd.jsonl` orphaned with no in-tree tool to remove them.',
+    "**Note**: hooks remain registered until you also run `/plugin uninstall`. This command only clears the user-global state; the plugin's `hooks/hooks.json` is the authoritative registration site, and uninstalling the plugin is what unregisters it.",
+  ])
+    assertLine('uninstall', line);
+  const readme = fs.readFileSync(path.join(REPO, 'README.md'), 'utf8').split('\n');
+  for (const line of [
+    '/plugin uninstall claudemd@claudemd    # CC uninstalls it; the cache folder goes 14+ days later',
+    "Reversing the order is the orphan-state vector — after `/plugin uninstall`, `${CLAUDE_PLUGIN_ROOT}` is no longer set (the cache folder stays on disk until Claude Code deletes it, but no command points at it), with no in-tree tool to clean up afterwards. `/claudemd-doctor` flags `[△] plugin cache: orphan manifest …` if you've already hit this.",
+  ])
+    assert.ok(readme.includes(line), `README.md lacks the line:\n${line}`);
 });
 
 test('status: every field and value the page names for an unparseable manifest is in the output', () => {

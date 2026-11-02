@@ -29,6 +29,14 @@
    - 不确定的地方：只在当前 Claude Code（2.1.3xx）上观察过卸载只打标记、不删目录；更早的版本是否如此，没有核对。
    - 测试：`tests/scripts/command-page-behaviour.test.js` 新用例按整行锁命令页、README 和脚本输出，并检查沙箱缓存里的旧目录在脚本跑完后还在。旧文字上失败；只把 README 或只把脚本退回旧文字，各失败 1 条。
 
+4. **发版前评审（新开的评审代理，459d1a4..ae913f4）：Critical 0、High 0、Medium 1、Low 4。** 评审没有改主检出（前后 `git status --porcelain` 都是 0 行，HEAD 都是 ae913f4），也没有留下 `rrev-*` 目录。逐条核实后：
+   - M1（`commands/claudemd-uninstall.md` 第 32、34、36 行和 README §Uninstall 第 419、422 行仍说 `/plugin uninstall` 删除插件缓存）：成立。读 Claude Code 2.1.316 的程序代码：移除安装记录时调用的是写 `.orphaned_at` 的函数（没有别的安装记录用同一路径时才写），删除版本目录的只有清扫（标记满 14 天、且没有活会话在用，否则记 "Skipping orphan cleanup, in use by live session"）和同版本覆盖、重链。2.1.309、2.1.310 也有这三段。改五行文字，新用例先红后绿。
+   - L1（"运行时计算的值 84" 只是两行 42 的和；877 里有 1 次是 `Write`）：成立，按快照 `rows.json` 重算，以该句开头的是 129，`HOME` 38（23 + 15）成立。`spec/CLAUDE-changelog.md`、extended 的 Recent changes（"877 tool calls"，Sizing 37361 → 37363，Recent changes 块哈希更新）、CHANGELOG 条目、spec-structure 锁定的 `why` 一并改；7c0926f 的提交信息已推送，不改，以 CHANGELOG 为准。
+   - L2（"脚本什么都不删"只覆盖按 `$HOME` 找目录的删除）：成立。用例加上 `CLAUDE_PLUGIN_ROOT` 指向沙箱缓存里的当前版本、旁边放旧版本；评审给的"按 `CLAUDE_PLUGIN_ROOT` 删同级目录"变异体现在失败 1 条（原来通过）。
+   - L3（设计记录把本项目的 114 次也算成"其他项目"）：改措辞，基线 462 不变。
+   - L4（"刷新不删旧目录"没有 Claude Code 版本限定）：CHANGELOG 条目加上"checked in Claude Code 2.1.309, 2.1.310 and 2.1.316"；命令页和脚本输出不加，它们给的建议不随版本变。
+   - 修复只有文字和测试（M1 是文字），按 runbook 第 7 步走 claim-drift，不开第二轮评审。
+
 ## 验证记录
 
 - `jq` 查 `installed_plugins.json` 与 `~/.claude/logs/claudemd.jsonl` → 0.117.7 安装 19:39:26Z，第一条行 19:41:36Z；19:39:26Z 之后 0.117.7 行 3 条、0.117.6 行 1 条。

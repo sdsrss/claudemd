@@ -4,9 +4,9 @@
 
 ## 背景与目标
 
-- 2026-10-06 → 11-02 的转录分析（`docs/claude-session-analysis-2026-11-02.md` 第 3.1 节，本地文档）：`isolation: "worktree"` 的子代理被 Claude Code 拒绝 877 次，至少分布在 4 个项目（拒绝最多的 6 行合计 846 次，来自 claudemd、daagu、claude-mem-lite、code-graph-mcp）。拒绝原文按类：`names git in a form too complex to verify that it stays inside the worktree` 219、`is too complex to verify …` 173、`runs <X> inside a construct too complex to verify` 77、`runs <X> in a plain command; what it reads or is handed as shell text cannot be verified` 73、运行时计算出的值 84、改 `HOME` 38。
+- 2026-10-06 → 11-02 的转录分析（`docs/claude-session-analysis-2026-11-02.md` 第 3.1 节，本地文档）：`isolation: "worktree"` 的子代理被 Claude Code 拒绝 877 次，至少分布在 4 个项目（拒绝最多的 6 行合计 846 次，来自 claudemd、daagu、claude-mem-lite、code-graph-mcp）。拒绝原文按类：`names git in a form too complex to verify that it stays inside the worktree` 219、`is too complex to verify …` 173、`runs <X> inside a construct too complex to verify` 77、`runs <X> in a plain command; what it reads or is handed as shell text cannot be verified` 73、运行时计算出的值 129（拒绝原因以 "runs X with a value computed at runtime" 开头；原稿的 84 只是分析脚本前 6 个原因键里两行 42 的和，0.118.0 发版前评审 L1）、改 `HOME` 38。877 次里 876 次是 `Bash`、1 次是 `Write`。
 - 现行规则只讲一个原因："an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path"（09-26 那期的 75 次）。本期的拒绝来自命令形状，规则没覆盖。
-- 本仓库的 `release-reviewer` 占 415 次（53/53 个实例），已在本地改成自建临时克隆（main 上的 1c9e781，不随插件发布）。剩下的 462 次在其他项目：`executor` 24/24 个实例（本项目 114、claude-mem-lite 44、daagu 17）、带 worktree 派出的 `general-purpose`（daagu 143、claude-mem-lite 91、code-graph-mcp 40）。这些项目读的是安装的规范，所以只能靠规范这一条改。
+- 本仓库的 `release-reviewer` 占 415 次（53/53 个实例），已在本地改成自建临时克隆（main 上的 1c9e781，不随插件发布）。剩下的 462 次来自其他代理类型，其中 114 次仍在本项目：`executor` 24/24 个实例（本项目 114、claude-mem-lite 44、daagu 17）、带 worktree 派出的 `general-purpose`（daagu 143、claude-mem-lite 91、code-graph-mcp 40）。这些项目读的是安装的规范，所以只能靠规范这一条改。
 - 目标：派发方知道 worktree 里哪些命令会被拒，并且把需要沙箱 `HOME`、新旧版本对比或仓库外路径的工作派成不隔离、自建克隆的代理。
 
 ## 范围
