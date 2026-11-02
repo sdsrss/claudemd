@@ -1,6 +1,6 @@
 # 0.117.7：D#652 发版，与剩余工作的分拣
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -19,7 +19,7 @@
 - [x] S3：release 分支上 `npm run check`、`npm run smoke` 通过（48af4d5）
 - [x] S4：草稿 PR 的 CI 全绿（ed1ec48，run 41457576588，7/7）
 - [x] S5：发版前评审（新开的评审代理），修复轮（0c135ae、ed1ec48；决策 9）
-- [ ] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
+- [x] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`（tag v0.117.7 在 459d1a4）
 
 ## 决策与进展
 
@@ -55,3 +55,7 @@
 - 48af4d5 上 `npm run check` → 通过（退出码 0；node 1759 条：1756 通过、3 跳过；shell 套件全部通过）。第一次在 8e37b54 之前的树上跑 → 失败 1 条（`every tracked spec carries a known status`，D#652 设计记录的状态行），第二次 → 失败 1 条（本文件缺 `- [ ]` 清单）；两处修好后通过。
 - 48af4d5 上 `npm run smoke` → 通过（2/2）。
 - ed1ec48 上 `npm run check` → 通过（退出码 0；node 1760 条：1757 通过、3 跳过；shell 套件全部通过）；`npm run smoke` → 通过（2/2）；PR CI run 41457576588 → 通过（7/7）。D#652.6 在 `some` 换成 `every` 的变异体下 → 失败（22 通过、1 失败），源码恢复后 23 通过、1 跳过；导出 `DISABLE_RULE_HITS_LOG=1` 时同样 23 通过。
+- 459d1a4（只改 CHANGELOG 与本文件）的 PR CI run 41478358763 第一次 → 失败 1 路：`test (macos-latest, 20)` 的 `platform.test.sh` 第 14 条（"a reader of fd 3 blocked 5s of a 5s ceiling"）。根因是 `hooks/lib/platform.sh` 第 83–91 行写明的 D#444 残留：bash 3.2 把落在 trap 之后、`wait` 可打断之前的 TERM 压到 sleep 结束，watchdog 的 sleep 跑满上限并占着调用方 fd 3 以上的描述符。`hooks/` 自 v0.117.6 未改，同样的代码在 ed1ec48 上 7/7；第 14 条 10-17 加入以来在失败的 CI 里第一次出现。只重跑失败的一路 → 通过（第 14 条 0s of a 5s ceiling），7/7。修复登记为延期项 D#665（hook 库改动，单独发版）。
+- tag v0.117.7（2026-11-02T16:47:32Z）：`ci` run 41485011172 → 通过；`npm-publish` run 41485011235 → 通过（`publish` job 成功，日志 `+ claudemd-cli@0.117.7`）；main 的 `ci` run 41484989773 → 通过。
+- `npm view claudemd-cli dist-tags.latest` → `0.117.7`；`npm view claudemd-cli@0.117.7 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`。
+- GitHub Release v0.117.7 已建（正文为 CHANGELOG 条目）；PR #30 MERGED；本地 `release/v0.117.7` 与评审代理的 worktree、分支已删；`next-release` 对齐 main 后推送。
