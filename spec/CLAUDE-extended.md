@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.3.1 — Extended
+# AI-CODING-SPEC v8.4.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -250,7 +250,7 @@ Universal session rules live in core §11 SESSION — they bind whether or not t
 
 ### Subagent rules
 - **1 task = 1 subagent**, briefed fully the first time.
-- **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
+- **Worktree spawn**: inside an `isolation: "worktree"` agent the harness refuses every command it cannot prove stays in the worktree, for example the main checkout's absolute path, compound or piped git, a loop or subshell, text handed to a shell (`bash -c`, `xargs`), a value computed at runtime, a `HOME` change. Such an agent's prompt gives paths relative to its worktree and one plain command per step. Work that needs a sandbox `HOME`, an old version extracted beside the new, or paths outside the repo (reviews, experiments) is spawned without worktree isolation: it clones the repo into its own temp dir and never writes the main checkout.
 - Subagent output uses §7 evidence format.
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield gives the spawn an output path and polls that file; the notification channel itself is not pollable.
 - **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
@@ -368,9 +368,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.3.1 (patch, 2026-11-01)** — core §7 Push fires CI/Release: the push check reads the color of the newest completed run in `gh run list --branch "$(git branch --show-current)" --limit 5`, skipping GitHub's own `Dependabot Updates` job, the run `ship-baseline-check` gates on. `--limit 1` returned that job first on 2026-11-01 while the branch's CI was green. Design record `tasks/specs/prune-hold-statusline-baseline.md`. No HARD rule added or removed.
+**v8.4.0 (minor, 2026-11-02)** — §11-O Worktree spawn: names the command shapes the harness refuses inside an `isolation: "worktree"` agent, asks for one plain command per step, and spawns work that needs a sandbox `HOME`, an old version beside the new or paths outside the repo without worktree isolation, in its own temp clone that never writes the main checkout. 877 commands were refused in such agents from 2026-10-06 to 11-02, in at least four projects; the rule named only the absolute path. Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`. No HARD rule added or removed.
 
-**Sizing** (v8.3.1, 2026-11-01, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23422 → 23505 bytes (Δ +83); extended 37120 → 36751 bytes (Δ -369); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23505/25000 (**1495 bytes headroom**); extended 36751/50000 (**13249 bytes headroom**).
+**Sizing** (v8.4.0, 2026-11-02, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23505 bytes (Δ 0); extended 36751 → 37361 bytes (Δ +610); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23505/25000 (**1495 bytes headroom**); extended 37361/50000 (**12639 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

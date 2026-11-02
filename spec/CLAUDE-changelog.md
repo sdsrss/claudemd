@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.4.0 (minor, 2026-11-02) — §11-O Worktree spawn names what a worktree agent is refused, and where experiment work runs instead
+
+Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`; analysis `docs/claude-session-analysis-2026-11-02.md` (local). Minor, because the rule now also says which work is spawned without worktree isolation. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: from 2026-10-06 to 11-02 Claude Code refused 877 commands inside `isolation: "worktree"` agents, in at least four projects. By the refusal text: git "in a form too complex to verify that it stays inside the worktree" 219, a command "too complex to verify" 173, a command "inside a construct too complex to verify" 77, shell text whose reads "cannot be verified" 73, a value computed at runtime 84, a `HOME` change 38. The rule named only the main checkout's absolute path, the cause of the 75 refusals in September. All 53 instances of this repository's pre-tag reviewer were refused: a sandbox `HOME` for hook runs and old versions extracted beside new ones are its work, and 0.113.1's review could not verify a rollback recipe because its `HOME` change was refused.
+- **§EXT §11-O Worktree spawn**: "**Worktree spawn**: inside an `isolation: "worktree"` agent the harness refuses every command it cannot prove stays in the worktree, for example the main checkout's absolute path, compound or piped git, a loop or subshell, text handed to a shell (`bash -c`, `xargs`), a value computed at runtime, a `HOME` change. Such an agent's prompt gives paths relative to its worktree and one plain command per step. Work that needs a sandbox `HOME`, an old version extracted beside the new, or paths outside the repo (reviews, experiments) is spawned without worktree isolation: it clones the repo into its own temp dir and never writes the main checkout." Was: "**Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those."
+
 ## v8.3.1 (patch, 2026-11-01) — §7's push check reads the run the push gate reads
 
 Design record `tasks/specs/prune-hold-statusline-baseline.md` (D#613). Patch: wording only; the check it describes is the one `ship-baseline-check` has made since 0.117.1. No HARD rule added or removed; every rule keeps its ID.

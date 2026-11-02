@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.3.1 — Core
+# AI-CODING-SPEC v8.4.0 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
 

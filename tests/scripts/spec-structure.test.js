@@ -416,6 +416,13 @@ const PINS = [
     line: "- **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.",
   },
   {
+    what: '§EXT §11-O Worktree spawn — the command shapes the harness refuses in a worktree agent, and experiment work spawned unisolated in its own clone (v8.4.0)',
+    file: EXT,
+    anchor: '- **Worktree spawn**',
+    why: 'Measured 2026-10-06..11-02: 877 refused commands in worktree agents in at least four projects, by shape (complex git 219, too complex 173, construct 77, shell text 73, runtime value 84, HOME 38); all 53 release-reviewer instances hit it. Drop the shape list and prompts keep the refused forms; drop the unisolated-clone clause and reviews lose the sandbox-HOME and old-vs-new runs they exist for; drop "never writes the main checkout" and an unisolated agent can edit under the author.',
+    line: '- **Worktree spawn**: inside an `isolation: "worktree"` agent the harness refuses every command it cannot prove stays in the worktree, for example the main checkout\'s absolute path, compound or piped git, a loop or subshell, text handed to a shell (`bash -c`, `xargs`), a value computed at runtime, a `HOME` change. Such an agent\'s prompt gives paths relative to its worktree and one plain command per step. Work that needs a sandbox `HOME`, an old version extracted beside the new, or paths outside the repo (reviews, experiments) is spawned without worktree isolation: it clones the repo into its own temp dir and never writes the main checkout.',
+  },
+  {
     what: '§EXT §12 Blind brief — what a review spawn prompt gives and withholds, and how the reviewer is spawned (v6.32.0; Long reports pointer v8.2.0)',
     file: EXT,
     anchor: '- **Blind brief**',
@@ -648,7 +655,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: 'aed9e4e107500da2' },
+  { file: CORE, heading: '', sha256: '8e32241a6c13a4bc' },
   { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
@@ -660,7 +667,7 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '7db962169948ef25' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
-  { file: EXT, heading: '', sha256: '7257161c4731cd67' },
+  { file: EXT, heading: '', sha256: '1259916c6587ab4a' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7bf311f5bc8f6813' },
   {
@@ -675,13 +682,13 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE', sha256: '023253b216dcd619' },
   { file: EXT, heading: '## 汇报', sha256: 'f46384510714a963' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '4f90ecc95d87f0bc' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '983d7886bad4a9dc' },
   { file: EXT, heading: '## §12 PLUGINS', sha256: 'a50532f806aabd1a' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '99d6e7c0fcce29df' },
+  { file: EXT, heading: '## Recent changes', sha256: 'aa787b32d1294ea1' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
@@ -729,8 +736,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: '787ae88a3f4198fe' },
-  { file: EXT, count: 53, sha256: 'b532065321be9d02' },
+  { file: CORE, count: 18, sha256: '12b931f8109793ec' },
+  { file: EXT, count: 53, sha256: '3daea67ce33fe5db' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

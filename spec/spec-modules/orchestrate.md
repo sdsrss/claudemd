@@ -5,7 +5,7 @@ triggers: 并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.3.1 — module: orchestrate
+# AI-CODING-SPEC v8.4.0 — module: orchestrate
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -18,7 +18,7 @@ Universal session rules live in core §11 SESSION — they bind whether or not t
 
 ### Subagent rules
 - **1 task = 1 subagent**, briefed fully the first time.
-- **Worktree spawn**: an `isolation: "worktree"` agent's prompt gives paths relative to its worktree, never the main checkout's absolute path — the harness rejects those.
+- **Worktree spawn**: inside an `isolation: "worktree"` agent the harness refuses every command it cannot prove stays in the worktree, for example the main checkout's absolute path, compound or piped git, a loop or subshell, text handed to a shell (`bash -c`, `xargs`), a value computed at runtime, a `HOME` change. Such an agent's prompt gives paths relative to its worktree and one plain command per step. Work that needs a sandbox `HOME`, an old version extracted beside the new, or paths outside the repo (reviews, experiments) is spawned without worktree isolation: it clones the repo into its own temp dir and never writes the main checkout.
 - Subagent output uses §7 evidence format.
 - **Output reaches main only at turn end**: inside a cycle you are blind to a subagent's report, so the default is to yield per core §11. A cycle that genuinely cannot yield gives the spawn an output path and polls that file; the notification channel itself is not pollable.
 - **Long reports**: a spawn given a `name` reports through an idle notification that the harness cuts at 4000 chars; an unnamed spawn's final message arrives whole. Spawn every review or audit without a name and ask for the full report in its final message. A named spawn's report cut anyway → ONE message asking for the rest, never for a resend; once a report has landed, send its author nothing — each message wakes it into another completion event.
