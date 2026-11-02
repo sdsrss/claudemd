@@ -19,6 +19,11 @@ import { readLogRows } from './rule-hits-parse.js';
 // while the hook log has a row from its version in the last 14 days, which also
 // covers dirs nothing marked. The log window is as long as the mark's because a
 // session can stay open for days without firing a hook.
+//
+// With DISABLE_RULE_HITS_LOG=1 the hooks write no rows (hook-common.sh reads
+// `== "1"`), so a missing row says nothing about use, and a dir nothing marked
+// is held too (`no-log-signal`, D#643). A marked dir is not: Claude Code deletes
+// it itself 14 days after marking it.
 const HOLD_MS = 14 * 86400 * 1000;
 
 // Number when the mark exists (NaN when it does not parse), null when absent.
@@ -123,6 +128,7 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
     const now = Date.now();
     // Read only when something could go: most installs see ≤ keep dirs.
     const logged = versionsLoggedSince(now - HOLD_MS);
+    const logOff = process.env.DISABLE_RULE_HITS_LOG === '1';
     for (const s of candidates) {
       const mark = orphanedAt(s.dir);
       // `!(age >= HOLD_MS)` holds a NaN mark and a future-dated one too.
@@ -130,6 +136,8 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
         held.push({ name: s.name, reason: 'orphaned-recently' });
       } else if (logged.has(s.name)) {
         held.push({ name: s.name, reason: 'hook-rows-recently' });
+      } else if (logOff && mark === null) {
+        held.push({ name: s.name, reason: 'no-log-signal' });
       } else {
         fs.rmSync(s.dir, { recursive: true, force: true });
         removed.push(s.dir);

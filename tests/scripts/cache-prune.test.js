@@ -231,6 +231,50 @@ test('D#635.6: a log that cannot be read throws before anything is removed (inst
   );
 });
 
+// D#643: with DISABLE_RULE_HITS_LOG=1 the hooks write no rows (hook-common.sh
+// reads `== "1"`), so "no row from this version" says nothing about use. An
+// unmarked candidate is held then; a mark 14 days old still lets it go, as
+// Claude Code would delete it itself.
+function withLogKnob(value, fn) {
+  const saved = process.env.DISABLE_RULE_HITS_LOG;
+  if (value === undefined) delete process.env.DISABLE_RULE_HITS_LOG;
+  else process.env.DISABLE_RULE_HITS_LOG = value;
+  try {
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env.DISABLE_RULE_HITS_LOG;
+    else process.env.DISABLE_RULE_HITS_LOG = saved;
+  }
+}
+
+test('D#643.1: with DISABLE_RULE_HITS_LOG=1 an unmarked dir beyond keep is held; an old mark still goes', () => {
+  for (const v of ['0.1.1', '0.1.4', '0.1.5', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  markOrphaned('0.1.1', Date.now() - 20 * DAY); // old mark, no rows → removed
+  logRow('0.1.5', 2 * DAY); // a row from before the log was turned off → that reason wins
+
+  const r = withLogKnob('1', () => pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 }));
+
+  assert.ok(fs.existsSync(path.join(versionsDir, '0.1.4')), 'unmarked, and the log cannot vouch: held');
+  assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')), 'marked 20 days ago: removed');
+  assert.deepEqual(
+    r.held.sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: '0.1.4', reason: 'no-log-signal' },
+      { name: '0.1.5', reason: 'hook-rows-recently' },
+    ]
+  );
+  assert.deepEqual(r.removed, [path.join(versionsDir, '0.1.1')]);
+});
+
+test('D#643.2: only the value 1 counts as the log being off', () => {
+  for (const value of [undefined, '0', 'true', '']) {
+    for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+    const r = withLogKnob(value, () => pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 }));
+    assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')), `DISABLE_RULE_HITS_LOG=${value}: removed`);
+    assert.deepEqual(r.held, [], `DISABLE_RULE_HITS_LOG=${value}`);
+  }
+});
+
 test('D#635.5: no candidates beyond keep → held is empty and removal is unchanged', () => {
   for (const v of ['0.1.9', '0.2.1']) mkVersion(v);
   const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
