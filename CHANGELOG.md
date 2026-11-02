@@ -8,6 +8,19 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.118.0] - 2026-11-02
+
+**Spec v8.4.0: the rule for worktree subagents names the commands Claude Code refuses inside them and sends reviews and experiments to a temp clone instead. `/claudemd-refresh` no longer says that other open windows' hooks fail after a refresh.**
+
+**What changes for users.**
+- Spec v8.4.0, §EXT §11-O Worktree spawn (`~/.claude/CLAUDE-extended.md` and `~/.claude/spec-modules/orchestrate.md`). The rule said only that a worktree agent's prompt must not name the main checkout's absolute path. It now lists what Claude Code refuses inside an `isolation: "worktree"` agent (the main checkout's absolute path, compound or piped git, a loop or subshell, text handed to a shell, a value computed at runtime, a `HOME` change), asks for one plain command per step, and says that work needing a sandbox `HOME`, an old version beside the new, or paths outside the repo is spawned without worktree isolation, in its own temp clone. In the maintainer's transcripts of 2026-10-06 to 11-02, Claude Code refused 877 commands in worktree agents. No HARD rule is added or removed; core changes only in its title line.
+- `/claudemd-refresh`, `scripts/refresh-plugin.sh` and README §Update said a refresh removes the old version's cache folder, so other open windows fail on every hook until reloaded. A refresh does not delete it: Claude Code marks the folder for cleanup, and both Claude Code and the install keep a marked folder for at least 14 days. Those windows keep running the previous version's hooks, which work. The three texts now say so; the advice is unchanged: run `/reload-plugins` in each other window.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code; the first new session syncs `~/.claude`. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- `hooks/`, and which cache folders the install keeps or removes.
+
 ## [0.117.7] - 2026-11-02
 
 **An install no longer removes an older version folder while Claude Code records a running process as using it, whatever the log setting. No hook or spec text changes.**
