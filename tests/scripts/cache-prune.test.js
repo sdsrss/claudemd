@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { pruneCache } from '../../scripts/lib/cache-prune.js';
 
-let sandbox, versionsDir, savedHome;
+let sandbox, versionsDir, savedHome, savedLogKnob;
 
 function mkVersion(name) {
   const dir = path.join(versionsDir, name);
@@ -23,12 +23,18 @@ beforeEach(() => {
   // versions dir sits ONE level under pluginCacheDir(), not at it.
   savedHome = process.env.HOME;
   process.env.HOME = sandbox;
+  // pruneCache reads DISABLE_RULE_HITS_LOG (D#643); an exported value in the
+  // shell turned four older cases red when this file ran alone (0.117.6 review L6).
+  savedLogKnob = process.env.DISABLE_RULE_HITS_LOG;
+  delete process.env.DISABLE_RULE_HITS_LOG;
   versionsDir = path.join(sandbox, '.claude/plugins/cache/claudemd/claudemd');
   fs.mkdirSync(versionsDir, { recursive: true });
 });
 
 afterEach(() => {
   process.env.HOME = savedHome;
+  if (savedLogKnob === undefined) delete process.env.DISABLE_RULE_HITS_LOG;
+  else process.env.DISABLE_RULE_HITS_LOG = savedLogKnob;
   fs.rmSync(sandbox, { recursive: true, force: true });
 });
 

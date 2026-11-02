@@ -350,7 +350,9 @@ export const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
 // its dir has no CLAUDE.md; an install before d39c4b2 wrote spec siblings alone
 // (R15). Both are passed over too since D#644: what keeps a dir with the user's
 // files a restore source is the heading test on every entry, which a file the
-// user wrote fails, not the presence of CLAUDE.md. A dir it cannot list or
+// user wrote from scratch fails, not the presence of CLAUDE.md. A spec file the
+// user only added notes to keeps its heading and passes, as 0.116.6 accepted for
+// dirs with a CLAUDE.md; such a dir is left in place and named in skippedSpecOnly. A dir it cannot list or
 // read, an empty one, or one with any other entry, is not one: such a dir may
 // be a pre-v0.23.11 personal backup with the user's files beside the spec (see
 // findLegacySpecBackups below).

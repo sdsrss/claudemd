@@ -58,3 +58,7 @@ P1-1（0.68.3）给 `update.js` 分了 `spec-backup-` 命名空间，但只对**
 ## 进展 2026-10-25（0.116.6）
 
 restore 现在跳过只装着规范文件的目录（含 `CLAUDE.md`，每个条目都是四个规范文件名之一、普通文件、第一行是规范标题；`scripts/lib/backup.js` 的 `holdsOnlySpecFiles`），取剩下最新的一份；被跳过的目录原样留下，列在 `skippedSpecOnly` 和 stderr 里。上面第 9 行"restore 读 `listBackups()[0]`，返回……一份旧 spec"写的是 0.68.3 到 0.116.5 的情况。仍不处理：没有 `CLAUDE.md` 的 update 目录（那次 update 的 `CLAUDE.md` 与插件相同，到 v0.68.2 为止 47 个改了规范文件的版本步里有 2 个），以及夹在中间的空目录或只有 `hooks/` 的目录（restore 停在那一份）。设计记录 `tasks/specs/restore-skip-spec-only.md`。
+
+## 进展 2026-11-02（0.117.6）
+
+上一节"仍不处理：没有 `CLAUDE.md` 的 update 目录"已处理（D#644，56ef606）：`holdsOnlySpecFiles` 不再要求 `CLAUDE.md`，改为至少一个条目、每个条目都是规范文件名、普通文件、第一行是规范标题。同样被跳过的还有 0.111.0 以前的 install 在家目录没有 `CLAUDE.md` 时整体移进 `backup-` 的规范同级文件（R15）。只在标题下加了笔记的规范文件仍算规范文件，这样的目录同样被跳过、原样留下、列在 `skippedSpecOnly` 里，与 0.116.6 对含 `CLAUDE.md` 目录的处理相同。空目录和只有 `hooks/` 的目录仍会挡住 restore。

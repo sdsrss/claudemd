@@ -92,8 +92,8 @@ No flags. Behavior is read from the following env vars:
 restore copies the newest backup-<stamp>/ back over ~/.claude, not counting
 backups that hold only spec files unless every backup is one (a pre-0.68.3
 /claudemd-update backed up the spec files it replaced there; a dir counts when
-it holds nothing but spec files, with or without CLAUDE.md, each a regular file
-whose first line is the "# AI-CODING-SPEC …" heading; the newer ones passed over are listed
+it holds one or more spec files and nothing else, with or without CLAUDE.md,
+each a regular file whose first line is the "# AI-CODING-SPEC …" heading; the newer ones passed over are listed
 in \`skippedSpecOnly\` and left in place), and REPORTS what it copied (\`restored\`; \`warning: "restore-empty"\` when it copied nothing and
 kept nothing: a restore whose every file was kept lists them in \`kept\` instead).
 It restores; it does not remove. The spec files claudemd added and you never
