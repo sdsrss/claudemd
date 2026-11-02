@@ -17,8 +17,8 @@
 - [x] S1：本机记账（两份 PREREG 的 T0、检查点、三个开关）— 决策 2 到 4
 - [x] S2：五处版本号、CHANGELOG 条目（单独扫描通过）
 - [x] S3：release 分支上 `npm run check`、`npm run smoke` 通过（48af4d5）
-- [ ] S4：草稿 PR 的 CI 全绿
-- [ ] S5：发版前评审（新开的评审代理），修复轮
+- [x] S4：草稿 PR 的 CI 全绿（ed1ec48，run 41457576588，7/7）
+- [x] S5：发版前评审（新开的评审代理），修复轮（0c135ae、ed1ec48；决策 9）
 - [ ] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
 
 ## 决策与进展
@@ -54,3 +54,4 @@
 - `node scripts/version-cascade-check.js` → `plugin semver 0.117.7 consistent across 5 site(s)`。
 - 48af4d5 上 `npm run check` → 通过（退出码 0；node 1759 条：1756 通过、3 跳过；shell 套件全部通过）。第一次在 8e37b54 之前的树上跑 → 失败 1 条（`every tracked spec carries a known status`，D#652 设计记录的状态行），第二次 → 失败 1 条（本文件缺 `- [ ]` 清单）；两处修好后通过。
 - 48af4d5 上 `npm run smoke` → 通过（2/2）。
+- ed1ec48 上 `npm run check` → 通过（退出码 0；node 1760 条：1757 通过、3 跳过；shell 套件全部通过）；`npm run smoke` → 通过（2/2）；PR CI run 41457576588 → 通过（7/7）。D#652.6 在 `some` 换成 `every` 的变异体下 → 失败（22 通过、1 失败），源码恢复后 23 通过、1 跳过；导出 `DISABLE_RULE_HITS_LOG=1` 时同样 23 通过。
