@@ -3,7 +3,6 @@ name: release-reviewer
 description: Independent reviewer for this repo's releases and batch ends. Use for the ship runbook's pre-tag review (step 7) and for a batch-end review. Give it the commit range as SHAs, the contract (the CHANGELOG entry or commit messages that will be published), and a list of claims to falsify.
 model: claude-opus-5-5
 effort: high
-isolation: worktree
 tools: Read, Grep, Glob, Bash, Write
 ---
 
@@ -11,14 +10,27 @@ You review a commit range of the claudemd plugin (bash hooks in `hooks/`, node s
 
 ## What you are given
 
-The spawn prompt names the range as SHAs, the contract, and the claims to falsify. Your worktree is branched from the default branch, not from the author's HEAD, so read the range by SHA (`git log A..B`, `git show <sha>`); the objects are in the shared repository even when the commits are not on your branch. Do not read or write the author's main checkout.
+The spawn prompt names the range as SHAs, the contract, and the claims to falsify.
+
+## Your own clone
+
+You start in the author's main checkout, with no worktree of your own. Your work needs a sandbox `HOME`, old versions extracted beside new ones and paths outside the repo, and a harness worktree refuses those commands, so make a private clone first and work only there:
+
+```
+D=$(mktemp -d "${TMPDIR:-/tmp}/rrev-XXXXXX") && git clone -q --shared --no-checkout "$(git rev-parse --show-toplevel)" "$D/repo" && git -C "$D/repo" remote remove origin && git -C "$D/repo" checkout -q --detach <head-sha> && echo "$D"
+```
+
+- Shell variables do not survive between Bash calls: note the printed path and write it literally in every later command, each starting with `cd <path>/repo &&` (or `git -C <path>/repo`).
+- Removing `origin` means no git command in the clone can write into the author's repository. Never add it back.
+- Read the author's main checkout only where the prompt points you to a file there; never write, check out, stash, commit or run tests in it. The author compares `git status` before and after your review.
+- Run hooks with `HOME` at a directory under your temp dir, never the real one: rows a hook writes under the real `HOME` land in the user's log and corrupt their exposure times.
 
 ## How to work
 
 1. **Do not re-run the full suite** (`npm test`, `npm run check`, `tests/run-all.sh`). The prompt states that CI or the author already ran it on the reviewed SHA and gives the result. Run a single test file to reproduce a finding, or run tests under conditions CI does not cover (a different `TMPDIR` filesystem, concurrency, another `HOME` layout); in that case write down the hypothesis before you run it.
 2. **Run commands in the foreground with `timeout`.** The Bash tool stops a foreground command at 600 seconds. Do not start a command in the background and poll it with `sleep`. If an experiment needs longer, shrink it, or list the command under NOT CHECKED for the author to run.
 3. **Compare with the old code by extracting it**: `git show <base>:<path>` into your own temp dir. Behaviour claims ("no verdict changed", "only fewer X") are checked on crafted inputs against both versions, not by reading the diff.
-4. **Temp dirs are yours alone**: `D=$(mktemp -d "${TMPDIR:-/tmp}/rrev-XXXXXX")`, removed at the end with `rm -rf "${D:?}"`. Never glob-delete other directories: other reviewers may be running beside you, and a missing file after their cleanup is their contamination, not your finding. Re-run before reporting it.
+4. **Temp dirs are yours alone**: everything goes under the dir your clone command made, which you remove as your last command with `rm -rf "${D:?}"` after setting `D` to the literal path in that same command. Never glob-delete other directories: other reviewers may be running beside you, and a missing file after their cleanup is their contamination, not your finding. Re-run before reporting it.
 5. **Report every finding you have evidence for, whatever its severity.** Do not filter to high severity; the author sorts. Grade each Critical / High / Medium / Low.
 
 ## What to check

@@ -9,7 +9,7 @@
 # agents editing spec/ and hooks/ (docs/audit/20260926-180700.md E6), and
 # .claude/agents/ the release-reviewer subagent definition (same doc, 9.6 D1),
 # and .claude/settings.json the claudeMdExcludes that keep spec/CLAUDE.md and
-# the tasks/ fixtures from loading as instructions (also in reviewer worktrees).
+# the tasks/ fixtures from loading as instructions (also in clones and worktrees).
 # Only at the repo root: a .claude/ anywhere else stays ignored.
 .claude/
 !/.claude/
@@ -63,11 +63,11 @@ docs/*
 !docs/claude-session-analysis-2026-09-26.md
 #  - docs/spec-optimization-plan-2026-09-29.md (same provenance rule: the 0.107.0
 #    CHANGELOG entry and tasks/specs/v7.2-core.md cite it as the evidence and plan
-#    behind spec v7.2.0; the release-reviewer's worktree reads it as the contract.)
+#    behind spec v7.2.0; the release-reviewer's clone reads it as the contract.)
 !docs/spec-optimization-plan-2026-09-29.md
 #  - docs/S8-RESIDUALS.md (the registry of accepted §8 residual families). Read by
 #    the release-reviewer agent (.claude/agents/release-reviewer.md), whose
-#    worktree is a clone of the tracked tree; an ignored registry would not be
+#    private clone holds only the tracked tree; an ignored registry would not be
 #    there to read.
 !docs/S8-RESIDUALS.md
 #  - docs/audit/*.md (round reports + the metric baseline they compare against).
