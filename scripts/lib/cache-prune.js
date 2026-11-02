@@ -23,8 +23,63 @@ import { readLogRows } from './rule-hits-parse.js';
 // With DISABLE_RULE_HITS_LOG=1 the hooks write no rows (hook-common.sh reads
 // `== "1"`), so a missing row says nothing about use, and a dir nothing marked
 // is held too (`no-log-signal`, D#643). A marked dir is not: Claude Code deletes
-// it itself 14 days after marking it.
+// it itself once the mark is 14 days old and no live process holds it (below).
+//
+// Before all three comes the direct signal (D#652): Claude Code writes
+// `.in_use/<pid>` = {"pid":N,"procStart":"…"} in each version dir a process
+// loads, removes it when that process exits, and its own 14-day sweep skips a
+// dir while one of those names a live process ("Skipping orphan cleanup, in use
+// by live session"; read from the 2.1.309–2.1.316 binaries 2026-11-02, the docs
+// page above does not mention it). It works with the log off and for sessions
+// whose environment this install never sees.
 const HOLD_MS = 14 * 86400 * 1000;
+
+// Claude Code's own test, minus its writes: the pid answers signal 0 (EPERM
+// means it exists under another user), and when the marker has a procStart and
+// /proc can give the pid's start time (field 22 of /proc/<pid>/stat), the two
+// match, so a reused pid does not count. Without /proc (macOS, where Claude
+// Code compares `ps -o lstart=` instead) the pid alone decides: a reused pid
+// holds one dir too many until Claude Code sweeps the dead marker. A pid that
+// is not a positive integer counts as dead: kill(0) and kill(-1) reach process
+// groups, not one process.
+function isLive(marker) {
+  const pid = marker?.pid;
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+  } catch (e) {
+    if (e.code !== 'EPERM') return false;
+  }
+  if (typeof marker.procStart !== 'string') return true;
+  let stat;
+  try {
+    stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+  } catch {
+    return true;
+  }
+  // comm, inside the parentheses, may hold spaces; field 3 starts after `) `.
+  return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] === marker.procStart;
+}
+
+// Whether any `.in_use` entry of `dir` names a live process. An entry that does
+// not read or parse as JSON counts for nothing, as in Claude Code, which
+// deletes such entries; the prune only reads them.
+function inUseByLiveProcess(dir) {
+  const markers = path.join(dir, '.in_use');
+  let names;
+  try {
+    names = fs.readdirSync(markers);
+  } catch {
+    return false;
+  }
+  return names.some(name => {
+    try {
+      return isLive(JSON.parse(fs.readFileSync(path.join(markers, name), 'utf8')));
+    } catch {
+      return false;
+    }
+  });
+}
 
 // Number when the mark exists (NaN when it does not parse), null when absent.
 function orphanedAt(dir) {
@@ -131,8 +186,10 @@ export function pruneCache(pluginRoot, { keep = 3 } = {}) {
     const logOff = process.env.DISABLE_RULE_HITS_LOG === '1';
     for (const s of candidates) {
       const mark = orphanedAt(s.dir);
-      // `!(age >= HOLD_MS)` holds a NaN mark and a future-dated one too.
-      if (mark !== null && !(now - mark >= HOLD_MS)) {
+      if (inUseByLiveProcess(s.dir)) {
+        held.push({ name: s.name, reason: 'in-use' });
+      } else if (mark !== null && !(now - mark >= HOLD_MS)) {
+        // `!(age >= HOLD_MS)` holds a NaN mark and a future-dated one too.
         held.push({ name: s.name, reason: 'orphaned-recently' });
       } else if (logged.has(s.name)) {
         held.push({ name: s.name, reason: 'hook-rows-recently' });

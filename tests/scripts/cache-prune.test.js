@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { pruneCache } from '../../scripts/lib/cache-prune.js';
 
 let sandbox, versionsDir, savedHome, savedLogKnob;
@@ -280,6 +281,117 @@ test('D#643.2: only the value 1 counts as the log being off', () => {
     assert.deepEqual(r.held, [], `DISABLE_RULE_HITS_LOG=${value}`);
   }
 });
+
+// D#652: Claude Code writes `.in_use/<pid>` = {"pid":N,"procStart":"…"} in each
+// version dir a process loads and removes it when that process exits; its own
+// 14-day sweep skips a dir whose markers name a live process. The prune holds
+// such a dir too, whatever the mark or the log setting says.
+const HAS_PROC = fs.existsSync('/proc/self/stat');
+
+// Field 22 (starttime) read by plain position: this process's comm is `node`,
+// with no space, so the split needs none of the `)` handling the code under test uses.
+const ownProcStart = () => fs.readFileSync('/proc/self/stat', 'utf8').split(' ')[21];
+
+function inUse(version, file, content) {
+  const dir = path.join(versionsDir, version, '.in_use');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, file), typeof content === 'string' ? content : JSON.stringify(content));
+}
+
+const liveMarker = () => (HAS_PROC ? { pid: process.pid, procStart: ownProcStart() } : { pid: process.pid });
+
+test('D#652.1: a dir whose .in_use names a live process is held as in-use, before any other reason', () => {
+  for (const v of ['0.1.1', '0.1.2', '0.1.3', '0.1.4', '0.1.5', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  markOrphaned('0.1.1', Date.now() - 20 * DAY); // old mark alone would let it go
+  inUse('0.1.1', String(process.pid), liveMarker());
+  markOrphaned('0.1.2', Date.now() - 1 * DAY); // recent mark: in-use still names the reason
+  inUse('0.1.2', String(process.pid), liveMarker());
+  inUse('0.1.3', '1', { pid: 1 }); // pid 1 lives; kill(1, 0) is EPERM for a non-root user
+  inUse('0.1.4', String(process.pid), { pid: process.pid }); // no procStart: the pid decides
+  // 0.1.5: no mark, no row, no marker → removed (the log is on)
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.deepEqual(
+    r.held.sort((a, b) => a.name.localeCompare(b.name)),
+    ['0.1.1', '0.1.2', '0.1.3', '0.1.4'].map(name => ({ name, reason: 'in-use' }))
+  );
+  assert.deepEqual(r.removed, [path.join(versionsDir, '0.1.5')]);
+  for (const v of ['0.1.1', '0.1.2', '0.1.3', '0.1.4']) {
+    assert.ok(fs.existsSync(path.join(versionsDir, v)), `${v} must survive`);
+  }
+});
+
+test('D#652.2: with DISABLE_RULE_HITS_LOG=1 a live marker reports in-use, not no-log-signal', () => {
+  for (const v of ['0.1.1', '0.1.4', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  inUse('0.1.1', String(process.pid), liveMarker());
+
+  const r = withLogKnob('1', () => pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 }));
+
+  assert.deepEqual(
+    r.held.sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: '0.1.1', reason: 'in-use' },
+      { name: '0.1.4', reason: 'no-log-signal' },
+    ]
+  );
+});
+
+test('D#652.3: markers that name no live process hold nothing', () => {
+  const dead = spawnSync(process.execPath, ['-e', '']).pid; // exited and reaped
+  const bad = {
+    '0.1.0': [String(dead), { pid: dead }],
+    '0.1.1': [String(process.pid), ''],
+    '0.1.2': [String(process.pid), 'not json'],
+    '0.1.3': ['0', { pid: 0 }], // kill(0, 0) would reach our own process group
+    '0.1.4': ['-1', { pid: -1 }], // kill(-1, 0) would reach every process we may signal
+    '0.1.5': [String(process.pid), { pid: String(process.pid) }],
+    '0.1.6': [String(process.pid), 'null'],
+  };
+  for (const v of [...Object.keys(bad), '0.1.7', '0.1.8', '0.1.9', '0.2.0', '0.2.1']) mkVersion(v);
+  for (const [v, [file, content]] of Object.entries(bad)) {
+    markOrphaned(v, Date.now() - 20 * DAY);
+    inUse(v, file, content);
+  }
+  markOrphaned('0.1.7', Date.now() - 20 * DAY);
+  fs.mkdirSync(path.join(versionsDir, '0.1.7', '.in_use', String(process.pid)), { recursive: true });
+  markOrphaned('0.1.8', Date.now() - 20 * DAY);
+  fs.writeFileSync(path.join(versionsDir, '0.1.8', '.in_use'), JSON.stringify(liveMarker())); // a file, not a dir
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.deepEqual(r.held, []);
+  assert.deepEqual(r.removed.map(d => path.basename(d)).sort(), [...Object.keys(bad), '0.1.7', '0.1.8']);
+});
+
+test(
+  'D#652.4: a live pid whose start time differs (a reused pid) holds nothing',
+  { skip: !HAS_PROC && 'no /proc' },
+  () => {
+    for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+    markOrphaned('0.1.1', Date.now() - 20 * DAY);
+    inUse('0.1.1', String(process.pid), { pid: process.pid, procStart: String(Number(ownProcStart()) + 1) });
+
+    const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+    assert.deepEqual(r.held, []);
+    assert.ok(!fs.existsSync(path.join(versionsDir, '0.1.1')));
+  }
+);
+
+test(
+  'D#652.5: without /proc a live pid holds its dir whatever its procStart',
+  { skip: HAS_PROC && 'has /proc' },
+  () => {
+    for (const v of ['0.1.1', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+    markOrphaned('0.1.1', Date.now() - 20 * DAY);
+    inUse('0.1.1', String(process.pid), { pid: process.pid, procStart: 'Mon Nov  2 04:42:24 2026' });
+
+    const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+    assert.deepEqual(r.held, [{ name: '0.1.1', reason: 'in-use' }]);
+  }
+);
 
 test('D#635.5: no candidates beyond keep → held is empty and removal is unchanged', () => {
   for (const v of ['0.1.9', '0.2.1']) mkVersion(v);
