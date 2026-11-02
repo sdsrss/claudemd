@@ -8,6 +8,31 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.7] - 2026-11-02
+
+**An install no longer removes an older version folder while Claude Code records a running process as using it, whatever the log setting. No hook or spec text changes.**
+
+**What changes for users.**
+- Claude Code writes a file under `.in_use/` in each plugin version folder a process loads, holding that process's pid and start time, and removes it when the process exits (versions 2.1.309, 2.1.310 and 2.1.316 were checked). The install's cache prune now reads those files: an older folder under `~/.claude/plugins/cache/claudemd/claudemd/` stays while one of them names a running process, listed in `cachePruned.held` with the reason `in-use`. Until now the prune looked only at Claude Code's `.orphaned_at` mark and the hook log, so when the session using a folder had `DISABLE_RULE_HITS_LOG=1` in its own environment only, or the log held no row from that version in the last 14 days (a deleted log, say), an install from another session could remove that folder, and every claudemd hook in the session still using it failed with exit 127. 0.117.6 listed this under Not changed (D#652).
+- Claude Code itself does not delete a folder it marked while such a record names a running process. `/claudemd-install` now says that, where it said Claude Code deletes a marked folder 14 days after marking it.
+
+No action is needed. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Cache prune** (4941a98, D#652). `scripts/lib/cache-prune.js` checks the `.in_use/` records before the three reasons 0.117.6 had (`orphaned-recently`, `hook-rows-recently`, `no-log-signal`), so a folder in use reports `in-use` even when its mark is older than 14 days or the log is off. A record counts when its `pid` is a positive integer that answers signal 0 (a permission error counts as running) and, where `/proc/<pid>/stat` can be read, its `procStart` equals that process's start time, so a pid the system gave to a new process does not count. A record that is empty or not JSON, a dead pid, and a pid that is not a positive integer hold nothing. The prune only reads the records; it never writes or deletes them. When no record names a running process, it keeps and removes the same folders as 0.117.6.
+
+**Install page** (ebac656). `commands/claudemd-install.md` names the fourth reason and Claude Code's own rule; the cache-prune row of `docs/ARCHITECTURE.md` names the new hold.
+
+**Not changed.**
+- `hooks/` and `spec/` (spec v8.3.1).
+- Without `/proc` (macOS) the pid alone decides, so a record whose pid now belongs to another process keeps its folder until Claude Code clears the dead record. The prune does not compare the start time Claude Code writes on Windows either.
+- With a Claude Code version that writes no `.in_use/` records, the prune decides by the three earlier reasons.
+- The prune ages `.orphaned_at` by the number written in it, Claude Code by the file's modification time. They agree unless another program rewrites the file.
+- `CLAUDEMD_SPEC_ACTION=restore` still stops at an empty backup dir or one with only a `hooks/` folder. Current versions write neither kind; uninstall then reports `restore-empty` and exits 3.
+
+**Tests.**
+- `tests/scripts/cache-prune.test.js`: D#652.1 (live records hold four folders as `in-use`, one with a 20-day-old mark and one with a 1-day-old mark among them, while an unmarked folder without a record is removed) and D#652.2 (with `DISABLE_RULE_HITS_LOG=1` a live record reports `in-use`, an unmarked folder beside it `no-log-signal`) failed before 4941a98. D#652.3 (a dead pid, an empty file, text that is not JSON, pids 0 and -1, a pid written as a string, `null`, a directory where a record should be, a file where `.in_use/` should be) and D#652.4 (a live pid with a different start time) hold nothing before and after. D#652.5 runs only where `/proc` is missing. Nine mutants of the new check each fail at least one case; the tenth (an unreadable `/proc` entry counts as a dead pid) survives on Linux, where every case passes, and fails D#652.5 on a simulated host without `/proc`.
+- `tests/scripts/command-page-behaviour.test.js`: the changed page line is pinned whole (it failed on the old text), and `pruneCache` runs with a live `.in_use` record beside a folder for each of the other three reasons.
+
 ## [0.117.6] - 2026-11-02
 
 **With `DISABLE_RULE_HITS_LOG=1` an install no longer removes an older version folder that nothing marked, and restore passes over a newer backup of spec files that has no `CLAUDE.md`. No hook or spec text changes.**
