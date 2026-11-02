@@ -393,6 +393,24 @@ test(
   }
 );
 
+// One live record is enough, and no record is not one: both shapes are in a real
+// cache (an emptied `.in_use/`; a dir that two sessions loaded, one of them gone).
+test('D#652.6: one live record among dead ones holds the dir; an empty .in_use holds nothing', () => {
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  for (const v of ['0.1.1', '0.1.2', '0.1.6', '0.1.9', '0.2.1']) mkVersion(v);
+  markOrphaned('0.1.1', Date.now() - 20 * DAY);
+  inUse('0.1.1', String(dead), { pid: dead });
+  inUse('0.1.1', 'junk', 'not json');
+  inUse('0.1.1', String(process.pid), liveMarker());
+  markOrphaned('0.1.2', Date.now() - 20 * DAY);
+  fs.mkdirSync(path.join(versionsDir, '0.1.2', '.in_use'));
+
+  const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
+
+  assert.deepEqual(r.held, [{ name: '0.1.1', reason: 'in-use' }]);
+  assert.deepEqual(r.removed, [path.join(versionsDir, '0.1.2')]);
+});
+
 test('D#635.5: no candidates beyond keep → held is empty and removal is unchanged', () => {
   for (const v of ['0.1.9', '0.2.1']) mkVersion(v);
   const r = pruneCache(path.join(versionsDir, '0.2.1'), { keep: 3 });
