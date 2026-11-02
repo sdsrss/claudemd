@@ -1,6 +1,6 @@
 # 0.118.0：spec v8.4.0 与刷新文字修正的批次发版
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -17,9 +17,9 @@
 - [x] S1：0.117.7 的 T0 与 B1 复测，写进已安装版本台账（决策 1、2）
 - [x] S2：刷新文字修正，先红后绿、变异检验（5bbf032，决策 3）
 - [x] S3：五处版本号、CHANGELOG 条目单独扫描、`npm run check`、`npm run smoke`
-- [ ] S4：草稿 PR 的 CI 全绿
-- [ ] S5：发版前评审（新开的评审代理），修复轮
-- [ ] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
+- [x] S4：草稿 PR 的 CI 全绿（e85aea0，run 41518448551，7/7）
+- [x] S5：发版前评审（新开的评审代理），修复轮（e85aea0；决策 4）
+- [x] S6：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`（tag v0.118.0 在 e85aea0）
 
 ## 决策与进展
 
@@ -46,3 +46,9 @@
 - CHANGELOG 条目 1,913 字节；`node bin/claudemd-lint.js lint --file <单独取出的条目>` → `OK: no §10-V hits`。
 - `git diff --stat v0.117.7 HEAD -- hooks/` → 0 行；`scripts/` 只有 `refresh-plugin.sh`；`spec/CLAUDE.md` 只有标题行。
 - release 分支（5bbf032 之上暂存了版本号、CHANGELOG 与本文件）上 `npm run check` → 通过（退出码 0；node 1762 条：1759 通过、3 跳过，基线 1761 条：1758 通过、3 跳过；shell 1774 条 PASS、0 FAIL；shellcheck 94 个文件无警告）；`npm run smoke` → 通过（2/2）。
+- ae913f4 的 PR CI run 41514616187 → 通过（7/7）。
+- e85aea0（修复轮）暂存时 `npm run check` → 通过（退出码 0；node 1763 条：1760 通过、3 跳过；shell 1774 条 PASS、0 FAIL）；`npm run smoke` → 通过（2/2）；`node scripts/spec-coherence-audit.js --strict` → 5/5；新卸载用例在旧文字上 → 失败（"commands/claudemd-uninstall.md lacks the line"），改后 24/24；评审的"按 `CLAUDE_PLUGIN_ROOT` 删同级目录"变异体 → 失败 1 条；`node scripts/claim-drift.js --range=ae913f4..HEAD` 列出的同名位置逐个看过，README 第 440 行"卸载后去缓存里手动跑"与新文字一致。PR CI run 41518448551 → 通过（7/7）。
+- tag v0.118.0（2026-11-02T20:39:36Z，指向 e85aea0）：`ci` run 41521322068 → 通过（7/7）；`npm-publish` run 41521321988 → 通过（`publish` job 成功，日志 `+ claudemd-cli@0.118.0`）；main 的 `ci` run 41521297025 → 通过。
+- `npm view claudemd-cli dist-tags.latest` → 21:10:07Z 仍是 `0.117.7`，21:10:28Z 为 `0.118.0`；`npm view claudemd-cli@0.118.0 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`。
+- GitHub Release v0.118.0 已建（正文为 CHANGELOG 条目）；PR #31 MERGED（20:40:03Z）；远端 `release/v0.118.0` 已被自动删除，本地已 `git branch -d`；`next-release` 对齐 main（原来的 3 个提交 `git cherry` 全部为 `-`）。
+- 留下的：7c0926f 的提交信息仍写 "runtime value 84"、"877 commands"，已推送，不改，以 CHANGELOG 和 `spec/CLAUDE-changelog.md` 为准。

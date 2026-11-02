@@ -46,7 +46,7 @@
 
 - [x] S1：改 extended §11-O 一条，`node scripts/build-spec-modules.js` — 覆盖 AC1 — 依赖：使用者批准进入实现 — 执行：主会话
 - [x] S2：版本级联、两份 changelog、Sizing 定点、spec-structure 锁定块，`npm run check` — 覆盖 AC2 — 依赖：S1 — 执行：主会话
-- [ ] S3：随下一个批次按发版手册发布（含发版前评审） — 依赖：S2 — 执行：主会话 + release-reviewer
+- [x] S3：随下一个批次按发版手册发布（含发版前评审） — 依赖：S2 — 执行：主会话 + release-reviewer（0.118.0，tag 2026-11-02T20:39:36Z；记录 `tasks/specs/release-0.118.0-2026-11-02.md`）
 - [ ] S4：暴露 27 天后复测 — 覆盖 AC3 — 依赖：S3
 
 ## 决策与进展
