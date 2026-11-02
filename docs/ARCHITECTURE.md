@@ -72,7 +72,7 @@ Module → responsibility → external interface. "External" means what a caller
 | `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
 | `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
 | `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |
-| `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`); an older version a running session may still use is held: `.orphaned_at` under 14 days old, a hook-log row from it in the last 14 days (D#635), or, with `DISABLE_RULE_HITS_LOG=1`, no mark at all (D#643) | `pruneCache` |
+| `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`); an older version a running session may still use is held: a record in its `.in_use/` naming a live process (D#652), `.orphaned_at` under 14 days old, a hook-log row from it in the last 14 days (D#635), or, with `DISABLE_RULE_HITS_LOG=1`, no mark at all (D#643) | `pruneCache` |
 | `transcript-user-turn.js` | Normalise the two user-turn content shapes (string vs array) | `userTurnText` `isUserTurn` |
 
 **L3 / CLI / spec**
