@@ -62,3 +62,7 @@ restore 现在跳过只装着规范文件的目录（含 `CLAUDE.md`，每个条
 ## 进展 2026-11-02（0.117.6）
 
 上一节"仍不处理：没有 `CLAUDE.md` 的 update 目录"已处理（D#644，56ef606）：`holdsOnlySpecFiles` 不再要求 `CLAUDE.md`，改为至少一个条目、每个条目都是规范文件名、普通文件、第一行是规范标题。同样被跳过的还有 0.111.0 以前的 install 在家目录没有 `CLAUDE.md` 时整体移进 `backup-` 的规范同级文件（R15）。只在标题下加了笔记的规范文件仍算规范文件，这样的目录同样被跳过、原样留下、列在 `skippedSpecOnly` 里，与 0.116.6 对含 `CLAUDE.md` 目录的处理相同。空目录和只有 `hooks/` 的目录仍会挡住 restore。
+
+## 分拣 2026-11-02
+
+空目录与只有 `hooks/` 的目录挡住 restore：不改。当前代码不再写这两种 `backup-` 目录，只剩更早版本留下的；restore 停在那里时 uninstall 报 `restore-empty`、退出码 3，个人备份留在原处。依据见 `tasks/specs/residuals-0.117.7-2026-11-02.md` 决策 6。
