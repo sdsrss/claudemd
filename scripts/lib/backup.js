@@ -342,14 +342,18 @@ export function looksLikeSpec(text) {
 // which takes the heading anywhere in the first 256 characters (D#392).
 export const SPEC_FIRST_LINE_RE = /^\uFEFF?# AI-CODING-SPEC /;
 
-// A personal-namespace backup restore passes over (uninstall.js): CLAUDE.md is
-// in it, and every entry is one of SPEC_FILES, a regular file (not a link)
-// whose first line is the spec heading. A pre-0.68.3 /claudemd-update wrote
-// every spec file that differed from the plugin's there; when CLAUDE.md did not
-// differ (2 of the 47 spec-changing tag steps up to v0.68.2) its dir has no
-// CLAUDE.md and is not passed over. A dir it cannot list or read, or with any other
-// entry, is not one: such a dir may be a pre-v0.23.11 personal backup with the
-// user's files beside the spec (see findLegacySpecBackups below).
+// A personal-namespace backup restore passes over (uninstall.js): it has at
+// least one entry, and every entry is one of SPEC_FILES, a regular file (not a
+// link) whose first line is the spec heading. A pre-0.68.3 /claudemd-update
+// wrote every spec file that differed from the plugin's there, so when
+// CLAUDE.md did not differ (2 of the 47 spec-changing tag steps up to v0.68.2)
+// its dir has no CLAUDE.md; an install before d39c4b2 wrote spec siblings alone
+// (R15). Both are passed over too since D#644: what keeps a dir with the user's
+// files a restore source is the heading test on every entry, which a file the
+// user wrote fails, not the presence of CLAUDE.md. A dir it cannot list or
+// read, an empty one, or one with any other entry, is not one: such a dir may
+// be a pre-v0.23.11 personal backup with the user's files beside the spec (see
+// findLegacySpecBackups below).
 export function holdsOnlySpecFiles(dir) {
   let names;
   try {
@@ -357,7 +361,7 @@ export function holdsOnlySpecFiles(dir) {
   } catch {
     return false;
   }
-  if (!names.includes('CLAUDE.md')) return false;
+  if (names.length === 0) return false;
   return names.every(n => {
     if (!SPEC_FILES.includes(n)) return false;
     const p = path.join(dir, n);

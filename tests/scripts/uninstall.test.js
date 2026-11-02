@@ -260,14 +260,18 @@ test('restore does not skip a spec-shaped backup that holds anything else, a lin
       d => fs.writeFileSync(path.join(d, 'my-spec-copy.md'), SPEC_TEXT),
       SPEC_TEXT,
     ],
+    // D#644 moved 'spec files but no CLAUDE.md' out of this list (it is passed
+    // over now, test below); these two stay restore sources.
     [
-      'spec files but no CLAUDE.md',
+      'no CLAUDE.md, a file the user wrote beside a spec file',
       d => {
         fs.rmSync(path.join(d, 'CLAUDE.md'));
-        fs.writeFileSync(path.join(d, 'OPERATOR.md'), '# AI-CODING-SPEC — Operator handbook\n');
+        fs.writeFileSync(path.join(d, 'CLAUDE-extended.md'), '# AI-CODING-SPEC v6.10.0 — Extended\n');
+        fs.writeFileSync(path.join(d, 'OPERATOR.md'), 'my own operator notes\n');
       },
       null,
     ],
+    ['an empty dir', d => fs.rmSync(path.join(d, 'CLAUDE.md')), null],
   ];
   for (const [what, extra, expected] of cases) {
     for (const n of fs.readdirSync(path.join(tmpHome, '.claude'))) {
@@ -303,6 +307,26 @@ test('restore does not skip a spec-shaped backup that holds anything else, a lin
       `${what}: the newest backup is restored`
     );
   }
+});
+
+// D#644: a pre-0.68.3 /claudemd-update left CLAUDE.md out of its backup when
+// CLAUDE.md had not changed (2 of 47 spec-changing tag steps), and an install
+// before d39c4b2 wrote spec siblings alone (R15). Every entry's first line is
+// the spec heading, so no file the user wrote is in it; restore passes over it
+// like a dir that also holds CLAUDE.md.
+test('D#644: restore passes over a newer backup of spec files that has no CLAUDE.md', async () => {
+  backupDir('20260301T000000Z', { 'CLAUDE.md': 'personal\n' });
+  const update = backupDir('20260501T000000Z', {
+    'CLAUDE-extended.md': '# AI-CODING-SPEC v6.10.0 — Extended\nold\n',
+    'OPERATOR.md': '# AI-CODING-SPEC — Operator handbook\n',
+  });
+  const bom = backupDir('20260601T000000Z', {
+    'CLAUDE-changelog.md': '\uFEFF# AI-CODING-SPEC — Changelog\n',
+  });
+  const res = await uninstall({ specAction: 'restore' });
+  assert.deepEqual(res.skippedSpecOnly, [bom, update]);
+  assert.equal(fs.readFileSync(path.join(tmpHome, '.claude/CLAUDE.md'), 'utf8'), 'personal\n');
+  for (const d of [update, bom]) assert.ok(fs.existsSync(d), 'a passed-over dir is left in place');
 });
 
 test('restore falls back to the newest backup when every backup holds only a spec', async () => {
