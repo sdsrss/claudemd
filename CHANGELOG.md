@@ -8,6 +8,34 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.117.6] - 2026-11-02
+
+**With `DISABLE_RULE_HITS_LOG=1` an install no longer removes an older version folder that nothing marked, and restore passes over a newer backup of spec files that has no `CLAUDE.md`. No hook or spec text changes.**
+
+**What changes for users.**
+- With `DISABLE_RULE_HITS_LOG=1` the hooks write no log, so an install had nothing to tell it whether a session still ran an older version's hooks, and it removed an older folder under `~/.claude/plugins/cache/claudemd/claudemd/` that carried no `.orphaned_at` mark. In a session that still used that folder every claudemd hook then failed with exit 127, the failure 0.117.4 fixed for the log-on case. Such a folder now stays, listed in `cachePruned.held` with the reason `no-log-signal`, until Claude Code marks it or the log is on again. A folder Claude Code marked more than 14 days ago is still removed, and without the setting nothing changes.
+- `CLAUDEMD_SPEC_ACTION=restore` (`/claudemd-uninstall restore`) now passes over a newer backup that holds nothing but spec files when it has no `CLAUDE.md` too, lists it in `skippedSpecOnly` and leaves it in place. A `/claudemd-update` before 0.68.3 wrote such a dir when `CLAUDE.md` had not changed, and an install before 0.111.0 wrote one when the home folder had spec files but no `CLAUDE.md`. Restore used to copy those old spec files back and leave your own older backup where it was. A dir holding any file whose first line is not the spec heading is still restored, and so is an empty one.
+
+No action is needed. To go back, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Cache prune** (4639a6a, f57656b, D#643). `scripts/lib/cache-prune.js` checks each older folder in the same order as before: a mark under 14 days old (`orphaned-recently`), then a hook row from its version in the last 14 days (`hook-rows-recently`). Next, with `DISABLE_RULE_HITS_LOG` set to `1` (the value `hooks/lib/hook-common.sh` reads) and no mark, it holds the folder as `no-log-signal`; otherwise it removes it. Such a folder takes about 11 MB and stays until one of the two changes or it is deleted by hand. `/claudemd-install` names the third reason.
+
+**Restore** (56ef606, D#644). `holdsOnlySpecFiles` in `scripts/lib/backup.js` no longer needs a `CLAUDE.md`: a dir counts when it has at least one entry and every entry is a spec file name, a regular file whose first line is the spec heading. A file the user wrote fails that heading test, which is what keeps a dir with the user's files a restore source; the presence of `CLAUDE.md` did not decide it. 0.116.6 left the no-`CLAUDE.md` update dir as a restore source at its review depth limit; the 0.117.5 pre-tag review reproduced the case. The install and uninstall pages, README's restore row and `uninstall.js --help` say "with or without `CLAUDE.md`".
+
+**Not changed.**
+- `hooks/` and `spec/` (spec v8.3.1).
+- With the log on but no row from any version in 14 days (a deleted log, say), the cache prune still removes an unmarked older folder.
+- An empty backup dir, or one holding only a `hooks/` dir, still stops restore at that dir, as in 0.116.6.
+- doctor's `backup-namespace-legacy` row lists only dirs with a spec-shaped `CLAUDE.md`, so its output is as before.
+
+**Tests.**
+- `tests/scripts/cache-prune.test.js`: D#643.1 (log off: an unmarked folder beyond the three kept is held as `no-log-signal`, one marked 20 days ago is removed, one with a recent row reports `hook-rows-recently`) failed before 4639a6a; D#643.2 (the setting unset, `0`, `true`, empty) removes the unmarked folder on both sides. Mutants that drop the no-mark condition, read any non-empty value as off, or remove the branch each fail one case.
+- `tests/scripts/uninstall.test.js`: the D#644 case (a personal backup, then two newer dirs of spec files without `CLAUDE.md`, one with a byte-order mark before its heading) failed before 56ef606. 0.116.6's control row that asserted such a dir is not passed over became that case; two controls took its place, a user-written `OPERATOR.md` beside a spec file and an empty dir. Mutants that drop the non-empty check or require `CLAUDE.md` again each fail one case.
+- `tests/scripts/command-page-behaviour.test.js`: the changed page lines are pinned whole; one case runs `pruneCache` with the log off (one folder for each of the three reasons), another runs the restore and checks README and `--help`. Both failed on the old text.
+@@CHECKS@@
+
+**Pre-tag review.** @@REVIEW@@
+
 ## [0.117.5] - 2026-11-01
 
 **`/claudemd-doctor`'s status-line row names a fix that works when `CLAUDEMD_NO_STATUSLINE=1` is set, and three command pages now describe `cachePruned.held`, restore's `skippedSpecOnly` and doctor's `advisory` rows. No hook or spec text changes.**
