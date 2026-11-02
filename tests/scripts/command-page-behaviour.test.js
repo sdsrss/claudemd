@@ -270,15 +270,16 @@ test('doctor: the page says when to run --ack-fail-open, and the fields and file
 // 0.117.5: four page sentences the 0.116.6, 0.117.0 and 0.117.4 entries listed
 // under 'Not changed'. Each case pins the new line and runs what it names.
 const INSTALL_HELD_LINE =
-  "- `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless). `cachePruned.held`: older dirs install would otherwise remove (it keeps three: the current version and the newest others) that stay because a session opened earlier may still run its hooks from them, each with a `reason`: `orphaned-recently` (Claude Code's `.orphaned_at` mark in the dir is under 14 days old, or does not read as a number) or `hook-rows-recently` (the hook log has a row from that version in the last 14 days). Name them when the list is non-empty. A later install removes each once neither reason holds, and Claude Code deletes a dir it marked 14 days after marking it; a mark that does not read as a number holds its dir on every install.";
+  "- `cachePruned.removed`: list of older cache version dirs reclaimed (best-effort; install succeeds regardless). `cachePruned.held`: older dirs install would otherwise remove (it keeps three: the current version and the newest others) that stay because a session opened earlier may still run its hooks from them, each with a `reason`: `orphaned-recently` (Claude Code's `.orphaned_at` mark in the dir is under 14 days old, or does not read as a number), `hook-rows-recently` (the hook log has a row from that version in the last 14 days) or `no-log-signal` (`DISABLE_RULE_HITS_LOG=1` keeps the hooks from writing that log, and the dir has no mark). Name them when the list is non-empty. A later install removes each once none of the three holds, and Claude Code deletes a dir it marked 14 days after marking it; a mark that does not read as a number holds its dir on every install, and `no-log-signal` holds it until Claude Code marks it or the log is on again.";
 
-test('install: the page names cachePruned.held and its two reasons, and pruneCache returns those reasons', () => {
+test('install: the page names cachePruned.held and its three reasons, and pruneCache returns those reasons', () => {
   assertLine('install', INSTALL_HELD_LINE);
   const versions = path.join(box.home, '.claude/plugins/cache/claudemd/claudemd');
-  for (const v of ['0.1.1', '0.1.4', '0.1.6', '0.1.9', '0.2.1']) {
+  for (const v of ['0.1.0', '0.1.1', '0.1.4', '0.1.6', '0.1.9', '0.2.1']) {
     fs.mkdirSync(path.join(versions, v), { recursive: true });
   }
   fs.writeFileSync(path.join(versions, '0.1.4', '.orphaned_at'), String(Date.now() - 86400000));
+  // 0.1.0: no mark, no row; held only because the log is off (D#643).
   fs.mkdirSync(box.claude('logs'), { recursive: true });
   fs.writeFileSync(
     box.claude('logs/claudemd.jsonl'),
@@ -292,12 +293,13 @@ test('install: the page names cachePruned.held and its two reasons, and pruneCac
       `const { pruneCache } = await import(${JSON.stringify(path.join(REPO, 'scripts/lib/cache-prune.js'))});` +
         `console.log(JSON.stringify(pruneCache(${JSON.stringify(path.join(versions, '0.2.1'))}, { keep: 3 }).held));`,
     ],
-    { encoding: 'utf8', env: box.env() }
+    { encoding: 'utf8', env: box.env({ DISABLE_RULE_HITS_LOG: '1' }) }
   );
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(
     JSON.parse(r.stdout).sort((a, b) => a.name.localeCompare(b.name)),
     [
+      { name: '0.1.0', reason: 'no-log-signal' },
       { name: '0.1.1', reason: 'hook-rows-recently' },
       { name: '0.1.4', reason: 'orphaned-recently' },
     ]
