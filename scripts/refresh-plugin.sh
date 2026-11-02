@@ -39,6 +39,6 @@ echo
 echo "Plugin cache refreshed. Now RESTART Claude Code (or /reload-plugins);"
 echo "the first new session auto-syncs the spec + manifest via install.js."
 echo
-echo "Other open Claude Code windows: run /reload-plugins in EACH — their hooks"
-echo "still point at the old cache dir this refresh just removed, and will error"
-echo "on every hook event (claudemd enforcement is absent there) until reloaded."
+echo "Other open Claude Code windows: run /reload-plugins in EACH. Until then"
+echo "they keep running the previous version's hooks, which still work: the old"
+echo "cache dir stays for at least 14 days (Claude Code marks it for cleanup)."

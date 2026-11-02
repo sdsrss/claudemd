@@ -95,6 +95,49 @@ test('refresh: the page relays what the script prints when the install fails aft
   );
 });
 
+// Until 0.118.0 the page, the script and README said the refresh removes the old
+// cache dir and other windows "error on every hook event". On 2026-11-02 the
+// 0.117.6 -> 0.117.7 refresh left 0.117.6 in place with `.orphaned_at`, and a
+// window still on it logged a 0.117.6 `pass` row 58 s later: Claude Code marks
+// the dir and deletes it 14 days later (code.claude.com/docs/en/plugins/loading),
+// and install.js's prune holds a dir marked under 14 days.
+test('refresh: page, script and README say other windows keep the old hooks and the old dir stays', () => {
+  assertLine(
+    'refresh',
+    "If the user has **other Claude Code windows open**, tell them to run `/reload-plugins` in each one too. Every already-running session pinned its hook paths to the old versioned plugin-cache dir at startup, so until it reloads or restarts it keeps running the previous version's hooks, without this release's changes. Those hooks still work: the refresh does not delete the old dir, which stays for at least 14 days (Claude Code marks it for cleanup)."
+  );
+  assert.ok(
+    fs
+      .readFileSync(path.join(REPO, 'README.md'), 'utf8')
+      .split('\n')
+      .includes(
+        "> **Other open Claude Code windows:** run `/reload-plugins` in each of them too. Every already-running session pinned its hook paths to the old versioned plugin-cache dir at startup, so until it reloads or restarts it keeps running the previous version's hooks. Those hooks still work: a refresh does not delete the old dir, which stays for at least 14 days (Claude Code marks it for cleanup)."
+      ),
+    'README.md lacks the other-windows note'
+  );
+  // The script itself deletes nothing: an older version dir in the sandbox
+  // cache is still there after a successful run, and stdout says so.
+  const bin = box.dir('bin-ok');
+  fs.writeFileSync(path.join(bin, 'claude'), '#!/usr/bin/env bash\nexit 0\n');
+  fs.chmodSync(path.join(bin, 'claude'), 0o755);
+  const env = box.env({ PATH: [bin, '/usr/bin', '/bin'].join(':') });
+  const oldDir = path.join(env.HOME, '.claude/plugins/cache/claudemd/claudemd/0.0.1');
+  fs.mkdirSync(path.join(oldDir, 'hooks'), { recursive: true });
+  const r = spawnSync('bash', [path.join(REPO, 'scripts/refresh-plugin.sh')], { encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync(path.join(oldDir, 'hooks')), 'refresh-plugin.sh removed a cache dir');
+  const out = r.stdout.split('\n');
+  const at = out.indexOf('Other open Claude Code windows: run /reload-plugins in EACH. Until then');
+  assert.ok(at >= 0, r.stdout);
+  assert.deepEqual(out.slice(at, at + 4), [
+    'Other open Claude Code windows: run /reload-plugins in EACH. Until then',
+    "they keep running the previous version's hooks, which still work: the old",
+    'cache dir stays for at least 14 days (Claude Code marks it for cleanup).',
+    '',
+  ]);
+  assert.doesNotMatch(r.stdout, /removed|will error/);
+});
+
 test('status: every field and value the page names for an unparseable manifest is in the output', () => {
   const line =
     '- If `plugin.manifestError` is `unparseable`: an install manifest is on disk but could not be read. Relay `plugin.detail`, which names `/claudemd-install` as the fix, and do not suggest `/plugin install`. `plugin.hint` is `manifest-unparseable` unless the cache hint above applies, which keeps its own hint and `cacheVersions`; then give both.';
