@@ -41,7 +41,7 @@
   - L6：CHANGELOG 写明 sandbox-disposal-check 只扫 `/tmp`、`/var/tmp`、`~/.claude/tmp`。
   - L7：CHANGELOG 写明 `aggressive` 下不用事先说明。
 - 2026-11-03：e72ba96 的 PR CI（run 41652259310）在 macOS node 22 上失败，失败的是"里面有 socket 就不删"这一条用例。原因在测试夹具：runner 的临时路径长 129 字节，超过 macOS unix socket 路径 104 字节的上限，`listen` 没报错，socket 却没建在目录里，扫描自然看不到它。在 Linux 上把 `TMPDIR` 设成 139 字节就能复现（旧夹具报 `listen EINVAL`）。修法：先 `chdir` 进目录，用相对名 `s` 来 `listen`，并在扫描前断言 socket 确实在目录里。修复后，长、短两种 `TMPDIR` 下 `housekeeping.test.js` 都是 113 通过、1 跳过；去掉 socket 判断的变异仍然让这条用例失败。只改了测试，不需要再开评审。
-- 遗留（不在本版修）：
+- 遗留（不在本版修；下面的第二轮 L2 和第一轮 L7、L8 记为延期项 D#718，随下一个批次在 next-release 上修）：
   - 第二轮 L1：e72ba96 的提交说明写"10 个新用例在修复前失败"。按评审的数法，在 f03fda9 的脚本上是 114 个用例里 11 个失败、102 个通过；13 个新名字的用例里 5 个失败，其余 8 个在旧代码上也通过（旧正则不匹配 `agent-tmp-*`），但在新代码上都能被变异检验打红。提交已推送，不改，以本记录为准。
   - 第二轮 L2：复查遍历完一个目录之后、`rmSync` 之前写进去的文件，会被一起删掉。窗口和一次遍历一样长；f03fda9 的代码就是这样，vitest 那一类也一样。
   - L7：几个 sweep 并发时会把别人删掉的条目算成自己的失败（ENOENT，exit 3），删除数也会重复计算。vitest 那一类原来就是这样。

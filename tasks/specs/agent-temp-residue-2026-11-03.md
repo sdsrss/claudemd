@@ -58,7 +58,7 @@
 - [x] S3：改规范文字，重建 modules；版本级联、两份 changelog、Sizing、spec-structure 的哈希和锁定行 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
 - [x] S4：跑 `npm run check` 和 `npm run smoke`，然后提交到 `next-release`；release-reviewer 的前缀单独提交到 main — 覆盖 AC4 — 依赖：S1–S3
 - [x] S5：0.119.0 按发版手册发布，发版前评审两轮（发版记录 `tasks/specs/release-0.119.0-2026-11-03.md`） — 依赖：S4 — 执行：主会话 + release-reviewer
-- [ ] S6：发版约 4 周后复测 — 覆盖 AC5 — 依赖：S5
+- [ ] S6：发版约 4 周后复测（延期项 D#719；从 0.119.0 在本机的 T0 起算，T0 要等使用者 /claudemd-refresh 并重启之后才有）— 覆盖 AC5 — 依赖：S5
 
 ## 决策与进展
 
