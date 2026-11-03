@@ -297,13 +297,16 @@ fi
 # (backlog item 169), and a line without one is read as before; the parity test
 # holds them.
 #
-# Only the file column is read: this hook denies per FILE, and the old loop
-# `break`ed on the first matching tag. memtags_match reports every matched tag,
-# which is a superset — the file set is identical.
+# The verdict reads only the file column: this hook denies per FILE, and the old
+# loop `break`ed on the first matching tag. memtags_match reports every matched
+# tag, which is a superset — the file set is identical. The tag column is kept
+# (index-aligned, no associative arrays under bash 3.2) for the deny row only.
 MATCHES=()
+MATCH_TAGS=()
 while IFS=$'\t' read -r _file _tags; do
   [[ -n "$_file" ]] || continue
   MATCHES+=("$_file")
+  MATCH_TAGS+=("$_tags")
 done < <(memtags_match "$MEM_INDEX" "$CMD_TAGMATCH")
 
 (( ${#MATCHES[@]} == 0 )) && exit 0
@@ -319,10 +322,13 @@ done < <(memtags_match "$MEM_INDEX" "$CMD_TAGMATCH")
 # audit R11-28).
 # Fixtures: tests Cases 45-47 (real transcript line, hint banner, bare prose).
 MISSING=()
-for file in "${MATCHES[@]}"; do
+MISSING_TAGS=()
+for i in "${!MATCHES[@]}"; do
+  file="${MATCHES[$i]}"
   MEMFILE="$MEM_DIR/$file"
   if ! hook_memfile_was_read "$TRANSCRIPT" "$MEMFILE"; then
     MISSING+=("$file")
+    MISSING_TAGS+=("${MATCH_TAGS[$i]}")
   fi
 done
 
@@ -349,5 +355,11 @@ MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
 # (avalanche signal, rule may be too broad) from "deny triggered 1 file"
 # (single match, rule working as designed). Bypass-rate by match_count
 # bucket surfaces avalanche-driven bypass.
-hook_record memory-read-check deny "{\"missing\":$MISS_JSON,\"match_count\":${#MATCHES[@]}}" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
+# 2026-11-03: `tags` maps each missing file to the tags that matched it. Without
+# it, 13 denies in 30 days from one generic tag (`origin` ⊂ `git push origin`)
+# read the same as topic matches; doctor's memory-tag-specificity names them.
+TAGS_JSON=$(for i in "${!MISSING[@]}"; do printf '%s\t%s\n' "${MISSING[$i]}" "${MISSING_TAGS[$i]}"; done \
+  | jq -R 'split("\t") | {(.[0]): ((.[1] // "") | split(",") | map(select(. != "")))}' | jq -s 'add // {}')
+[[ -n "$TAGS_JSON" ]] || TAGS_JSON='{}'
+hook_record memory-read-check deny "{\"missing\":$MISS_JSON,\"match_count\":${#MATCHES[@]},\"tags\":$TAGS_JSON}" '§11-memory-read' "$SESSION_ID" "$TOOL_USE_ID"
 hook_deny memory-read-check "$REASON"

@@ -1158,6 +1158,28 @@ else
   echo "FAIL: 72 (decision: '${D72}', reason: ${R72:-<empty>})"; FAIL=$((FAIL+1))
 fi
 
+# Case 73 (2026-11-03 effect assessment): the deny row names the tags that
+# matched each missing file. Rows carried only the file, so 13 denies in 30
+# days from one generic tag (`origin`, matching every `git push origin`)
+# could not be told from a topic match without the transcript. Two entries:
+# one matched by two tags, one by none; only the matched file and its two
+# tags appear, in index order.
+S73_DIR="$HOME/.claude/projects/-work-s73"
+mkdir -p "$S73_DIR/memory"
+printf '%s\n' '- [Sentry](sentry.md) [sentry, origin, master] — desc' \
+  '- [Other](other.md) [unrelated] — desc' > "$S73_DIR/memory/MEMORY.md"
+touch "$S73_DIR/memory/sentry.md" "$S73_DIR/memory/other.md"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S73_DIR/sess73.jsonl"
+rm -f "$RULE_LOG"
+OUT73=$(jq -cn '{session_id:"sess73",tool_name:"Bash",tool_input:{command:"git push origin master"},cwd:"/work/s73"}' | bash "$HOOK" 2>/dev/null)
+LAST73=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+if [[ "$(echo "$OUT73" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)" == deny ]] \
+  && echo "$LAST73" | jq -e '.event == "deny" and .extra.missing == ["sentry.md"] and .extra.tags == {"sentry.md": ["origin", "master"]}' >/dev/null; then
+  echo "PASS: 73 the deny row carries the matched tags of each missing file"
+else
+  echo "FAIL: 73 (out: ${OUT73:-<empty>}; row: ${LAST73:-<none>})"; FAIL=$((FAIL+1))
+fi
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

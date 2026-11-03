@@ -1063,6 +1063,63 @@ test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 5
   assert.match(usage.detail, /83%/);
 });
 
+// 2026-11-03 effect assessment: the static tag list named 128 candidates and
+// did not rank them; one tag (`origin`) caused 13 of 21 false memory-read
+// denies in 30 days. The observed block leads the detail and names the file,
+// its count and, when the rows carry them, the tags that matched.
+function writeMemTagFixture({ denies }) {
+  const mem = box.claude('projects/-work-obs/memory');
+  fs.mkdirSync(mem, { recursive: true });
+  fs.writeFileSync(
+    path.join(mem, 'MEMORY.md'),
+    '- [Sentry](sentry.md) [sentry, origin] — desc\n- [Old](old.md) [legacy] — desc\n'
+  );
+  const now = new Date().toISOString();
+  const row = (file, tags) =>
+    JSON.stringify({
+      ts: now,
+      hook: 'memory-read-check',
+      event: 'deny',
+      project: '-work-obs',
+      session_id: 'aaaaaaaa-1111-2222-3333-444444444444',
+      spec_section: '§11-memory-read',
+      extra: tags
+        ? { missing: [file], match_count: 1, tags: { [file]: tags } }
+        : { missing: [file], match_count: 1 },
+    }) + '\n';
+  fs.writeFileSync(
+    box.claude('logs/claudemd.jsonl'),
+    row('sentry.md', ['origin']).repeat(denies) + row('old.md', null).repeat(denies)
+  );
+}
+
+test('memory-tag-specificity leads with files the gate actually denied ≥3 times, with their tags', async () => {
+  writeMemTagFixture({ denies: 3 });
+  const c = (await doctor({})).checks.find(x => x.name === 'memory-tag-specificity');
+  assert.ok(c, 'memory-tag-specificity check must exist');
+  assert.equal(c.ok, false);
+  assert.match(
+    c.detail,
+    /^Observed in 30d \(memory-read-check denies ≥3\): -work-obs\/sentry\.md 3× \(tags: origin×3\), -work-obs\/old\.md 3× \(tags not recorded\)\. /
+  );
+  // Ties on count put the file whose rows name tags first; the observed block
+  // names each file once, and the static candidate list still follows it.
+  const [observedBlock, staticBlock] = c.detail.split(/(?=\d+ generic-tag candidate\(s\))/);
+  assert.equal(observedBlock.split('-work-obs/sentry.md').length - 1, 1);
+  assert.ok(staticBlock, 'the static candidate list follows the observed block');
+});
+
+test('memory-tag-specificity output is unchanged below the observed threshold', async () => {
+  writeMemTagFixture({ denies: 2 });
+  const c = (await doctor({})).checks.find(x => x.name === 'memory-tag-specificity');
+  assert.ok(c, 'memory-tag-specificity check must exist');
+  assert.doesNotMatch(c.detail, /Observed in/);
+  assert.match(
+    c.detail,
+    /^\d+ generic-tag candidate\(s\)|^scanned \d+ MEMORY\.md file\(s\), 0 generic-tag candidates/
+  );
+});
+
 test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false demote flag', async () => {
   // §11-memory-read emits `deny-repeat` for re-denies. 1 deny + 2 deny-repeat
   // = 3 real blocks vs 2 bypasses → true ratio 40% (healthy). Pre-fix doctor

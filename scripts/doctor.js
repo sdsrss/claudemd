@@ -33,6 +33,7 @@ import {
   readHits,
   groupBySection,
   blockingDenyCount,
+  isBlockingDeny,
   excludeTestSessions,
   UNEVALUABLE_FAILOPEN_REASONS,
   IMMUTABLE_SECTION_RE,
@@ -104,6 +105,9 @@ const RULE_USAGE_DEMOTION_RATIO = 0.5;
 // 3 events over 30 days is the smallest sample where a 50%+ override rate
 // reliably distinguishes signal from a single-incident artifact.
 const RULE_USAGE_MIN_TOTAL = 3;
+// memory-tag-specificity: a memory file the §11 gate denied this many times in
+// the window is listed first (the same small-sample floor as above).
+const OBSERVED_TAG_DENY_MIN = 3;
 // v0.23.6 — why this file cares about IMMUTABLE_SECTION_RE (imported above; the
 // pattern itself lives in lib/rule-hits-parse.js since 2026-09-02, audit
 // R11-13c, because hard-rules-audit.js held a byte-identical copy):
@@ -1204,7 +1208,51 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // `semantic`⊂`semantics` incident. Advisory only — spec §11-EXT is SHOULD,
   // not MUST. See scripts/lib/memory-tags.js for heuristic + wordlist.
   const { findings: tagFindings, scannedFiles } = scanMemoryTags();
-  if (tagFindings.length === 0) {
+  // 2026-11-03: the static list above named 128 candidates on this machine and
+  // ranked none; one tag (`origin`, inside every `git push origin`) caused 13 of
+  // the 21 false memory-read denies in 30 days. Lead with what the gate actually
+  // denied: per (project, file) in this window, ≥ OBSERVED_TAG_DENY_MIN times,
+  // with the matched tags when the rows carry `extra.tags` (rows written before
+  // that field have only the file).
+  const observed = new Map();
+  for (const h of realHits) {
+    if (h.hook !== 'memory-read-check' || !isBlockingDeny(h.event)) continue;
+    const missing = Array.isArray(h.extra?.missing) ? h.extra.missing : [];
+    for (const file of missing) {
+      const key = `${h.project || '?'}/${file}`;
+      if (!observed.has(key)) observed.set(key, { key, n: 0, tags: new Map() });
+      const o = observed.get(key);
+      o.n++;
+      const tags = h.extra?.tags?.[file];
+      if (Array.isArray(tags)) for (const t of tags) o.tags.set(t, (o.tags.get(t) || 0) + 1);
+    }
+  }
+  const hot = [...observed.values()]
+    .filter(o => o.n >= OBSERVED_TAG_DENY_MIN)
+    .sort((a, b) => b.n - a.n || (b.tags.size > 0) - (a.tags.size > 0) || a.key.localeCompare(b.key));
+  const observedText =
+    hot.length === 0
+      ? ''
+      : `Observed in ${RULE_USAGE_WINDOW_DAYS}d (memory-read-check denies ≥${OBSERVED_TAG_DENY_MIN}): ` +
+        hot
+          .slice(0, 5)
+          .map(o => {
+            const tags = [...o.tags.entries()]
+              .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+              .map(([t, n]) => `${t}×${n}`)
+              .join(', ');
+            return `${o.key} ${o.n}× (${tags ? `tags: ${tags}` : 'tags not recorded'})`;
+          })
+          .join(', ') +
+        `${hot.length > 5 ? ` +${hot.length - 5} more` : ''}. `;
+  if (tagFindings.length === 0 && hot.length > 0) {
+    push(
+      'memory-tag-specificity',
+      false,
+      `${observedText}Static scan: ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates. ` +
+        `Fix: drop or rename the matched tag in that project's MEMORY.md.`
+    );
+  } else if (tagFindings.length === 0) {
     push(
       'memory-tag-specificity',
       true,
@@ -1227,7 +1275,8 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
     push(
       'memory-tag-specificity',
       false,
-      `${tagFindings.length} generic-tag candidate(s) across ${byEntry.size} entry(ies) in ${scannedFiles} MEMORY.md file(s); ` +
+      observedText +
+        `${tagFindings.length} generic-tag candidate(s) across ${byEntry.size} entry(ies) in ${scannedFiles} MEMORY.md file(s); ` +
         `risk of §11 ship-time FP per spec §11-EXT (v6.11.11). ` +
         `Samples: ${sample.join(' | ')}${more}. ` +
         `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`
