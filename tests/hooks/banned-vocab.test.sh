@@ -679,8 +679,35 @@ jq -cn '{session_id:"t",tool_name:"Bash",tool_input:{command:"(git commit -m \"s
 assert_deny "57: commit inside ( ) reaches the Path 1 message scan → deny" "$TMP_FIX"
 rm -f "$TMP_FIX"
 
+# Cases 58-64 (2026-11-03 effect assessment): Path 1 runs the same identifier
+# strip as Path 2 and `claudemd-cli lint`. Before, a word quoted in a backtick
+# span denied here while the CLI passed the same message (a real 10-20 deny,
+# the shape of row 60). Row 59 is 58 with only the backticks removed and must
+# still deny.
+TMP_FIX=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mk_cmd_event() { jq -cn --arg c "$1" '{session_id:"t",tool_name:"Bash",tool_input:{command:$c},cwd:"/tmp"}' > "$TMP_FIX"; }
+mk_cmd_event 'git commit -q -m "docs: accepted `feat: robust change` before the fix"'
+assert_pass "58: banned word only inside a backtick span in -m → pass" "$TMP_FIX"
+mk_cmd_event 'git commit -q -m "docs: accepted feat: robust change before the fix"'
+assert_deny "59: same -m message without the backticks → deny" "$TMP_FIX"
+mk_cmd_event "git commit -q -F - <<'EOF'
+test(lint): \`claudemd-cli lint this is significantly better\` now exits 1
+EOF"
+assert_pass "60: banned word only inside a backtick span in an -F here-doc → pass" "$TMP_FIX"
+mk_cmd_event 'git commit -q -F /tmp/claude-1000/x/scratchpad/msg-robust.txt'
+assert_pass "61: banned word only inside a path in the fallback CMD scan → pass" "$TMP_FIX"
+mk_cmd_event 'git commit -q -m "perf: `240ms → 72ms` (70% faster)"'
+assert_pass "62: baseline arrow inside backticks still exempts the ratio → pass" "$TMP_FIX"
+# Case 63: documented residual — Path 1 does not read an -F FILE's content
+# (the hook header says so). If this starts denying, update that comment.
+MSG63=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+printf 'feat: a robust change\n' > "$MSG63"
+mk_cmd_event "git commit -q -F $MSG63"
+assert_pass "63: an -F FILE's content is not scanned (documented residual) → pass" "$TMP_FIX"
+rm -f "$TMP_FIX" "$MSG63"
+
 if (( FAIL > 0 )); then
-  echo "Tests: $((57 - FAIL))/57 passed"
+  echo "Tests: $((63 - FAIL))/63 passed"
   exit 1
 fi
-echo "Tests: 57/57 passed"
+echo "Tests: 63/63 passed"

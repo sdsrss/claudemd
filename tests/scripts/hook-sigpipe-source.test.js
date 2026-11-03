@@ -457,8 +457,8 @@ const MUTATIONS = [
   [
     'banned-vocab Path 1 scan back on a pipe',
     'hooks/banned-vocab-check.sh',
-    `  if hook_vocab_grep -qiE "$local_regex" < <(echo "$MSG_TEXT"); then`,
-    `  if echo "$MSG_TEXT" | hook_vocab_grep -qiE "$local_regex"; then`,
+    `  if hook_vocab_grep -qiE "$local_regex" < <(echo "$SCAN_TEXT"); then`,
+    `  if echo "$SCAN_TEXT" | hook_vocab_grep -qiE "$local_regex"; then`,
     /^hooks\/banned-vocab-check\.sh:\d+: a pipeline into an early-exit reader decides a condition and is not in KEPT/,
   ],
   [

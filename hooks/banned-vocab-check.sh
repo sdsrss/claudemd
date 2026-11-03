@@ -146,6 +146,24 @@ if [[ ! -r "$PATTERNS_FILE" ]]; then
   exit 0
 fi
 
+# Identifier strip, shared by Path 1 and Path 2 (clause list and history at the
+# Path 2 call site below). One definition, so the two paths and
+# `claudemd-cli lint` (scripts/lib/lint.js#stripIdentifiers) cannot drift:
+# until 2026-11-03 Path 1 scanned unstripped text, so a word quoted in a
+# backtick span denied here while the CLI passed the same message. Of the 13
+# real Path 1 denies in the 30 days to 11-03 this clears 1; a second, a
+# backticked `git commit -m "…"` quoted inside an `-F -` here-doc, still denies,
+# because the -m extractor below reads that quoted -m as the message (accepted
+# residual: not re-parsing the extractor). A stripped region becomes spaces, so it
+# cannot join its neighbours into a single-space phrase (`should work`); only
+# the two ratio rows, which allow `[[:space:]]+`, could (`3x `y` faster`) — the
+# 4,758-command replay of 2026-11-03 found no such command.
+bv_sanitize() {
+  printf '%s\n' "$1" \
+    | awk "$HOOK_SANITIZE_FENCE_AWK" \
+    | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g'
+}
+
 # Path 1 (commit-msg scan) gated on git-commit trigger only. Non-commit ship
 # verbs (push / pr-create / release / publish) skip Path 1 and go straight
 # to Path 2 prose scan. Pre-v0.21.0 Path 1 fallback scanned the whole CMD
@@ -195,9 +213,17 @@ done < <(printf '%s' "$CMD" | grep -oE -- "$MSG_REGEX" 2>/dev/null)
 
 # Fallback — no -m/--message captured (editor commits, `-F file`, amend with
 # no-edit, unusual quoting). Scan the whole CMD to preserve §10-V coverage.
-# Trade-off: banned words in unrelated argv tokens (filenames, `-c
-# user.email=...`, env vars) can cause false positives in this branch — the
-# `[allow-banned-vocab]` escape hatch is the documented workaround.
+# Trade-off: banned words in unrelated argv tokens (`-c user.email=...`, env
+# vars) can cause false positives in this branch — the `[allow-banned-vocab]`
+# escape hatch is the documented workaround. Paths and `name.ext` files are
+# stripped before the scan (bv_sanitize), so a file name no longer denies.
+#
+# ACCEPTED RESIDUAL (2026-11-03): an `-F FILE` message is NOT scanned — the
+# fallback reads the command text, never the file. 501 of 2,703 real commits
+# in the 30 days to 11-03 used `-F FILE`; an `-F -` here-doc is in the command
+# and is scanned. Left as-is by the user's decision: this path denied 13 times
+# in those 30 days with 0 true positives, so reading the file would add false
+# denies, not catches. Test case 63 pins it; change both if the file is read.
 [[ -z "$MSG_TEXT" ]] && MSG_TEXT="$CMD"
 
 # Baseline-context exemption: if the commit message carries an explicit
@@ -222,6 +248,11 @@ elif echo "$MSG_TEXT" | grep -qiE 'baseline'; then
   BASELINE_EXEMPT=1
 fi
 
+# The exemption above reads the RAW message, the pattern scan below the
+# stripped one: an anchor quoted in backticks (`240ms → 72ms`) still exempts,
+# so stripping never costs a message its exemption (test case 62).
+SCAN_TEXT=$(bv_sanitize "$MSG_TEXT")
+
 # Collect hits
 declare -a HITS=()
 declare -a REASONS=()
@@ -234,11 +265,11 @@ while IFS= read -r line; do
     is_ratio=1
     local_reason="${local_reason#@ratio }"
   fi
-  if hook_vocab_grep -qiE "$local_regex" < <(echo "$MSG_TEXT"); then
+  if hook_vocab_grep -qiE "$local_regex" < <(echo "$SCAN_TEXT"); then
     if (( is_ratio == 1 && BASELINE_EXEMPT == 1 )); then
       continue
     fi
-    match=$(echo "$MSG_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
+    match=$(echo "$SCAN_TEXT" | hook_vocab_grep -oiE "$local_regex" | head -n1)
     HITS+=("$match")
     REASONS+=("$local_reason")
   fi
@@ -383,15 +414,14 @@ fi
 # ASCII-only on purpose — 中文 prose around a path stays intact, and
 # bare-prose violations still match. Keep the clause list identical to
 # transcript-vocab-scan.sh + lib/lint.js#stripIdentifiers —
-# tests/scripts/sanitize-stage-parity.test.js extracts and runs this program.
+# tests/scripts/sanitize-stage-parity.test.js extracts and runs this program
+# (its one `sed -E` line now lives in bv_sanitize, above Path 1, which uses it too).
 #
 # Stage 1 is HOOK_SANITIZE_FENCE_AWK (hook-common.sh), not an inline toggle. The
 # inline one had no terminator guard, so an unclosed ``` blanked every line
 # after it and a claim below it was invisible to this gate while `claudemd lint`
 # still caught it (Round-14 audit ALG-H3).
-LAST_TEXT=$(printf '%s\n' "$LAST_TEXT" \
-  | awk "$HOOK_SANITIZE_FENCE_AWK" \
-  | sed -E 's/`[^`]*`/ /g; s|[A-Za-z0-9._@~-]*/[A-Za-z0-9._/@~-]*| |g; s/[A-Za-z0-9_-]+\.[a-z][a-z0-9]*/ /g')
+LAST_TEXT=$(bv_sanitize "$LAST_TEXT")
 
 # Scan high-fire region of PATTERNS_FILE only. Stop at prophylactic marker.
 #
