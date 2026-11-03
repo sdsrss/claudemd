@@ -56,13 +56,14 @@
 - [x] S1：先写失败测试，再实现 `housekeeping.js` 的 `cc-*` 回收、`/var/tmp` 根目录、CLI 输出 — 覆盖 AC1 — 依赖：无 — 执行：主会话
 - [x] S2：改 `tmp-sweep.sh` 的文字和注释，测试先红后绿；改 README 的 tmp-sweep 行 — 覆盖 AC2 — 依赖：S1 — 执行：主会话
 - [x] S3：改规范文字，重建 modules；版本级联、两份 changelog、Sizing、spec-structure 的哈希和锁定行 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
-- [ ] S4：跑 `npm run check` 和 `npm run smoke`，然后提交到 `next-release`；release-reviewer 的前缀单独提交到 main — 覆盖 AC4 — 依赖：S1–S3
+- [x] S4：跑 `npm run check` 和 `npm run smoke`，然后提交到 `next-release`；release-reviewer 的前缀单独提交到 main — 覆盖 AC4 — 依赖：S1–S3
 - [ ] S5：随下一个批次按发版手册发布，包括发版前评审 — 依赖：S4 — 执行：主会话 + release-reviewer
 - [ ] S6：发版约 4 周后复测 — 覆盖 AC5 — 依赖：S5
 
 ## 决策与进展
 
 - 2026-11-03：使用者回复"1.按你的建议改 2.按你的建议清 3.不改"，即批准进入实现（L3），并授权一次性清理。清理已完成：36 个目录，`~/.cache/tmp` 2.0 → 1.4 GB，`/tmp/claude-1000` 5.2 GB → 629 MB。`d546`、`d558`、`d577-a5`、`d591`，以及被延期项引用的 `rv-*`，按建议保留。
+- 2026-11-03：S1–S4 完成。`next-release` 上是 1a34726（回收脚本、hook 文字、README）和 f1ddc21（spec v8.5.0）；main 上是 5e2695f（release-reviewer 的 `cc-rrev-` 前缀）。都没有推送。S5 跟下一个批次走，发版时要做发版前评审。
 - 2026-11-03：auth.md 新段补了一句"NEVER-covers above bounds the prefix list; this class carries its own bounds"。原因：NEVER-covers 里有"解析后离开项目根目录的路径"，不补这一句，读者可能以为它也约束新这一类。
 - 2026-11-03：hook 回收门槛定为 72 小时，模型侧为 24 小时。理由是 hook 查不了引用，宁可晚删。
 
