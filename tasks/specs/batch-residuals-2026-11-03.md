@@ -71,6 +71,7 @@
 - 2026-11-03：0.119.0 上线后（T0 16:07:10Z 起）113 行遥测、5 次拦截：§8 rm 3 次，npx 1 次（F37），banned-vocab 1 次：`-F -` here-doc 的提交信息里有一句复述旧拒绝文案的 `(reported 8x slower)`，在反引号外面；用 v0.119.0 和 HEAD 的 hook 重放这条命令都拒绝，本批不改变它的判定（落地的 23c8800 改写成了 "they got the 8x tail"）。
 - 2026-11-03：bash 3.2 本机可以跑：在 `ubuntu:24.04` 容器里从源码编译（runbook 的写法），得到的 glibc 二进制能在宿主上运行。上一条"本机没有能在宿主上运行的 3.2"只对 `bash:3.2` 和 `loop-eng-bash32` 两个 musl 镜像成立。
 - 2026-11-03：提交（本地 `next-release`）：44fc93c（doctor 指纹），a567a1e（F37 登记）。
+- 2026-11-03（第三轮，"遗留的工作……按你的建议执行"）：`next-release` 推到 origin（b3ccb85..b66b622，不触发 CI）。F37 漏拒方向仍只登记：0/4,776 的上限按三分之一法则约为每条命令 0.06%，修它会让 `--prefix <目录> <包>` 这种真实写法新增误拒，并且算作要立刻发版的 §8 改动。复测脚本固定在 `tasks/npx-f37-2026-11-03/`（gitignored，`replay.sh` 复现了 4,776 / 7 / 放行 0），11-30 复测记为 D#737，出现 1 次放行来源不明的包就按"只会让放行变成拒绝"的方式修。loop-eng、loop-testing 的发版手册记忆在操作顺序里各加一句打 tag 前评审（loop_eng 仓库的 `RELEASING.md` §2 也没有这一步，没有改：那是另一个仓库，`CLAUDE.md` 有未提交的改动）；doctor `runbook-review-step` 变为 9/9 通过。其他项目的 MEMORY.md（9 个项目 190 行超过 150 字符，2 个超出 12KB）不在这里改：缩短等于改那些项目召回用的标签，合并条目要对照各自的代码。
 - 下一步：随下一个非紧急批次发版（11-09 起），与 `tasks/specs/gate-precision-fixes-2026-11-03.md` 同批；发版分支上再跑一次 bash 3.2（scratchpad 在 tmpfs 上，到时在 docker 里重新编译）。
 
 ## 验证记录
