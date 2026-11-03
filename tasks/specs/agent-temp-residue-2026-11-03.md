@@ -29,7 +29,7 @@
 - [x] AC2：`tmp-sweep` 的压力提示说明 `cc-*` 会自动回收，并把上一个会话留下的代理残留指向规范的 Agent temp residue，而不是"一律交给使用者"。验证：`bash tests/hooks/tmp-sweep.test.sh`。新增断言在改动前失败。
 - [x] AC3：`spec/spec-modules/auth.md` 有 Agent temp residue 一段，写明条件（临时根目录的 `cc-*` 或已结束会话的 scratchpad 目录、本用户、非符号链接、24 小时无改动、无 `.keep`、没被引用）以及"不问、汇报写一行"；核心 §5 Soft 行和 §8.V4 指向它。验证：`grep -n 'Agent temp residue' spec/CLAUDE.md spec/spec-modules/auth.md`，读整行。
 - [x] AC4：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。验证：`npm run check; echo exit=$?`；`npm run smoke`。
-- [ ] AC5（发版后约 4 周）：复测遗留里"删临时目录要授权"的条数，基线 30 条 / 28 天；复测 `~/.cache/tmp` 里不带 `.keep` 且闲置超过 3 天的目录数，基线 31 个。验证：本地脚本 `openitems.py`（复测前从 scratchpad 拷到 `tasks/temp-residue-audit-2026-11-03/`）。
+- [ ] AC5（发版后约 4 周）：复测遗留里"删临时目录要授权"的条数，基线 30 条 / 28 天；复测 `~/.cache/tmp` 里不带 `.keep` 且闲置超过 3 天的目录数，基线 31 个。验证：本地脚本 `tasks/temp-residue-audit-2026-11-03/openitems.py`（gitignored）。
 
 ## 方案
 
@@ -63,7 +63,7 @@
 ## 决策与进展
 
 - 2026-11-03：使用者回复"1.按你的建议改 2.按你的建议清 3.不改"，即批准进入实现（L3），并授权一次性清理。清理已完成：36 个目录，`~/.cache/tmp` 2.0 → 1.4 GB，`/tmp/claude-1000` 5.2 GB → 629 MB。`d546`、`d558`、`d577-a5`、`d591`，以及被延期项引用的 `rv-*`，按建议保留。
-- 2026-11-03：S1–S4 完成。`next-release` 上是 1a34726（回收脚本、hook 文字、README）和 f1ddc21（spec v8.5.0）；main 上是 5e2695f（release-reviewer 的 `cc-rrev-` 前缀）。都没有推送。S5 跟下一个批次走，发版时要做发版前评审。
+- 2026-11-03：S1–S4 完成。rebase 到 main 之后，`next-release` 上是 07737a3（回收脚本、hook 文字、README）和 1613b31（spec v8.5.0）；main 上是 5e2695f（release-reviewer 的 `cc-rrev-` 前缀）。S5 由使用者 11-03 要求的 0.119.0 发版完成（发版记录 `tasks/specs/release-0.119.0-2026-11-03.md`）。
 - 2026-11-03：auth.md 新段补了一句"NEVER-covers above bounds the prefix list; this class carries its own bounds"。原因：NEVER-covers 里有"解析后离开项目根目录的路径"，不补这一句，读者可能以为它也约束新这一类。
 - 2026-11-03：hook 回收门槛定为 72 小时，模型侧为 24 小时。理由是 hook 查不了引用，宁可晚删。
 

@@ -8,6 +8,21 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.119.0] - 2026-11-03
+
+**Spec v8.5.0: a temp directory that an earlier task or session left is deleted without asking you, under stated conditions. `tmp-sweep` also reaps `cc-*` agent temp directories idle 72 h without a `.keep`.**
+
+**What changes for users.**
+- Spec v8.5.0 (`~/.claude/CLAUDE.md` §5 and §8.V4, `~/.claude/spec-modules/auth.md`). Deleting a directory outside the project needed your approval, even a temp directory an earlier session made and left. In the maintainer's transcripts of 2026-10-06 to 11-03, 30 report open items asked for that; all 13 that were answered were approved, and the others stayed on disk. A new Soft class, Agent temp residue, covers a `cc-*` directory in `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp`, or an ended session's scratchpad directory, when it is yours, not a symlink, unchanged for 24 h, has no `.keep`, and no open spec file, paused checkpoint or deferred item names it. The agent deletes it and names each path and its size in the report. Anything else outside the project still needs your approval. §8.V4 now has agents name the temp directories they create `cc-<task>-…`, and a `.keep` say why and until when.
+- `tmp-sweep` (PostToolUse on Bash, on by default) also deletes a `cc-*` directory in those roots that you own, with no `.keep` at its top, in which no entry changed for 72 h; it does not follow symlinks. `/var/tmp` is scanned too, for vitest's run directories as well. Its temp-pressure note no longer tells the agent that everything it did not create is your call.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To keep a `cc-*` directory, put a `.keep` file at its top. `DISABLE_TMP_SWEEP_HOOK=1` turns the whole sweep off. To go back to 0.118.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- The sweep never deletes a directory without the `cc-` prefix, and an agent still asks before deleting one that is not an ended session's scratchpad.
+- The vitest arm's signature and floors (60 min, 24 h while a watcher runs).
+- The §8 `rm` variable gate.
+
 ## [0.118.0] - 2026-11-02
 
 **Spec v8.4.0: the rule for worktree subagents names the commands Claude Code refuses inside them and sends reviews and experiments to a temp clone instead. `/claudemd-refresh` no longer says that other open windows' hooks fail after a refresh.**
