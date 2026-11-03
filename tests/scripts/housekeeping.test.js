@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -488,6 +488,90 @@ test('agent tmp: a target that turns fresh between scan and delete is kept (rech
   const r = housekeeping.removeAgentTargets({ targets, now });
   assert.equal(r.deleted, 0);
   assert.ok(fs.existsSync(d));
+});
+
+// D#718 L7: several sweeps racing over one root. The one that loses finds the
+// dir, or part of it, already gone, and rmSync throws ENOENT. That is neither a
+// failure (the CLI exited 3 on it: 4 sweeps over 400 dirs, 19 of 20 processes
+// across 5 runs) nor a deletion of this sweep's. The race is played here by
+// deleting the dir inside the rmSync call, before the real one runs.
+const rmRacedBy = () => {
+  const real = fs.rmSync;
+  return mock.method(fs, 'rmSync', (p, opts) => {
+    real(p, { recursive: true, force: true });
+    return real(p, opts);
+  });
+};
+
+test('agent tmp: a target another sweep removed first is neither an error nor counted (D#718 L7)', () => {
+  const d = agentDir();
+  const now = STALE();
+  const { targets } = housekeeping.scanAgentTmp({ roots: [root], now });
+  assert.equal(targets.length, 1);
+  const m = rmRacedBy();
+  let r;
+  try {
+    r = housekeeping.removeAgentTargets({ targets, now });
+  } finally {
+    m.mock.restore();
+  }
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.deleted, 0);
+  assert.equal(r.bytes, 0);
+  assert.ok(!fs.existsSync(d));
+});
+
+test('vitest tmp: a target another sweep removed first is neither an error nor counted (D#718 L7)', () => {
+  const d = vitestDir();
+  age(d, 2);
+  const targets = scanVitestTmp({ roots: [root], minAgeMs: HOUR });
+  assert.equal(targets.length, 1);
+  const m = rmRacedBy();
+  let r;
+  try {
+    r = removeVitestTargets({ targets, minAgeMs: HOUR });
+  } finally {
+    m.mock.restore();
+  }
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.deleted, 0);
+  assert.ok(!fs.existsSync(d));
+});
+
+// D#718 L8: a recursive rmSync enters a mount point, and a user can mount
+// without root (FUSE: sshfs, rclone). Path lookup crosses mount points under
+// lstat as under stat, so an entry that is a mount point carries the mounted
+// filesystem's st.dev. This host refuses unprivileged mounts (user namespaces
+// are restricted), so the device number is faked for one inner dir.
+const onOtherDevice = target => {
+  const real = fs.lstatSync;
+  return mock.method(fs, 'lstatSync', (p, ...rest) => {
+    const st = real(p, ...rest);
+    if (p !== target) return st;
+    return new Proxy(st, {
+      get: (t, k) => (k === 'dev' ? t.dev + 1 : typeof t[k] === 'function' ? t[k].bind(t) : t[k]),
+    });
+  });
+};
+
+test('agent tmp: an entry on another device (a mount point) keeps the dir, at scan and at recheck (D#718 L8)', () => {
+  const d = fs.realpathSync(agentDir());
+  const mnt = path.join(d, 'repo', 'src');
+  const now = STALE();
+  const m = onOtherDevice(mnt);
+  let scanned;
+  let removed;
+  try {
+    scanned = housekeeping.scanAgentTmp({ roots: [root], now });
+    // A target listed before the mount appeared: the recheck before rm decides.
+    removed = housekeeping.removeAgentTargets({ targets: [{ path: d, bytes: 2 }], now });
+  } finally {
+    m.mock.restore();
+  }
+  assert.deepEqual(scanned.targets, []);
+  assert.deepEqual(scanned.skipped, [{ path: d, reason: 'mount-point' }]);
+  assert.equal(removed.deleted, 0);
+  assert.ok(fs.existsSync(path.join(mnt, 'a.js')));
 });
 
 test('agent tmp: CLI --apply deletes stale agent-tmp-* and vitest dirs and nothing else, 0 exit', () => {

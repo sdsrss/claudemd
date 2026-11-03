@@ -244,7 +244,25 @@ export function scanVitestTmp({
 // (529ad53, backed out in 864b03a) does not fix that on macOS: there, two
 // processes' rmdir(2) of the same empty dir can both return success (PR CI run
 // 39461011037: 801, 897 and 885 successes for 800 dirs on Node 20, 22 and 24;
-// Linux exactly 800).
+// Linux exactly 800). Node 26 on Linux overcounts too: 4 sweeps over 400
+// agent-tmp-* dirs summed 678 to 1,134 (D#718, 2026-11-03).
+//
+// The sweep that loses such a race finds the dir, or part of it, already gone,
+// and rmSync throws ENOENT. That is not a failure: before D#718 L7 it went into
+// `errors` and the CLI exited 3, in 19 of 20 processes over those five runs.
+// It is not this sweep's deletion either, so it is not counted. Whatever is
+// left of a half-removed dir is judged again at the next sweep: removing its
+// entries refreshed the parent dir's mtime and ctime.
+function rmTarget(p, errors) {
+  try {
+    fs.rmSync(p, { recursive: true });
+    return true;
+  } catch (e) {
+    if (e.code !== 'ENOENT') errors.push({ path: p, code: e.code || String(e) });
+    return false;
+  }
+}
+
 export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(), now = Date.now() }) {
   let deleted = 0;
   let bytes = 0;
@@ -252,12 +270,9 @@ export function removeVitestTargets({ targets, minAgeMs, uid = process.getuid(),
   for (const t of targets) {
     const sig = vitestSignature(t.path, uid);
     if (!sig || now - sig.newestMs < minAgeMs) continue;
-    try {
-      fs.rmSync(t.path, { recursive: true });
+    if (rmTarget(t.path, errors)) {
       deleted++;
       bytes += t.bytes;
-    } catch (e) {
-      errors.push({ path: t.path, code: e.code || String(e) });
     }
   }
   return { deleted, bytes, errors };
@@ -295,6 +310,13 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // mtimes back, the dir's own included, and none of them can set ctime (review
 // M1). atime is left out, unlike systemd-tmpfiles: this walk's own readdir
 // refreshes a directory's atime, so a dir would never age.
+//
+// An entry on another device than the dir's top keeps the dir (D#718 L8): a
+// recursive rmSync enters mount points, and a user mounts without root (FUSE:
+// sshfs, rclone). Path lookup crosses a mount point under lstat as under stat,
+// so the mount point itself already carries the mounted filesystem's st.dev. A
+// bind mount of the same filesystem keeps st.dev and is not caught; it needs
+// root or a user namespace.
 export const AGENT_TMP_FLOOR_MS = 72 * HOUR;
 const AGENT_DIR_NAME = /^agent-tmp-./;
 const AGENT_MAX_ENTRIES = 200000;
@@ -335,6 +357,7 @@ function agentResidue(dir, uid, cutoffMs, maxEntries) {
         return null; // vanished between readdir and lstat: something is at work in it
       }
       if (Math.max(s.mtimeMs, s.ctimeMs) >= cutoffMs) return null;
+      if (s.dev !== st.dev) return { skip: 'mount-point' };
       if (s.isSocket() || s.isFIFO()) return { skip: 'socket-or-fifo' };
       if (s.isDirectory()) stack.push(path.join(d, n));
       else if (s.isFile()) bytes += s.size;
@@ -379,12 +402,9 @@ export function removeAgentTargets({
   for (const t of targets) {
     const r = agentResidue(t.path, uid, now - minAgeMs, maxEntries);
     if (!r || r.skip) continue;
-    try {
-      fs.rmSync(t.path, { recursive: true });
+    if (rmTarget(t.path, errors)) {
       deleted++;
       bytes += r.bytes;
-    } catch (e) {
-      errors.push({ path: t.path, code: e.code || String(e) });
     }
   }
   return { deleted, bytes, errors };
