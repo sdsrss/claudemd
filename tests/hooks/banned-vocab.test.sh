@@ -704,10 +704,21 @@ MSG63=$(mktemp "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
 printf 'feat: a robust change\n' > "$MSG63"
 mk_cmd_event "git commit -q -F $MSG63"
 assert_pass "63: an -F FILE's content is not scanned (documented residual) → pass" "$TMP_FIX"
+# Case 64: the ratio row matched from the integer tail of a decimal, so the
+# deny text (and the telemetry row) quoted `8x faster` for `1.8x faster`.
+mk_cmd_event 'git commit -q -m "perf: 1.8x faster"'
+out64=$(bash "$HOOK" < "$TMP_FIX" 2>&1)
+reason64=$(printf '%s' "$out64" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [[ "$reason64" == *"  - 1.8x faster  ("* ]]; then
+  echo "PASS: 64: decimal ratio is quoted whole in the deny text"
+else
+  echo "FAIL: 64: decimal ratio is quoted whole in the deny text (got: ${reason64:-$out64})"
+  FAIL=$((FAIL + 1))
+fi
 rm -f "$TMP_FIX" "$MSG63"
 
 if (( FAIL > 0 )); then
-  echo "Tests: $((63 - FAIL))/63 passed"
+  echo "Tests: $((64 - FAIL))/64 passed"
   exit 1
 fi
-echo "Tests: 63/63 passed"
+echo "Tests: 64/64 passed"

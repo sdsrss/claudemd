@@ -196,6 +196,21 @@ test('scan({sanitize}): baseline-less decimal ratio STILL hits (no false negativ
   assert.ok(scan('3.5x faster', { sanitize: true }).length >= 1, 'decimal ratio still flagged');
 });
 
+test('scan(): a decimal ratio is reported whole, not from its integer tail', () => {
+  // The row matched `\b[0-9]+(x|×)`, so `1.8x slower` was reported as
+  // `8x slower` (3 real telemetry rows, 2026-10-07..10-21). The set of texts
+  // that hit is unchanged; only the reported span moved left.
+  for (const [text, want] of [
+    ['about 1.8x slower than the previous commit', '1.8x slower'],
+    ['shapes up to 1.21x slower than v6.30.1', '1.21x slower'],
+    ['3x faster', '3x faster'],
+  ]) {
+    const hit = scan(text).find(h => h.isRatio && /x|×/.test(h.regex));
+    assert.ok(hit, `${text}: ratio row should hit`);
+    assert.equal(hit.match, want);
+  }
+});
+
 test('scan(): default (sanitize:false) is unchanged — identifier still hits', () => {
   // Preserves the prior contract for any non-CLI caller.
   assert.ok(scan('refactor comprehensive-parser.js').length >= 1);

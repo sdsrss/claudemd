@@ -103,7 +103,11 @@
 # because a multibyte char inside a bracket expression is one BYTE per position
 # under a C locale — `[0-9]+[x×]` would match `3`+`\xc3` there and then fail on
 # the space. Alternation is the idiom the 中文 rows below already use.
-\b[0-9]+(x|×)[[:space:]]+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
+# `(\.[0-9]+)?` (2026-11-03): without it `1.8x slower` matched from its integer
+# tail and the deny text and telemetry quoted `8x slower`. The set of texts
+# that hit is the same (`\b` already admitted the digit after the dot); POSIX
+# and JS both take the leftmost match, so the whole number is reported now.
+\b[0-9]+(\.[0-9]+)?(x|×)[[:space:]]+(faster|slower|better)\b|@ratio ratio without baseline — cite before → after numbers
 
 # ─── Baseline-less ratios (中文) ────────────────────────────────────────────
 [0-9]+%(更快|更慢|更好|更高效)|@ratio 无基线的比率 — 给出 before → after 数字
