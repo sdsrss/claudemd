@@ -281,7 +281,7 @@ rm -f "$STAMP"
 OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
 CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
 if [[ "$CTX" == *"agent-tmp-* dirs without a .keep (idle 72 h) are swept automatically"* &&
-  "$CTX" == *"what this session created is yours to clean up; an agent-tmp-* dir or an ended session's scratchpad that an earlier session left is deleted without asking only when it is yours, nothing in it changed for 24 h, it has no .keep and no open spec file, paused checkpoint or deferred item names it (spec auth.md, Agent temp residue; one report line each); anything else is the user's call."* ]]; then
+  "$CTX" == *"what this session created is yours to clean up; an agent-tmp-* dir or an ended session's scratchpad that an earlier session left is deleted without asking only when it meets every condition of the spec's Agent temp residue rule (auth.md): yours, not a symlink, nothing in it changed for 24 h, no .keep, and no open spec file, paused checkpoint or deferred item names it; one report line each; anything else is the user's call."* ]]; then
   ok "13 the advisory names the agent-tmp-* sweep and the Agent temp residue conditions"
 else
   ng "13 (ctx: $CTX)"

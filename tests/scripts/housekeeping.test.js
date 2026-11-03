@@ -393,11 +393,21 @@ for (const name of [
 
 test('agent tmp: a socket inside keeps the dir and is reported as skipped', async () => {
   const d = agentDir();
-  // A short path: a unix socket path is capped near 104 bytes.
-  const sock = path.join(d, 's');
+  // Bound by a relative name from inside the dir: a unix socket path is capped
+  // at 104 bytes on macOS and 108 on Linux, and the runner's temp path alone is
+  // longer on macOS (PR CI run 41652259310: 129 bytes; the bind landed outside
+  // the dir and the test read "not a socket"). Linux with a long TMPDIR fails
+  // the old fixture with EINVAL.
   const net = await import('node:net');
   const srv = net.createServer();
-  await new Promise(res => srv.listen(sock, res));
+  const prev = process.cwd();
+  process.chdir(d);
+  try {
+    await new Promise((res, rej) => srv.once('error', rej).listen('s', res));
+  } finally {
+    process.chdir(prev);
+  }
+  assert.ok(fs.lstatSync(path.join(d, 's')).isSocket(), 'fixture: the socket is inside the dir');
   try {
     const r = housekeeping.scanAgentTmp({ roots: [root], now: STALE() });
     assert.deepEqual(r.targets, []);
