@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.4.0 — module: auth
+# AI-CODING-SPEC v8.5.0 — module: auth
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -46,6 +46,15 @@ Strict prefix match (NOT glob):
 
 §3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
+**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking; the report names each removed path and its size in one line. NEVER-covers above bounds the prefix list; this class carries its own bounds:
+
+- where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `cc-`; or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
+- owned by the current user, not a symlink, and it resolves inside that root
+- nothing inside it changed in the last 24 h
+- no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
+
+Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes a `cc-*` directory once nothing in it changed for 72 h and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
+
 ## Appendix B — Canonical examples
 
 
@@ -61,7 +70,7 @@ Strict prefix match (NOT glob):
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
+| `aggressive` | `delete in safe-paths` and of agent temp residue → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 

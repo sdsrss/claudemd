@@ -430,6 +430,55 @@ const PINS = [
     line: "- **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. Spawn the reviewer without a name and ask for the whole report in its final message (§11-O Long reports). A re-review after repair is a new spawn, never a message to the reviewer who found the defect.",
   },
   {
+    what: 'core §5 Soft — agent temp residue is a Soft delete (v8.5.0)',
+    file: CORE,
+    anchor: '**Soft**: delete within',
+    line: '**Soft**: delete within §5 safe-paths or of agent temp residue (`auth.md`) · deps dev-only · deps in `tmp/` or `scripts/`.',
+  },
+  {
+    what: 'core §8.V4 — the cc- name, what a .keep says, and earlier residue deleted without asking (v8.5.0)',
+    file: CORE,
+    anchor: '- **8.V4 Sandbox-artifact disposal**',
+    line: "- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `cc-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. What an earlier task or session left is agent temp residue (`auth.md`): delete it, don't ask.",
+  },
+  {
+    what: '§5-EXT Agent temp residue — delete without asking, one report line each; NEVER-covers bounds the prefix list (v8.5.0)',
+    file: EXT,
+    anchor: '**Agent temp residue** (core §5 Soft)',
+    why: "Measured 2026-10-06..11-03: 30 report open items asked the user to authorise deleting an earlier task's temp dir; 13 answered, all approvals, and the 17 unanswered stayed on disk (2.0 GB in ~/.cache/tmp on 11-03, none with a .keep). Each condition is what keeps the Soft delete from reaching what it must not: a live session (24 h idle), a retained fixture (.keep, named by a spec or deferred item), a file outside the root (no symlink, resolves inside), someone else's (owner), or a dir of unknown origin (cc- prefix).",
+    line: '**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking; the report names each removed path and its size in one line. NEVER-covers above bounds the prefix list; this class carries its own bounds:',
+  },
+  {
+    what: "§5-EXT Agent temp residue — where: cc-* in four temp roots, or an ended session's scratchpad dir (v8.5.0)",
+    file: EXT,
+    anchor: '- where: a direct child of',
+    line: '- where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `cc-`; or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h',
+  },
+  {
+    what: '§5-EXT Agent temp residue — owner, no symlink, resolves inside the root (v8.5.0)',
+    file: EXT,
+    anchor: '- owned by the current user, not a symlink',
+    line: '- owned by the current user, not a symlink, and it resolves inside that root',
+  },
+  {
+    what: '§5-EXT Agent temp residue — 24 h idle (v8.5.0)',
+    file: EXT,
+    anchor: '- nothing inside it changed in the last 24 h',
+    line: '- nothing inside it changed in the last 24 h',
+  },
+  {
+    what: '§5-EXT Agent temp residue — no .keep, named by nothing open (v8.5.0)',
+    file: EXT,
+    anchor: '- no `.keep` at its top',
+    line: '- no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it',
+  },
+  {
+    what: '§5-EXT Agent temp residue — anything else stays §5 Hard; tmp-sweep reaps cc-* at 72 h (v8.5.0)',
+    file: EXT,
+    anchor: 'Anything else in a temp root has no known creator',
+    line: "Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes a `cc-*` directory once nothing in it changed for 72 h and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.",
+  },
+  {
     what: 'core §5 Hard — the eleven hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
     file: CORE,
     anchor: '**Hard** (default; HARD, self-enforced',
@@ -655,21 +704,21 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '8e32241a6c13a4bc' },
+  { file: CORE, heading: '', sha256: '156b0bb4f502a09e' },
   { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
   { file: CORE, heading: '## §2 LEVEL', sha256: '3f593e34baa198dd' },
   { file: CORE, heading: '## §3 TRUST', sha256: '4dbd6259a8286f62' },
-  { file: CORE, heading: '## §5 AUTH', sha256: '4afe5c697db7a67b' },
+  { file: CORE, heading: '## §5 AUTH', sha256: 'a4d61b8d25881d04' },
   { file: CORE, heading: '## §7 VALIDATE', sha256: '864012c4d0865675' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '28d607ccf56a5ac6' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '01d051a19c86e606' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '7db962169948ef25' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
-  { file: EXT, heading: '', sha256: '1259916c6587ab4a' },
+  { file: EXT, heading: '', sha256: 'c8849e2b2675bdfd' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
-  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '7bf311f5bc8f6813' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '645f4a2e7b644257' },
   {
     file: EXT,
     heading: '## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)',
@@ -688,10 +737,10 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '5523d9328342765d' },
+  { file: EXT, heading: '## Recent changes', sha256: '1f7ac84db84c8b0d' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
-  { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '2318cf9f54cccf37' },
-  { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '442b3e9691f130fe' },
+  { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '1dc829efcec0260a' },
+  { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '57630b98931b2454' },
   { file: EXT, heading: '## §11-EXT Session heuristics (advisory)', sha256: '6033d7f946da6b92' },
   { file: EXT, heading: '## §11-EXT-MEM Memory operations', sha256: 'f308d065ec44ba2e' },
   { file: EXT, heading: '## §11-EXT-MAC macOS shell portability (cross-ref)', sha256: 'db65bc3272ec5aeb' },
@@ -736,8 +785,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: '12b931f8109793ec' },
-  { file: EXT, count: 53, sha256: '3daea67ce33fe5db' },
+  { file: CORE, count: 18, sha256: 'd95a21b784b37bd1' },
+  { file: EXT, count: 53, sha256: '27824fad65127518' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

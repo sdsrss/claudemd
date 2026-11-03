@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.4.0 — Core
+# AI-CODING-SPEC v8.5.0 — Core
 
 <!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->
 
@@ -88,7 +88,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 **Hard** (default; HARD, self-enforced — no hook checks the signal was emitted, so the Agent is the only gate): delete file/dir · migration/DB schema · CI/deploy/infra config · deps add/remove/bump (prod) · `.env`/secret/config schema · `~/.claude/settings.json` / user-global hooks / MCP config · auth/payment/crypto · cross-module refactor (≥3 Modules) · Δ-contract on public API · L3 enter implementation · NPX unknown script (§8).
 
-**Soft**: delete within §5 safe-paths · deps dev-only · deps in `tmp/` or `scripts/`.
+**Soft**: delete within §5 safe-paths or of agent temp residue (`auth.md`) · deps dev-only · deps in `tmp/` or `scripts/`.
 
 **None**: L2 local single module.
 
@@ -150,7 +150,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **8.V1 Anti-hallucination**: cited file path / function / API / config key / version / test-runner pass-fail count MUST be verified this turn via Read/Grep/tool output (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
 - **8.V2 Tool-noise vs ground-truth**: editor/IDE diagnostics are **advisory**; when they conflict with the project linter / typecheck or with grep/Read, trust the linter + evidence.
 - **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
-- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures, or ones an in-progress spec file or `tasks/<slug>-paused.md` references.
+- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `cc-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. What an earlier task or session left is agent temp residue (`auth.md`): delete it, don't ask.
 
 ## §9 QUALITY
 

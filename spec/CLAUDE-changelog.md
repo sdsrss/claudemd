@@ -6,6 +6,16 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.5.0 (minor, 2026-11-03) — An earlier task's temp dirs are deleted, not asked about
+
+Design record `tasks/specs/agent-temp-residue-2026-11-03.md`; analysis `docs/claude-session-audit-2026-11-03.md` (local). Minor, because a delete class moves from §5 Hard to Soft (§13 META: a relaxed rule). No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: in 240 reports from 2026-10-06 to 11-03, 30 open items asked the user to authorise deleting a temp dir an earlier task or session left (another 11 said "tell me" or "say so"). 13 were answered, all approvals; the dirs of the other 17 stayed: on 11-03 `~/.cache/tmp` held 2.0 GB in 31 dirs, none with a `.keep`, and a tmpfs `/tmp` held 5.2 GB of ended sessions' scratchpads. The rules made such a dir undeletable by anyone but its creator: §5 Hard `delete file/dir`; safe-paths are project-root-relative and NEVER-covers a path that leaves the root; `SAFE_DELETE_PATHS:` takes no absolute path; §8.V4 binds only the creating task; §0 asks once per out-of-scope item.
+- **§EXT §5-EXT Agent temp residue** (new, `auth.md`): "**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking; the report names each removed path and its size in one line." The conditions: a `cc-*` child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp`, or a session directory beside your own under the harness scratchpad root whose transcript had no write for 24 h; owned by the current user, not a symlink, resolving inside that root; nothing inside changed in 24 h; no `.keep` at its top and named by no open spec file, `tasks/*-paused.md` or deferred item. It states that NEVER-covers bounds the prefix list, not this class. Anything else in a temp root stays a §5 Hard delete. The plugin's `tmp-sweep` deletes a `cc-*` directory idle 72 h without a `.keep`.
+- **Core §5 Soft**: "delete within §5 safe-paths or of agent temp residue (`auth.md`)". Was: "delete within §5 safe-paths".
+- **Core §8.V4**: anything written outside the scratchpad "is named `cc-<task>-…` where you pick the name"; a `.keep` "says why and until when"; "What an earlier task or session left is agent temp residue (`auth.md`): delete it, don't ask." The rest of the line is unchanged.
+- **§5.1-EXT** `aggressive`: "`delete in safe-paths` and of agent temp residue → no surface-required". **§7-EXT-TMP**: "Nothing purges it automatically except `tmp-sweep`, and only when the hook's `$TMPDIR` points here: vitest's run dirs and `cc-*` agent temp residue (§5-EXT)"; "No auto-clean without AUTH" became "No other auto-clean without AUTH".
+
 ## v8.4.0 (minor, 2026-11-02) — §11-O Worktree spawn names what a worktree agent is refused, and where experiment work runs instead
 
 Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`; analysis `docs/claude-session-analysis-2026-11-02.md` (local). Minor, because the rule now also says which work is spawned without worktree isolation. No HARD rule added or removed; every rule keeps its ID.

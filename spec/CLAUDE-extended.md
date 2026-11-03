@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.4.0 — Extended
+# AI-CODING-SPEC v8.5.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -39,6 +39,15 @@ Strict prefix match (NOT glob):
 - effective only for the project declaring it
 
 §3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
+
+**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking; the report names each removed path and its size in one line. NEVER-covers above bounds the prefix list; this class carries its own bounds:
+
+- where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `cc-`; or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
+- owned by the current user, not a symlink, and it resolves inside that root
+- nothing inside it changed in the last 24 h
+- no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
+
+Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes a `cc-*` directory once nothing in it changed for 72 h and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
 
 <!-- module: ship -->
 ## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
@@ -368,9 +377,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.4.0 (minor, 2026-11-02)** — §11-O Worktree spawn: names the command shapes the harness refuses inside an `isolation: "worktree"` agent, asks for one plain command per step, and spawns work that needs a sandbox `HOME`, an old version beside the new or paths outside the repo without worktree isolation, in its own temp clone that never writes the main checkout. 877 tool calls were refused in such agents from 2026-10-06 to 11-02, in at least four projects; the rule named only the absolute path. Design record `tasks/specs/worktree-spawn-rule-2026-11-02.md`. No HARD rule added or removed.
+**v8.5.0 (minor, 2026-11-03)** — Agent temp residue: a `cc-*` directory in a temp root, or an ended session's scratchpad directory, that an earlier task or session left (owned by the user, not a symlink, idle 24 h, no `.keep`, named by no open spec file, paused checkpoint or deferred item) is a core §5 Soft delete: removed without asking, one report line each (§5-EXT, `auth.md`). §8.V4 names temp dirs `cc-<task>-…` and has the `.keep` say why and until when; §5.1-EXT `aggressive` covers the new class; §7-EXT-TMP names what `tmp-sweep` reaps. From 2026-10-06 to 11-03, 30 report open items asked the user to authorise such deletes; 13 were answered, all approvals, and the dirs of the other 17 stayed on disk. Design record `tasks/specs/agent-temp-residue-2026-11-03.md`. No HARD rule added or removed.
 
-**Sizing** (v8.4.0, 2026-11-02, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23505 bytes (Δ 0); extended 36751 → 37363 bytes (Δ +612); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23505/25000 (**1495 bytes headroom**); extended 37363/50000 (**12637 bytes headroom**).
+**Sizing** (v8.5.0, 2026-11-03, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23728 bytes (Δ +223); extended 37363 → 38838 bytes (Δ +1475); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23728/25000 (**1272 bytes headroom**); extended 38838/50000 (**11162 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
@@ -384,7 +393,7 @@ Core §1.5 inlines `Module / Evidence / Contract / Δ-contract` (used at L1/L2).
 
 | Level | Effect on §5 table |
 |---|---|
-| `aggressive` | `delete in safe-paths` → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
+| `aggressive` | `delete in safe-paths` and of agent temp residue → no surface-required; `deps dev-only` → none. `cross-module refactor (≥3 Modules)` and `Δ-contract on public API` both stay HARD — core §5.1 Never-downgrade covers every §5 Hard category. |
 | `default` | §5 table as written, unchanged |
 | `careful` | `deps dev-only` → hard; `cross-module ≥2 Modules` → hard; `L2 local single module` → soft (surface diff inline first) |
 
@@ -395,7 +404,7 @@ No level touches the core §5.1 Never-downgrade set.
 <!-- module: session -->
 ## §7-EXT-TMP TMP_RETENTION policy
 
-**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically: `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
+**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically except `tmp-sweep`, and only when the hook's `$TMPDIR` points here: vitest's run dirs and `cc-*` agent temp residue (§5-EXT). `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No other auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
 
 ## §11-EXT Session heuristics (advisory)
 
