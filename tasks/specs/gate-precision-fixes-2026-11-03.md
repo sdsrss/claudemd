@@ -25,12 +25,13 @@
 
 ## 验收标准
 
-- [ ] AC1：Path 1 对只出现在反引号片段、代码块、路径里的禁用词放行；同样的词去掉反引号仍然拒绝；反引号里的基线箭头仍然豁免倍数。验证：`bash tests/hooks/banned-vocab.test.sh`，新增用例 58–62 中 58、60、61 在改动前失败。
-- [ ] AC2：真实命令回放（转录里 4,758 条含 git/commit 的命令，改动前后两版 hook），allow→deny = 0；deny→allow 只出现在 AC1 描述的条件里，逐条列出。验证：`tasks/transcript-analysis-2026-11-03/bvreplay.py`（gitignored）。
-- [ ] AC3：`perf: 1.8x faster` 拒绝，提示和遥测里是 `1.8x faster`；hook 与 `scripts/lib/lint.js` 一致。验证：用例 63（改前失败）、`node --test tests/scripts/lint.test.js`，以及引擎 parity 测试。
-- [ ] AC4：memory-read-check 拦截行带 `tags`，判定不变。验证：`bash tests/hooks/memory-read-check.test.sh` 新增用例（改前失败）。
-- [ ] AC5：doctor 在有 ≥3 次拦截的文件时，详情第一段列出它、次数和标签；没有时输出不变。验证：`node --test tests/scripts/doctor.test.js` 新增用例（改前失败）；在本机跑 doctor，读 `memory-tag-specificity` 一行。
-- [ ] AC6：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。
+- [x] AC1：Path 1 对只出现在反引号片段、代码块、路径里的禁用词放行；同样的词去掉反引号仍然拒绝；反引号里的基线箭头仍然豁免倍数。验证：`bash tests/hooks/banned-vocab.test.sh`，新增用例 58–62 中 58、60、61 在改动前失败。
+- [x] AC2：真实命令回放（转录里 4,758 条含 git/commit 的命令，改动前后两版 hook），allow→deny = 0；deny→allow 只出现在 AC1 描述的条件里，逐条列出。验证：`tasks/transcript-analysis-2026-11-03/bvreplay.py`（gitignored）。
+- [x] AC3：`perf: 1.8x faster` 拒绝，提示和遥测里是 `1.8x faster`；hook 与 `scripts/lib/lint.js` 一致。验证：用例 63（改前失败）、`node --test tests/scripts/lint.test.js`，以及引擎 parity 测试。
+- [x] AC4：memory-read-check 拦截行带 `tags`，判定不变。验证：`bash tests/hooks/memory-read-check.test.sh` 新增用例（改前失败）。
+- [x] AC5：doctor 在有 ≥3 次拦截的文件时，详情第一段列出它、次数和标签；没有时输出不变。验证：`node --test tests/scripts/doctor.test.js` 新增用例（改前失败）；在本机跑 doctor，读 `memory-tag-specificity` 一行。
+- [x] AC6：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。
+- [ ] AC7：随下一个非紧急批次发版，CHANGELOG 条目写明这三处改动，以及 `-F FILE` 不扫、here-doc 里引用的 `-m` 两处残留。验证：发版记录 `tasks/specs/release-*.md`。
 
 ## 方案
 
@@ -49,7 +50,16 @@
 ## 决策与进展
 
 - 2026-11-03：使用者对评估文档 §9 的回复是"1.删掉 2.要做 3.按你建议做 4.不做"。daagu 的 `origin` 标签已删（回放：Sentry 那条记忆的命中 67 条命令 / 20 个会话 → 0）。
+- 2026-11-03：提交（本地 `next-release`，未推送）：ed3d39f（Path 1 剥离，`-F` 说明写进 hook 头注释和 README），23c8800（倍数完整匹配），0680b63（拦截行 `tags` 加 doctor 排序）。
+- 2026-11-03：Path 1 剥离只去掉 1 条真实误报，不是评估时估计的 2 条。另一条是 `-F -` here-doc 正文里引用的 `git commit -m "…"`，`-m` 提取器把它当成了说明，提取出来的文字里已经没有反引号。这个提取器不重新解析，在 hook 注释里记为残留。
+- 2026-11-03：第一次跑全量时有 3 个 node 测试失败，都是我的改动漏改的旧锚点：`hook-sigpipe-source.test.js` 的 Path 1 变异行仍写 `MSG_TEXT`；`tests/fixtures/banned-vocab-canonical.json` 里还是旧正则。修复并回 ed3d39f 和 23c8800（重建前是 a1e62f5、5a5eb5c、2535893，都没推送）。
+- 2026-11-03：提交 23c8800 时，说明里用反引号引了一个小数倍数，被已安装的 0.119.0 拦下（提示写的是 `8x slower`），改了措辞才过。这就是 ed3d39f 和 23c8800 要修的那两类问题。
+- 下一步：随下一个非紧急批次发版（本周两次额度已用完）。
 
 ## 验证记录
 
-- （待填）
+- banned-vocab 真实命令回放（`bvreplay.py`，4,758 条唯一命令）：288057d → ed3d39f，deny→allow 1、allow→deny 0；ed3d39f → 23c8800，判定变化 0，3 条拒绝提示改为完整数字。
+- `bash tests/hooks/banned-vocab.test.sh` → 通过 64/64（改前新增的 58、60、61、64 失败）；`bash tests/hooks/memory-read-check.test.sh` → 通过 70/70（改前 73 失败）；`node --test tests/scripts/doctor.test.js` → 通过 132/132（改前新增的第一条失败）；lint.test.js 新增一条，改前失败。
+- `npm run check`（0680b63）→ 通过，退出 0：node 1,799/1,802，0 失败，3 跳过；35 个 shell 套件 2,632/2,632（改前 288057d：node 1,796/1,799，shell 2,624/2,624）。
+- `npm run smoke` → 通过，SMOKE 2/2。
+- 本机 doctor 的 `memory-tag-specificity` 第一段：`-home-ai-dev-daagu/sentry-reading-via-logs.md 13× (tags not recorded)`。
