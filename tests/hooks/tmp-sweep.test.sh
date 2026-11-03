@@ -169,7 +169,7 @@ assert_eq "7 non-empty stale lock cleared, next call sweeps" "1" "${N:-0}"
 rm -f "$STAMP"
 OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
 CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
-[[ "$CTX" == *"are swept automatically once idle"* ]] && ok "8a with node: the sweep is announced" ||
+[[ "$CTX" == *"are swept automatically"* && "$CTX" == *"(idle 60 min)"* ]] && ok "8a with node: the sweep is announced" ||
   ng "8a (ctx: $CTX)"
 NODELESS_PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin"
 if PATH="$NODELESS_PATH" command -v node >/dev/null 2>&1; then
@@ -187,8 +187,8 @@ else
   # hook cannot know (another session's hook, or the user, may sweep them). It
   # now says only what this hook knows, and still names the dirs that
   # "anything else" is set against.
-  if [[ "$CTX" == *"% full. The vitest per-run dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ||
-    "$CTX" == *"(or swap). The vitest per-run dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ]]; then
+  if [[ "$CTX" == *"% full. The vitest per-run dirs and agent cc-* dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ||
+    "$CTX" == *"(or swap). The vitest per-run dirs and agent cc-* dirs are not swept from here: node is not on this hook's PATH; anything else there is not attributable"* ]]; then
     ok "8c without node: the advisory claims nothing about who reclaims the dirs"
   else
     ng "8c (ctx: $CTX)"
@@ -247,5 +247,44 @@ rm -f "$STAMP"; : >"$RESULT"; chmod 444 "$RESULT"
 ERR11=$(CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" 2>&1 >/dev/null)
 chmod 644 "$RESULT"
 [[ -z "$ERR11" ]] && ok "11 a result file it cannot write prints nothing" || ng "11 (stderr: $ERR11)"
+
+# Case 12 (spec v8.5.0 §5-EXT Agent temp residue): the hook's sweep reaps a
+# cc-* dir idle 72 h without a .keep, and keeps one with a .keep and one that
+# is not a cc-* name. Liveness through the hook, not only the script's suite.
+mk_agent() {
+  local d="$ROOT/$1"
+  mkdir -p "$d/sub"
+  printf 'x' >"$d/sub/f"
+  touch -d '73 hours ago' "$d/sub/f" "$d/sub" "$d" 2>/dev/null ||
+    touch -t "$(date -v-73H +%Y%m%d%H%M)" "$d/sub/f" "$d/sub" "$d"
+}
+mk_agent cc-review-AbC123
+mk_agent cc-kept-QwE456
+printf 'repro for D#1' >"$ROOT/cc-kept-QwE456/.keep"
+touch -d '73 hours ago' "$ROOT/cc-kept-QwE456/.keep" "$ROOT/cc-kept-QwE456" 2>/dev/null ||
+  touch -t "$(date -v-73H +%Y%m%d%H%M)" "$ROOT/cc-kept-QwE456/.keep" "$ROOT/cc-kept-QwE456"
+mk_agent rv-6314-r2-delta
+rm -f "$STAMP" "$RESULT"
+CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" <<<"$EVT" >/dev/null 2>&1
+if wait_result && [[ ! -e "$ROOT/cc-review-AbC123" && -d "$ROOT/cc-kept-QwE456" && -d "$ROOT/rv-6314-r2-delta" ]] &&
+  [[ "$(jq -r .agent.deleted "$RESULT")" == "1" ]]; then
+  ok "12 a stale cc-* dir is swept; a .keep one and a non-cc one are kept"
+else
+  ng "12 (result: $(cat "$RESULT" 2>/dev/null); ls: $(ls "$ROOT"))"
+fi
+
+# Case 13: the pressure advisory told the session that anything it did not
+# create "is the user's call", which made every earlier session's leftover an
+# AUTH request (30 of them in 28 days, 13 answered, all approved). It now names
+# the cc-* sweep and points an earlier session's residue at the spec rule.
+rm -f "$STAMP"
+OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
+CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
+if [[ "$CTX" == *"agent cc-* dirs without a .keep (idle 72 h) are swept automatically"* &&
+  "$CTX" == *"what this session created is yours to clean up; a cc-* dir or an ended session's scratchpad that an earlier session left follows the spec's Agent temp residue rule (auth.md: delete it without asking, one report line each); anything else is the user's call."* ]]; then
+  ok "13 the advisory names the cc-* sweep and the Agent temp residue rule"
+else
+  ng "13 (ctx: $CTX)"
+fi
 
 claudemd_assert_summary

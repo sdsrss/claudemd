@@ -17,8 +17,14 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           directory; every grandchild is a regular file named by 40 hex chars;
           and the newest mtime anywhere inside is older than the floor
           (60 min, or 24 h while a vitest watch-mode process of this uid runs).
-          Roots: $TMPDIR, os.tmpdir(), /tmp and ~/.cache/tmp, de-duplicated
-          (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces the list).
+          Also reclaims agent temp residue (spec §5-EXT), reported under
+          \`agent\`: a real directory owned by this uid, named cc-*, with no
+          .keep at its top, in which no entry (read with lstat; a symlink is
+          never followed) changed for 72 h; one past 200000 entries or with an
+          unreadable subdirectory is listed under \`skipped\` instead.
+          Roots: $TMPDIR, os.tmpdir(), /tmp, /var/tmp and ~/.cache/tmp,
+          de-duplicated (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces
+          the list).
 branches  REPORT (never delete) the local branches that are safe to delete:
           a branch whose upstream the remote deleted (\`[gone]\`) and whose
           tip is already on the local default branch, plus worktree-agent-*
@@ -73,7 +79,8 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
   --root=DIR             tmp: scan only DIR, an existing directory (test seam).
-  --min-age-minutes=N    tmp: override the age floor.
+  --min-age-minutes=N    tmp: override the vitest age floor (the cc-* floor
+                         stays 72 h).
   --cwd=DIR              branches, refused: repository to inspect, or the
                          directory a -C in the command is relative to
                          (default: cwd).
@@ -124,8 +131,37 @@ function psLines() {
 export function defaultTmpRoots() {
   const seam = process.env.CLAUDEMD_TMP_SWEEP_ROOTS;
   if (seam) return seam.split(':').filter(Boolean);
-  const roots = [process.env.TMPDIR, os.tmpdir(), '/tmp', path.join(os.homedir(), '.cache', 'tmp')];
+  const roots = [
+    process.env.TMPDIR,
+    os.tmpdir(),
+    '/tmp',
+    '/var/tmp',
+    path.join(os.homedir(), '.cache', 'tmp'),
+  ];
   return roots.filter(Boolean);
+}
+
+// The roots a scan reads, each resolved once: a root that does not resolve is
+// skipped, and two spellings of one directory are scanned once.
+function* realRoots(roots) {
+  const seen = new Set();
+  for (const r of roots) {
+    let real;
+    try {
+      real = fs.realpathSync(r);
+    } catch {
+      continue;
+    }
+    if (seen.has(real)) continue;
+    seen.add(real);
+    let entries;
+    try {
+      entries = fs.readdirSync(real, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    yield { real, entries };
+  }
 }
 
 // Returns { bytes, newestMs } when `dir` carries the exact vitest signature,
@@ -182,23 +218,8 @@ export function scanVitestTmp({
   minAgeMs,
   uid = process.getuid(),
 } = {}) {
-  const seen = new Set();
   const targets = [];
-  for (const r of roots) {
-    let real;
-    try {
-      real = fs.realpathSync(r);
-    } catch {
-      continue;
-    }
-    if (seen.has(real)) continue;
-    seen.add(real);
-    let entries;
-    try {
-      entries = fs.readdirSync(real, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+  for (const { real, entries } of realRoots(roots)) {
     for (const e of entries) {
       if (!VITEST_DIR_NAME.test(e.name) || !e.isDirectory()) continue;
       const full = path.join(real, e.name);
@@ -249,6 +270,124 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
     ? removeVitestTargets({ targets, minAgeMs, uid: opts.uid, now: opts.now })
     : { deleted: 0, bytes: 0, errors: [] };
   return { minAgeMs, targets, ...removed };
+}
+
+// ---- agent temp residue (cc-*) ----
+//
+// Spec §5-EXT Agent temp residue: an agent names a temp dir it creates
+// cc-<task>-XXXXXX and retains one with a top-level .keep. A dir the creating
+// task did not remove is reaped here once nothing inside changed for 72 h.
+// The model-side rule waits 24 h, but it also checks that no open spec file,
+// paused checkpoint or deferred item names the dir; this sweep cannot, so it
+// waits longer and honours .keep alone.
+//
+// Freshness is the newest mtime of any entry, read with lstat: a symlink is
+// never followed, so a fresh file outside does not keep the dir and is not
+// deleted with it. mtime is what an extraction can set back (tar restores
+// archive times), which the 72 h floor and the recheck before each rm bound.
+export const AGENT_TMP_FLOOR_MS = 72 * HOUR;
+const AGENT_DIR_NAME = /^cc-./;
+const AGENT_MAX_ENTRIES = 200000;
+
+// Returns { bytes } for a cc-* dir idle past `cutoffMs`, { skip: reason } when
+// it cannot be judged, null when it is not a target.
+function agentResidue(dir, uid, cutoffMs, maxEntries) {
+  let st;
+  try {
+    st = fs.lstatSync(dir);
+  } catch {
+    return null;
+  }
+  if (!st.isDirectory() || st.uid !== uid || st.mtimeMs >= cutoffMs) return null;
+  try {
+    fs.lstatSync(path.join(dir, '.keep'));
+    return null;
+  } catch {
+    // no .keep: go on
+  }
+  let bytes = 0;
+  let seen = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const d = stack.pop();
+    let names;
+    try {
+      names = fs.readdirSync(d);
+    } catch {
+      return { skip: 'unreadable' };
+    }
+    for (const n of names) {
+      if (++seen > maxEntries) return { skip: 'too-many-entries' };
+      let s;
+      try {
+        s = fs.lstatSync(path.join(d, n));
+      } catch {
+        return null; // vanished between readdir and lstat: something is at work in it
+      }
+      if (s.mtimeMs >= cutoffMs) return null;
+      if (s.isDirectory()) stack.push(path.join(d, n));
+      else if (s.isFile()) bytes += s.size;
+    }
+  }
+  return { bytes };
+}
+
+export function scanAgentTmp({
+  roots = defaultTmpRoots(),
+  now = Date.now(),
+  minAgeMs = AGENT_TMP_FLOOR_MS,
+  uid = process.getuid(),
+  maxEntries = AGENT_MAX_ENTRIES,
+} = {}) {
+  const targets = [];
+  const skipped = [];
+  for (const { real, entries } of realRoots(roots)) {
+    for (const e of entries) {
+      if (!AGENT_DIR_NAME.test(e.name) || !e.isDirectory()) continue;
+      const full = path.join(real, e.name);
+      const r = agentResidue(full, uid, now - minAgeMs, maxEntries);
+      if (!r) continue;
+      if (r.skip) skipped.push({ path: full, reason: r.skip });
+      else targets.push({ path: full, bytes: r.bytes });
+    }
+  }
+  return { targets, skipped };
+}
+
+// Re-judges each target right before its rm, as removeVitestTargets does.
+export function removeAgentTargets({
+  targets,
+  minAgeMs = AGENT_TMP_FLOOR_MS,
+  uid = process.getuid(),
+  now = Date.now(),
+  maxEntries = AGENT_MAX_ENTRIES,
+}) {
+  let deleted = 0;
+  let bytes = 0;
+  const errors = [];
+  for (const t of targets) {
+    const r = agentResidue(t.path, uid, now - minAgeMs, maxEntries);
+    if (!r || r.skip) continue;
+    try {
+      fs.rmSync(t.path, { recursive: true });
+      deleted++;
+      bytes += r.bytes;
+    } catch (e) {
+      errors.push({ path: t.path, code: e.code || String(e) });
+    }
+  }
+  return { deleted, bytes, errors };
+}
+
+// Both arms. `minAgeMs` is the vitest floor only; the agent floor is fixed.
+export function sweepTmp({ apply = false, ...opts } = {}) {
+  const vitest = sweepVitestTmp({ apply, ...opts });
+  const { roots, now, uid } = opts;
+  const scanned = scanAgentTmp({ roots, now, uid });
+  const removed = apply
+    ? removeAgentTargets({ targets: scanned.targets, uid, now })
+    : { deleted: 0, bytes: 0, errors: [] };
+  return { ...vitest, agent: { minAgeMs: AGENT_TMP_FLOOR_MS, ...scanned, ...removed } };
 }
 
 // ---- branches ----
@@ -967,11 +1106,11 @@ if (invokedAsMain(import.meta.url)) {
       }
       opts.minAgeMs = n * MINUTE;
     }
-    const result = sweepVitestTmp(opts);
+    const result = sweepTmp(opts);
     process.stdout.write(JSON.stringify(result) + '\n');
     // A target --apply could not delete is only an entry in `errors`; exit 0
     // read as "reclaimed" (131c). exitCode, not exit(): stdout drains first.
-    if (result.errors.length > 0) process.exitCode = 3;
+    if (result.errors.length > 0 || result.agent.errors.length > 0) process.exitCode = 3;
   } else if (sub === 'branches') {
     const p = parseStrictOrExit(rest, { values: ['--cwd'] });
     process.stdout.write(
