@@ -106,6 +106,42 @@ test('missing root dir degrades to empty result, not throw', () => {
   assert.equal(out.scannedRunbooks, 0);
 });
 
+// Shapes from the live corpus on 2026-11-03: doctor flagged 4 of 9 runbooks,
+// and two of them (gsd-lite, claude-mem-lite) had a review step before the tag
+// in words the fingerprint did not know. The controls are the other two: a
+// reviewer named only inside a lesson is not a step, and stays flagged.
+test('a pre-tag review or fresh-subagent spawn step counts; a reviewer named only in a lesson does not', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
+  try {
+    const mk = (project, content) => {
+      const dir = path.join(tmp, project, 'memory');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ship-runbook.md'), content);
+    };
+    mk(
+      '-p-india',
+      '# india runbook\nOne fresh-subagent pre-tag review (HARD) briefed on code diff.\ngit tag -a vX.Y.Z; git push origin vX.Y.Z\n'
+    );
+    mk(
+      '-p-juliet',
+      '# juliet runbook\n6. r1: two fresh blind subagents, defects and claims, spawned without names.\n8. git tag -a vX.Y.Z; push main\n'
+    );
+    mk(
+      '-p-kilo',
+      '# kilo runbook\nTwo review rounds is the norm: spawn the reviewers early (fresh context, `general-purpose`, never a fork).\ngit tag → gh release create\n'
+    );
+    mk(
+      '-p-lima',
+      '# lima runbook\n**A pre-ship reviewer earns its cost against the author.**\nSubagent dispatch synchrony is not stable.\ngit tag → push origin main\n'
+    );
+    const out = scanRunbookReviewSteps({ rootDir: tmp });
+    assert.deepEqual(out.missing.map(m => m.project).sort(), ['-p-kilo', '-p-lima']);
+    assert.equal(out.scannedRunbooks, 4);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('中文 review fingerprint (tag 前……评审) is recognized', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
   try {
