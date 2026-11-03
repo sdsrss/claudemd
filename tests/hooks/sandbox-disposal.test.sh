@@ -444,7 +444,38 @@ else
   echo "FAIL: 30 (stderr: $STDERR)"; FAIL=$((FAIL+1))
 fi
 
-TOTAL=$((30 - ${SKIPPED:-0}))
+# Cases 31-32 (D2, docs/claudemd-effect-assessment-2026-11-03.md §5): a warn or
+# block row recorded only {count, mode}, so whether the advisory was right could
+# not be checked afterwards. Both rows name the reported dirs by basename, the
+# same five the stderr list or the block reason shows, escaped as JSON.
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+CLAUDEMD_SCAN_SPECS_OVERRIDE="${HOME_FIXTURE}|both" stop_at s31 >/dev/null; sleep 1
+for n in 'agent-tmp-a' 'agent-tmp-q"uote' 'agent-tmp-b\slash' 'agent-tmp-d' 'agent-tmp-e' 'agent-tmp-f'; do
+  mkdir "$HOME_FIXTURE/$n"
+done
+STDERR=$(SANDBOX_DISPOSAL_IMMEDIATE=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="${HOME_FIXTURE}|both" bash "$HOOK" <<<'{"session_id":"s31"}' 2>&1 >/dev/null)
+ROW=$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl")
+LISTED=$(printf '%s\n' "$STDERR" | sed -n 's/^  - //p' | while IFS= read -r p; do basename "$p"; done | LC_ALL=C sort | jq -R . | jq -sc .)
+if [[ "$(jq -r '[.event, .extra.count, (.extra.names | length)] | join(" ")' <<<"$ROW" 2>/dev/null)" == "warn 6 5" ]] \
+   && [[ "$(jq -c '.extra.names | sort' <<<"$ROW")" == "$LISTED" ]]; then
+  echo "PASS: 31 a warn row names the five listed dirs, quote and backslash escaped"
+else
+  echo "FAIL: 31 (row: $ROW; listed: $LISTED)"; FAIL=$((FAIL+1))
+fi
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state"
+CLAUDEMD_SCAN_SPECS_OVERRIDE="${HOME_FIXTURE}|both" stop_at s32 >/dev/null; sleep 1
+mkdir "$HOME_FIXTURE/tmp.block_named"
+SANDBOX_DISPOSAL_BLOCK=1 SANDBOX_DISPOSAL_IMMEDIATE=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="${HOME_FIXTURE}|both" bash "$HOOK" <<<'{"session_id":"s32"}' >/dev/null 2>&1
+ROW=$(tail -n 1 "$HOME/.claude/logs/claudemd.jsonl")
+if [[ "$(jq -c '[.event, .extra.names]' <<<"$ROW" 2>/dev/null)" == '["block",["tmp.block_named"]]' ]]; then
+  echo "PASS: 32 a block row names the dir it reported"
+else
+  echo "FAIL: 32 (row: $ROW)"; FAIL=$((FAIL+1))
+fi
+
+TOTAL=$((32 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi

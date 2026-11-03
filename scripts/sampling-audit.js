@@ -1397,6 +1397,16 @@ function ruleStatus(k) {
   return 'collecting';
 }
 
+// askRate carries its classifier's label the way each byRule entry does (D3,
+// docs/claudemd-effect-assessment-2026-11-03.md §5). With precision null the
+// JSON's `assent: 0` read as a 0% assent rate; only the rendered report said
+// the count could not be read. mergeAskRate adds the counts and leaves these.
+function emptyAskRate() {
+  const precision = ASK_RATE_PRECISION;
+  const status = precision != null && precision >= PRECISION_GATE ? 'calibrated' : 'collecting';
+  return { segments: 0, asks: 0, assent: 0, precision, status };
+}
+
 function emptyByRule() {
   return Object.fromEntries(
     RULE_KEYS.map(k => [
@@ -1435,7 +1445,7 @@ function emptyResult(windowDays, projectsDir) {
     totalAssistantTextRows: 0,
     byRule: emptyByRule(),
     overCeremony: { totalSegments: 0, l0l1Segments: 0, overCeremonySegments: 0, ceremonyInvocations: {} },
-    askRate: { segments: 0, asks: 0, assent: 0 },
+    askRate: emptyAskRate(),
     behaviorMetrics: { ...emptyBehavior(), reworkThreshold: REWORK_THRESHOLD, validity: BEHAVIOR_VALIDITY },
     // Same shape, counted over `<session>/subagents/*.jsonl` only. Separate so
     // the main-line block above keeps its pre-registered population.
@@ -1680,7 +1690,7 @@ export async function samplingAuditGlobal({
     // dogfood and external work were mixed in the one number the pre-registered
     // disposition consumes — against this file's own header, which says the
     // stratified view is the one to read because pooled counts already misled.
-    askRate: { segments: 0, asks: 0, assent: 0 },
+    askRate: emptyAskRate(),
     // Stratified for the same reason as everything else in this block
     // (methodology note #5): the roadmap's 3.3 table is the one a reader should
     // read, and a pooled behaviour rate would hide whether dogfooding differs

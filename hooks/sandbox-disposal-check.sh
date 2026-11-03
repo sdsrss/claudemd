@@ -196,6 +196,16 @@ fi
 if [[ -n "$FOUND" ]]; then
   COUNT=$(echo "$FOUND" | grep -c .)
   LIST=$(printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5)
+  # The row names what the advisory listed (basenames, the same five), or
+  # whether it was right cannot be checked afterwards: 73 warn rows in 30 days
+  # carried only a count (D2, docs/claudemd-effect-assessment-2026-11-03.md §5).
+  # The escape helper comes with hook-common.sh; without it no row is written.
+  NAMES=""
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    NAMES+="${NAMES:+,}\"$(_rule_hits_json_escape "${p##*/}" 2>/dev/null)\""
+  done < <(printf '%s' "$FOUND" | sed -e '/^$/d' | head -n 5)
+  EXTRA="{\"count\":$COUNT,\"mode\":\"$MODE\",\"names\":[$NAMES]}"
   # Block only on opt-in, only with jq (the verdict is built by jq), and never
   # on the Stop that a block itself caused. The window stays open on a block
   # so that Stop re-scans: a dir still there is reported, not forgotten.
@@ -207,13 +217,13 @@ if [[ -n "$FOUND" ]]; then
       # block, so this Stop's first-sight candidates are re-found by the next
       # scan and must not be promoted to confirmed within the same turn.
       [[ "$MODE" == deferred ]] && ( printf '%s' "$FOUND" ) 2>/dev/null > "$PENDING_FILE"
-      hook_record sandbox-disposal block "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
+      hook_record sandbox-disposal block "$EXTRA" '§8.V4' "$SESSION_ID"
       exit 0
     fi
   fi
   echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories $WHEN (up to 5 listed; some may belong to another session)." >&2
   printf '%s\n' "$LIST" >&2
-  hook_record sandbox-disposal warn "{\"count\":$COUNT,\"mode\":\"$MODE\"}" '§8.V4' "$SESSION_ID"
+  hook_record sandbox-disposal warn "$EXTRA" '§8.V4' "$SESSION_ID"
 fi
 
 touch "$SESSION_REF" 2>/dev/null

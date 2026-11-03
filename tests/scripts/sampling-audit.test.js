@@ -1162,6 +1162,14 @@ test('D#125: a transcript that only ran tools gets a report, not "nothing scanne
   );
 });
 
+// D3 (docs/claudemd-effect-assessment-2026-11-03.md §5): the JSON printed
+// `assent: 0` from a classifier that was never hand-labeled, with nothing
+// beside it to say so — only the rendered report refused to read it. askRate
+// now carries `precision` and `status` the way every byRule entry does, pooled
+// and per class, so a script reading the JSON sees "collecting", not "0%".
+const ASK_RATE_LABEL = { precision: null, status: 'collecting' };
+const labelOf = a => ({ precision: a.precision, status: a.status });
+
 // --- H4 default-ASK measure (audit 20260906-231957 §7.2) -------------------
 //
 // The fixture is three tasks: one ask answered with assent ("就按你说的"), one
@@ -1173,9 +1181,29 @@ test('H4 ask-rate fixture: asks counted, assent separated from direction', async
   const dir = stageFixture('ask-rate');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    assert.deepEqual(r.askRate, { segments: 3, asks: 2, assent: 1 });
+    assert.deepEqual(r.askRate, { segments: 3, asks: 2, assent: 1, ...ASK_RATE_LABEL });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('D3: askRate carries the classifier precision and status, pooled and per class', async () => {
+  assert.equal(ASK_RATE_PRECISION, null, 'the label below is the uncalibrated one');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-sa-root-'));
+  try {
+    const selfDir = path.join(root, '-mnt-x-dev-claudemd');
+    const extDir = path.join(root, '-home-u-dev-daagu');
+    fs.mkdirSync(selfDir);
+    fs.mkdirSync(extDir);
+    fs.copyFileSync(path.join(FIXTURE_DIR, 'vocab-hit.jsonl'), path.join(selfDir, 'a.jsonl'));
+    fs.copyFileSync(path.join(FIXTURE_DIR, 'clean.jsonl'), path.join(extDir, 'b.jsonl'));
+    const one = await samplingAudit({ projectsDir: selfDir, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(labelOf(one.askRate), ASK_RATE_LABEL, 'single project');
+    const g = await samplingAuditGlobal({ projectsRoot: root, days: 30, pluginRoot: REPO_ROOT });
+    assert.deepEqual(labelOf(g.askRate), ASK_RATE_LABEL, 'global pooled');
+    for (const [k, c] of Object.entries(g.byClass)) assert.deepEqual(labelOf(c.askRate), ASK_RATE_LABEL, k);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -1224,7 +1252,7 @@ test("LOW-3: a compaction boundary ends the question's reach, and does not merge
   const dir = stageFixture('ask-rate-compaction');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0 });
+    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0, ...ASK_RATE_LABEL });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1243,7 +1271,7 @@ test('LOW-5: a slash command is a task, but never the answer to a question', asy
   const dir = stageFixture('ask-rate-slash');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0 });
+    assert.deepEqual(r.askRate, { segments: 2, asks: 0, assent: 0, ...ASK_RATE_LABEL });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1261,7 +1289,7 @@ test('HIGH-1: a transcript with no question in it still scores asks at 100% asse
   const dir = stageFixture('ask-rate-noise');
   try {
     const r = await samplingAudit({ projectsDir: dir, days: 30, pluginRoot: REPO_ROOT });
-    assert.deepEqual(r.askRate, { segments: 8, asks: 8, assent: 8 });
+    assert.deepEqual(r.askRate, { segments: 8, asks: 8, assent: 8, ...ASK_RATE_LABEL });
     assert.equal(r.askRate.assent / r.askRate.asks, 1, 'assent rate is 100% on zero questions');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
