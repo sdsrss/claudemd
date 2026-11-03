@@ -10,16 +10,16 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 ## [0.119.0] - 2026-11-03
 
-**Spec v8.5.0: a temp directory that an earlier task or session left is deleted without asking you, under stated conditions. `tmp-sweep` also reaps `cc-*` agent temp directories idle 72 h without a `.keep`.**
+**Spec v8.5.0: a temp directory that an earlier task or session left is deleted without asking you, under stated conditions. `tmp-sweep` also reaps `agent-tmp-*` directories idle 72 h without a `.keep`.**
 
 **What changes for users.**
-- Spec v8.5.0 (`~/.claude/CLAUDE.md` §5 and §8.V4, `~/.claude/spec-modules/auth.md`). Deleting a directory outside the project needed your approval, even a temp directory an earlier session made and left. In the maintainer's transcripts of 2026-10-06 to 11-03, 30 report open items asked for that; all 13 that were answered were approved, and the others stayed on disk. A new Soft class, Agent temp residue, covers a `cc-*` directory in `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp`, or an ended session's scratchpad directory, when it is yours, not a symlink, unchanged for 24 h, has no `.keep`, and no open spec file, paused checkpoint or deferred item names it. The agent deletes it and names each path and its size in the report. Anything else outside the project still needs your approval. §8.V4 now has agents name the temp directories they create `cc-<task>-…`, and a `.keep` say why and until when.
-- `tmp-sweep` (PostToolUse on Bash, on by default) also deletes a `cc-*` directory in those roots that you own, with no `.keep` at its top, in which no entry changed for 72 h; it does not follow symlinks. `/var/tmp` is scanned too, for vitest's run directories as well. Its temp-pressure note no longer tells the agent that everything it did not create is your call.
+- Spec v8.5.0 (`~/.claude/CLAUDE.md` §5, §5.1 and §8.V4, `~/.claude/spec-modules/auth.md`). Deleting a directory outside the project needed your approval, even a temp directory an earlier session made and left. In the maintainer's transcripts of 2026-10-06 to 11-03, 8 report open items asked for that; the 3 answered were approved. A new Soft class, Agent temp residue, covers an `agent-tmp-*` directory in `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp`, or an ended session's scratchpad directory, when it is yours, not a symlink, unchanged for 24 h, has no `.keep`, and no open spec file, paused checkpoint or deferred item names it. The agent names it before deleting it and lists each path and its size in the report. Anything else outside the project still needs your approval. §8.V4 now has agents name the temp directories they create `agent-tmp-<task>-…`, and a `.keep` say why and until when.
+- `tmp-sweep` (PostToolUse on Bash, on by default) also deletes an `agent-tmp-*` directory in those roots that you own, with no `.keep` at its top and no socket or FIFO inside, in which no entry's mtime or ctime is within 72 h; it does not follow symlinks. `/var/tmp` is scanned too, for vitest's run directories as well. Its temp-pressure note states those conditions instead of telling the agent that everything it did not create is your call. `sandbox-disposal-check` also reports `agent-tmp-*` directories made during the session that are still there.
 
-**What to do.** Run `/claudemd-refresh` and restart Claude Code. To keep a `cc-*` directory, put a `.keep` file at its top. `DISABLE_TMP_SWEEP_HOOK=1` turns the whole sweep off. To go back to 0.118.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To keep an `agent-tmp-*` directory, put a `.keep` file at its top. `DISABLE_TMP_SWEEP_HOOK=1` turns the whole sweep off. To go back to 0.118.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
 
 **Not changed.**
-- The sweep never deletes a directory without the `cc-` prefix, and an agent still asks before deleting one that is not an ended session's scratchpad.
+- Apart from vitest's run directories, the sweep deletes only `agent-tmp-*` directories; Claude Code's `cc-socks` directories are not touched.
 - The vitest arm's signature and floors (60 min, 24 h while a watcher runs).
 - The §8 `rm` variable gate.
 

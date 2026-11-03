@@ -17,7 +17,7 @@ Core §1.5 inlines `Module / Evidence / Contract / Δ-contract` (used at L1/L2).
 
 ## §7-EXT-TMP TMP_RETENTION policy
 
-**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically except `tmp-sweep`, and only when the hook's `$TMPDIR` points here: vitest's run dirs and `cc-*` agent temp residue (§5-EXT). `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No other auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
+**`~/.claude/tmp/` retention**: tool-exhaust, not WIP. Nothing purges it automatically except `tmp-sweep`, and only when the hook's `$TMPDIR` points here: vitest's run dirs and `agent-tmp-*` agent temp residue (§5-EXT). `/claudemd-clean-residue` reaps entries older than `TMP_RETENTION_DAYS` (default 7; dry-run unless `--apply`), and the residue-audit Stop hook warns when one session grows it by ≥20 entries. No other auto-clean without AUTH. Override: project `CLAUDE.md` `TMP_RETENTION_DAYS: 30`.
 
 ## §11-EXT Session heuristics (advisory)
 

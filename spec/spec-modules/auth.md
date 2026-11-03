@@ -46,14 +46,14 @@ Strict prefix match (NOT glob):
 
 §3-EXT names this one of three channels that move a §5 AUTH gate; these bounds are what keeps it a channel rather than an opening.
 
-**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking; the report names each removed path and its size in one line. NEVER-covers above bounds the prefix list; this class carries its own bounds:
+**Agent temp residue** (core §5 Soft): a directory an earlier task or session left that meets every condition below. Delete it without asking: name it inline first (`aggressive`: no need), and the report names each removed path and its size in one line. NEVER-covers above bounds the prefix list; this class carries its own bounds:
 
-- where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `cc-`; or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
+- where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `agent-tmp-` (not `cc-`: Claude Code keeps live sockets in `cc-socks`); or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
 - owned by the current user, not a symlink, and it resolves inside that root
 - nothing inside it changed in the last 24 h
 - no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
 
-Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes a `cc-*` directory once nothing in it changed for 72 h and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
+Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
 
 ## Appendix B — Canonical examples
 

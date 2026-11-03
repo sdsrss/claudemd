@@ -17,7 +17,7 @@ The spawn prompt names the range as SHAs, the contract, and the claims to falsif
 You start in the author's main checkout, with no worktree of your own. Your work needs a sandbox `HOME`, old versions extracted beside new ones and paths outside the repo, and a harness worktree refuses those commands, so make a private clone first and work only there:
 
 ```
-D=$(mktemp -d "${TMPDIR:-/tmp}/cc-rrev-XXXXXX") && git clone -q --shared --no-checkout "$(git rev-parse --show-toplevel)" "$D/repo" && git -C "$D/repo" remote remove origin && git -C "$D/repo" checkout -q --detach <head-sha> && echo "$D"
+D=$(mktemp -d "${TMPDIR:-/tmp}/agent-tmp-rrev-XXXXXX") && git clone -q --shared --no-checkout "$(git rev-parse --show-toplevel)" "$D/repo" && git -C "$D/repo" remote remove origin && git -C "$D/repo" checkout -q --detach <head-sha> && echo "$D"
 ```
 
 - Shell variables do not survive between Bash calls: note the printed path and write it literally in every later command, each starting with `cd <path>/repo &&` (or `git -C <path>/repo`).

@@ -100,7 +100,7 @@ Schemas/specs/types: trust + verify consistency. Issues/comments/narrative: veri
 
 Project `CLAUDE.md` MAY set `AUTONOMY_LEVEL: aggressive | default | careful` (default = `default`); its effect on the Soft and None rows → `auth.md`.
 
-**Never-downgrade** (no level, project file or user instruction relaxes these): §8 SAFETY incl. Verify-before-claim (V1–V4), Iron Law #2, §11 Session-exit, the §7 user-global-state check, every §5 Hard category (safe-path deletes stay Soft, §5), `L3 enter`.
+**Never-downgrade** (no level, project file or user instruction relaxes these): §8 SAFETY incl. Verify-before-claim (V1–V4), Iron Law #2, §11 Session-exit, the §7 user-global-state check, every §5 Hard category (safe-path and agent-temp-residue deletes stay Soft, §5), `L3 enter`.
 
 ## §7 VALIDATE
 
@@ -150,7 +150,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **8.V1 Anti-hallucination**: cited file path / function / API / config key / version / test-runner pass-fail count MUST be verified this turn via Read/Grep/tool output (prior-turn Read in same session OK with citation). Memory recall = assumption; verify before writes depend on it. Truncated output ≠ exhaustive. Unverified → verify now or drop the claim.
 - **8.V2 Tool-noise vs ground-truth**: editor/IDE diagnostics are **advisory**; when they conflict with the project linter / typecheck or with grep/Read, trust the linter + evidence.
 - **8.V3 Destructive-smoke**: session-new/modified destructive paths (`unadopt` / `clean` / `reset` / `purge` / `rm` / `DROP` / overwrite-in-place) sandbox-test first (`mkdtempSync` / `tmp/` / fixture). Running against live FS / `~/.claude/` / active project = §8 violation even if unit-green. Exception: user explicit "run on real repo" + target confirmation; re-ASK if target outside §5 safe-paths.
-- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `cc-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. What an earlier task or session left is agent temp residue (`auth.md`): delete it, don't ask.
+- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `agent-tmp-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. An earlier task's or session's leftover is deleted without asking only as agent temp residue (`auth.md`: an `agent-tmp-*` dir in a temp root or an ended session's scratchpad, yours, idle 24 h, no `.keep`, named by nothing open); anything else stays §5 Hard.
 
 ## §9 QUALITY
 

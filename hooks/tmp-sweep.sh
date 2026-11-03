@@ -14,9 +14,9 @@
 # What it deletes is decided by scripts/housekeeping.js, never here: only a
 # directory carrying the exact vitest signature (name, owner, children,
 # 40-hex file names, no symlinks) and idle past the floor, and (spec v8.5.0
-# §5-EXT Agent temp residue) a cc-* directory of this uid with no .keep in
-# which nothing changed for 72 h, read without following symlinks. See its
-# USAGE.
+# §5-EXT Agent temp residue) an agent-tmp-* directory of this uid with no
+# .keep and no socket or FIFO in which no mtime or ctime is within 72 h, read
+# without following symlinks. See its USAGE.
 #
 # Cost: every Bash call pays the hook preamble (sourcing two libs) plus a
 # `mkdir -p`, a noclobber open, an `rm`, two stats and a `date` — tens of milliseconds, measured at
@@ -98,7 +98,7 @@ else
   hook_record_failopen tmp-sweep jq-missing
 fi
 
-SWEEP_NOTE="The vitest per-run dirs (idle 60 min) and agent cc-* dirs without a .keep (idle 72 h) are swept automatically"
+SWEEP_NOTE="The vitest per-run dirs (idle 60 min) and agent-tmp-* dirs without a .keep (idle 72 h) are swept automatically"
 if command -v node >/dev/null 2>&1; then
   SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/housekeeping.js"
   # Detached: stdin from /dev/null and both streams to the result file, so the
@@ -110,7 +110,7 @@ else
   # The advisory below must not promise a sweep that was never spawned: a
   # node managed by nvm is often not on a hook's non-interactive PATH. Nor
   # claim that nothing else reclaims them, which this hook cannot see.
-  SWEEP_NOTE="The vitest per-run dirs and agent cc-* dirs are not swept from here: node is not on this hook's PATH"
+  SWEEP_NOTE="The vitest per-run dirs and agent-tmp-* dirs are not swept from here: node is not on this hook's PATH"
 fi
 
 # Pressure advisory. Only the capacity column of POSIX `df -P`; a temp root
@@ -137,7 +137,7 @@ if ((HAVE_JQ)) && [[ "$PCT" =~ ^[0-9]+$ ]] && ((PCT >= THRESHOLD)); then
   # The `du` line is for pasting into a shell: quoted, or a root with a space
   # splits into two arguments and lists nothing.
   printf -v Q_ROOT '%q' "$TMP_ROOT"
-  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} ${SWEEP_NOTE}; anything else there is not attributable, so list the largest entries (\`du -sh $Q_ROOT/* | sort -rh | head\`); what this session created is yours to clean up; a cc-* dir or an ended session's scratchpad that an earlier session left follows the spec's Agent temp residue rule (auth.md: delete it without asking, one report line each); anything else is the user's call. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
+  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} ${SWEEP_NOTE}; anything else there is not attributable, so list the largest entries (\`du -sh $Q_ROOT/* | sort -rh | head\`); what this session created is yours to clean up; an agent-tmp-* dir or an ended session's scratchpad that an earlier session left is deleted without asking only when it is yours, nothing in it changed for 24 h, it has no .keep and no open spec file, paused checkpoint or deferred item names it (spec auth.md, Agent temp residue; one report line each); anything else is the user's call. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
   hook_record tmp-sweep tmp-pressure-advisory "{\"pct\":$PCT,\"threshold\":$THRESHOLD}" '§8.V4' "$SESSION_ID"
   jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sandbox-disposal-check.sh — Stop hook. Advisory by default.
-# Warns about tmp.XXXXXX-style mkdtemp directories that appeared or changed
+# Warns about tmp.XXXXXX-style and agent-tmp-* mkdtemp directories that appeared or changed
 # since this session's previous Stop (mtime, not ownership — a concurrent
 # session's sandbox can show up too), in the places spec §8.V4 names for
 # test/probe residue: /tmp (and
@@ -90,8 +90,8 @@ if [[ ! -f "$SESSION_REF" ]]; then
 fi
 
 # Scan-spec format: DIR|FILTER pairs separated by ASCII record separator (RS, \x1e).
-# FILTER: claudemd_only (system /tmp — only ^claudemd- prefix attributable)
-#         both          (~/.claude/tmp, /var/tmp — both ^tmp\. and ^claudemd-).
+# FILTER: claudemd_only (system /tmp — only the ^claudemd- and ^agent-tmp- prefixes attributable)
+#         both          (~/.claude/tmp, /var/tmp — ^tmp\., ^claudemd- and ^agent-tmp-).
 #                       /var/tmp is not mktemp's default root, so a fresh
 #                       tmp.* there was placed deliberately (`mktemp -p`);
 #                       /tmp's tmp.* churn from vim/pip/cargo is why /tmp
@@ -124,9 +124,11 @@ while IFS= read -r -d $'\x1e' spec || [[ -n "$spec" ]]; do
     # this plugin's own hooks were stepping on each other (95% of 30d warns).
     [[ -d "$path" ]] || continue
     base=$(basename "$path")
+    # agent-tmp-* is the name spec v8.5.0 §8.V4 gives an agent's own temp
+    # dirs, so both filters take it (0.119.0 pre-tag review M3).
     case "$filter" in
-      claudemd_only) [[ "$base" =~ ^claudemd- ]] || continue ;;
-      both)          [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || continue ;;
+      claudemd_only) [[ "$base" =~ ^claudemd- ]] || [[ "$base" =~ ^agent-tmp- ]] || continue ;;
+      both)          [[ "$base" =~ ^tmp\. ]] || [[ "$base" =~ ^claudemd- ]] || [[ "$base" =~ ^agent-tmp- ]] || continue ;;
       probe_session)
         [[ "$base" =~ ^-(private-)?(tmp|var-tmp|var-folders)- ]] || continue
         [[ "$path" != "$OWN_PROJECT_DIR" ]] || continue

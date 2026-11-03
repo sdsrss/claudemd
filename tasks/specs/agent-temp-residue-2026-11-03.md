@@ -13,10 +13,10 @@
 - 做：
   - 核心 §5 Soft 行、§8.V4。
   - extended §5-EXT 新增 Agent temp residue 一段，§5.1-EXT 表 `aggressive` 行，§7-EXT-TMP。
-  - `scripts/housekeeping.js tmp` 增加 `cc-*` 这一类回收，默认扫描目录加上 `/var/tmp`。
+  - `scripts/housekeeping.js tmp` 增加 `agent-tmp-*` 这一类回收，默认扫描目录加上 `/var/tmp`；`sandbox-disposal-check` 认 `agent-tmp-*`。
   - `hooks/tmp-sweep.sh` 的提示文字与文件头注释；README 的 tmp-sweep 行。
   - 规范版本级联 v8.4.0 → v8.5.0、两份 changelog 条目、Sizing；`tests/scripts/spec-structure.test.js` 的哈希与锁定行。
-  - 本仓库 `.claude/agents/release-reviewer.md` 的临时目录前缀 `rrev-` → `cc-rrev-`（不随插件发布，单独提交到 main）。
+  - 本仓库 `.claude/agents/release-reviewer.md` 的临时目录前缀 `rrev-` → `agent-tmp-rrev-`（不随插件发布）。
   - 随下一个批次发版。
 - 不做：
   - hook 自动删 scratchpad：harness 是否在 resume 时复用它，没查到文档，只走模型侧规则。
@@ -25,23 +25,23 @@
 
 ## 验收标准
 
-- [x] AC1：`housekeeping.js tmp --apply` 删除临时根目录下名字为 `cc-*`、本用户所有、不是符号链接、顶层没有 `.keep`、里面任何文件 72 小时内都没有改动的目录；不满足其中任一条的都保留；删除前重新检查一次。验证：`node --test tests/scripts/housekeeping.test.js`。新增用例在改动前失败。
-- [x] AC2：`tmp-sweep` 的压力提示说明 `cc-*` 会自动回收，并把上一个会话留下的代理残留指向规范的 Agent temp residue，而不是"一律交给使用者"。验证：`bash tests/hooks/tmp-sweep.test.sh`。新增断言在改动前失败。
-- [x] AC3：`spec/spec-modules/auth.md` 有 Agent temp residue 一段，写明条件（临时根目录的 `cc-*` 或已结束会话的 scratchpad 目录、本用户、非符号链接、24 小时无改动、无 `.keep`、没被引用）以及"不问、汇报写一行"；核心 §5 Soft 行和 §8.V4 指向它。验证：`grep -n 'Agent temp residue' spec/CLAUDE.md spec/spec-modules/auth.md`，读整行。
+- [x] AC1：`housekeeping.js tmp --apply` 删除临时根目录下名字为 `agent-tmp-*`、本用户所有、不是符号链接、顶层没有 `.keep`、里面没有 socket 或 FIFO、所有条目的 mtime 和 ctime 都早于 72 小时的目录；不满足其中任一条的都保留；删除前重新检查一次。验证：`node --test tests/scripts/housekeeping.test.js`。新增用例在改动前失败。
+- [x] AC2：`tmp-sweep` 的压力提示说明 `agent-tmp-*` 会自动回收，写出上一个会话的残留可以不问就删的全部条件，而不是"一律交给使用者"。验证：`bash tests/hooks/tmp-sweep.test.sh`。新增断言在改动前失败。
+- [x] AC3：`spec/spec-modules/auth.md` 有 Agent temp residue 一段，写明条件（临时根目录的 `agent-tmp-*` 或已结束会话的 scratchpad 目录、本用户、非符号链接、24 小时无改动、无 `.keep`、没被引用）以及"不问、汇报写一行"；核心 §5 Soft 行和 §8.V4 指向它。验证：`grep -n 'Agent temp residue' spec/CLAUDE.md spec/spec-modules/auth.md`，读整行。
 - [x] AC4：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。验证：`npm run check; echo exit=$?`；`npm run smoke`。
-- [ ] AC5（发版后约 4 周）：复测遗留里"删临时目录要授权"的条数，基线 30 条 / 28 天；复测 `~/.cache/tmp` 里不带 `.keep` 且闲置超过 3 天的目录数，基线 31 个。验证：本地脚本 `tasks/temp-residue-audit-2026-11-03/openitems.py`（gitignored）。
+- [ ] AC5（发版后约 4 周）：复测遗留里"删临时根目录里上一个任务留下的目录要授权"的条数，基线 8 条 / 28 天（回复 3 条，都批准）；复测 `~/.cache/tmp` 里没有 `.keep`、闲置超过 3 天的 `agent-tmp-*` 目录数，基线 0。验证：本地脚本 `tasks/temp-residue-audit-2026-11-03/openitems.py`（gitignored）。
 
 ## 方案
 
 - **规则**（extended §5-EXT，进 `auth.md`）：同时满足以下条件的目录算代理临时残留，任何任务都可以直接删，不需要授权；删除后在汇报里写一行，含路径和大小：
-  1. 位置：`$TMPDIR`、`/tmp`、`/var/tmp`、`~/.cache/tmp` 下名字以 `cc-` 开头的直接子目录；或者 harness scratchpad 根目录下、与本会话同级的会话目录，且该会话的转录 24 小时没有写入。
+  1. 位置：`$TMPDIR`、`/tmp`、`/var/tmp`、`~/.cache/tmp` 下名字以 `agent-tmp-` 开头的直接子目录（不用 `cc-`：Claude Code 自己的 socket 目录叫 `cc-socks`）；或者 harness scratchpad 根目录下、与本会话同级的会话目录，且该会话的转录 24 小时没有写入。
   2. 属于当前用户，不是符号链接，解析后仍在该根目录内。
   3. 里面任何文件 24 小时内都没有改动。
   4. 顶层没有 `.keep`，也没有被未关闭的 spec 文件、`tasks/*-paused.md` 或延期项点名。
 - 其他目录来源不明，删除仍要硬授权。
-- **创建约定**（§8.V4）：自己起名的临时目录用 `cc-<任务>-` 前缀；要保留就写 `.keep`，写明原因和保留到什么时候。
-- **兜底回收**（`housekeeping.js tmp`）：`cc-*`、无 `.keep`、闲置 72 小时以上就自动删。hook 查不了"是否被引用"，所以门槛比模型侧的 24 小时长，保留只能靠 `.keep`。遍历用 lstat，不跟符号链接；碰到 24 小时内的文件就提前结束；单个目录最多看 200,000 个条目，超出就跳过，并在 `skipped` 里注明。
-- **为什么是前缀，而不是"转录里能看到是代理建的"**：前缀不用读转录就能判断，hook 也能用；使用者自己放在 `/tmp` 里的东西不会带 `cc-`。
+- **创建约定**（§8.V4）：自己起名的临时目录用 `agent-tmp-<任务>-` 前缀；要保留就写 `.keep`，写明原因和保留到什么时候。
+- **兜底回收**（`housekeeping.js tmp`）：`agent-tmp-*`、无 `.keep`、没有 socket 或 FIFO、所有条目的 mtime 和 ctime 都早于 72 小时，就自动删。hook 查不了"是否被引用"，所以门槛比模型侧的 24 小时长，保留只能靠 `.keep`。遍历用 lstat，不跟符号链接；碰到 24 小时内的文件就提前结束；单个目录最多看 200,000 个条目，超出就跳过，并在 `skipped` 里注明。
+- **为什么是前缀，而不是"转录里能看到是代理建的"**：前缀不用读转录就能判断，hook 也能用；使用者自己放在 `/tmp` 里的东西不会带这个前缀。
 - **为什么 scratchpad 只走模型侧**：scratchpad 由 harness 管理，hook 判断不了会话是否结束（resume 会怎样也没查到）；模型侧用"转录 24 小时没写入"判断。
 - **安全**（按 STRIDE 逐项过了一遍，只列有关的几项）：
   - 篡改 / 越权：符号链接、他人文件、解析后跑出根目录，这三种情况都排除。
@@ -53,7 +53,7 @@
 
 ## 计划
 
-- [x] S1：先写失败测试，再实现 `housekeeping.js` 的 `cc-*` 回收、`/var/tmp` 根目录、CLI 输出 — 覆盖 AC1 — 依赖：无 — 执行：主会话
+- [x] S1：先写失败测试，再实现 `housekeeping.js` 的 `agent-tmp-*` 回收、`/var/tmp` 根目录、CLI 输出 — 覆盖 AC1 — 依赖：无 — 执行：主会话
 - [x] S2：改 `tmp-sweep.sh` 的文字和注释，测试先红后绿；改 README 的 tmp-sweep 行 — 覆盖 AC2 — 依赖：S1 — 执行：主会话
 - [x] S3：改规范文字，重建 modules；版本级联、两份 changelog、Sizing、spec-structure 的哈希和锁定行 — 覆盖 AC3 — 依赖：S1 — 执行：主会话
 - [x] S4：跑 `npm run check` 和 `npm run smoke`，然后提交到 `next-release`；release-reviewer 的前缀单独提交到 main — 覆盖 AC4 — 依赖：S1–S3
@@ -63,6 +63,17 @@
 ## 决策与进展
 
 - 2026-11-03：使用者回复"1.按你的建议改 2.按你的建议清 3.不改"，即批准进入实现（L3），并授权一次性清理。清理已完成：36 个目录，`~/.cache/tmp` 2.0 → 1.4 GB，`/tmp/claude-1000` 5.2 GB → 629 MB。`d546`、`d558`、`d577-a5`、`d591`，以及被延期项引用的 `rv-*`，按建议保留。
+- 2026-11-03：0.119.0 的发版前评审（e85aea0..f03fda9）：Critical 0、High 1、Medium 4、Low 8。逐条核实后修复：
+  - H1：`cc-` 前缀和 Claude Code 自己的 socket 目录（`/tmp/cc-socks`、`~/.cache/tmp/cc-socks`，有 `claude` 进程在监听）撞名。前缀改为 `agent-tmp-`；里面有 socket 或 FIFO 的目录不删。
+  - M1：只看 mtime 时，`cp -a`、`rsync -a`、`tar` 填进去的目录会被当场删掉。改为同时看 mtime 和 ctime，参照 systemd-tmpfiles 的 age 规则；atime 不看，因为本身的遍历会刷新它。测试改为把时钟往后推；CLI 的时钟接口只在扫描目录被重定向时生效。
+  - M2：核心 §8.V4 写出这一类的条件，其余仍是 §5 Hard。
+  - M3：`sandbox-disposal-check` 认 `agent-tmp-*`。
+  - M4、L5、L1：发布文字里的数字改为新规则覆盖的部分：临时根目录的授权请求 8 条，回复 3 条，都批准。另外改正了"Not changed"那条。
+  - L2：§5.1 Never-downgrade 写明这一类属于 Soft。
+  - L3：补测 `--min-age-minutes` 不影响 `agent-tmp-*` 的门槛。
+  - L4：hook 提示写出全部条件。
+  - L6：auth.md 写明删除前先说明（`aggressive` 下不用）。
+  - 不修，记入发版记录的遗留：L7（并发计数，旧代码就有）、L8（属主只查顶层；`rmSync` 不检查挂载点），原因是这台机器上没有 root，没法写测试。
 - 2026-11-03：S1–S4 完成。rebase 到 main 之后，`next-release` 上是 07737a3（回收脚本、hook 文字、README）和 1613b31（spec v8.5.0）；main 上是 5e2695f（release-reviewer 的 `cc-rrev-` 前缀）。S5 由使用者 11-03 要求的 0.119.0 发版完成（发版记录 `tasks/specs/release-0.119.0-2026-11-03.md`）。
 - 2026-11-03：auth.md 新段补了一句"NEVER-covers above bounds the prefix list; this class carries its own bounds"。原因：NEVER-covers 里有"解析后离开项目根目录的路径"，不补这一句，读者可能以为它也约束新这一类。
 - 2026-11-03：hook 回收门槛定为 72 小时，模型侧为 24 小时。理由是 hook 查不了引用，宁可晚删。

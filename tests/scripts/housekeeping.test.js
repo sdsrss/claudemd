@@ -257,15 +257,19 @@ test('vitest tmp: CLI --root that is missing, not a directory or empty is a usag
   }
 });
 
-// ---- agent temp residue (cc-*) ----
+// ---- agent temp residue (agent-tmp-*) ----
 // Spec §5-EXT Agent temp residue: an agent names what it creates in a temp
-// root cc-<task>-XXXXXX and keeps one with a .keep; the sweep reaps the rest
-// once nothing inside changed for 72 h. The hook cannot see whether a spec
-// file or a deferred item names a dir, hence the longer floor than the
-// model-side 24 h, and .keep as the only way to retain one.
+// root agent-tmp-<task>-XXXXXX and keeps one with a .keep; the sweep reaps the
+// rest once no entry's mtime or ctime is within 72 h. The hook cannot see
+// whether a spec file or a deferred item names a dir, hence the longer floor
+// than the model-side 24 h, and .keep as the only way to retain one.
+// ctime cannot be set back, so these cases age a fixture by moving the clock
+// forward (`now`, or CLAUDEMD_TMP_SWEEP_TEST_NOW_MS for the CLI).
 const AGENT_FLOOR_H = 72;
+const after = h => Date.now() + h * HOUR;
+const STALE = () => after(AGENT_FLOOR_H + 1);
 
-const agentDir = (name = 'cc-review-AbC123') => {
+const agentDir = (name = 'agent-tmp-review-AbC123') => {
   const d = path.join(root, name);
   fs.mkdirSync(path.join(d, 'repo', 'src'), { recursive: true });
   fs.writeFileSync(path.join(d, 'repo', 'src', 'a.js'), 'x');
@@ -274,7 +278,13 @@ const agentDir = (name = 'cc-review-AbC123') => {
 };
 
 const agentScan = (extra = {}) =>
-  housekeeping.scanAgentTmp({ roots: [root], ...extra }).targets.map(t => t.path);
+  housekeeping.scanAgentTmp({ roots: [root], now: STALE(), ...extra }).targets.map(t => t.path);
+
+const cli = (args, nowMs) =>
+  spawnSync('node', [SCRIPT, 'tmp', ...args, `--root=${root}`], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDEMD_TMP_SWEEP_TEST_NOW_MS: nowMs === undefined ? '' : String(nowMs) },
+  });
 
 test('agent tmp: the floor is 72 h and /var/tmp is a default root', () => {
   assert.equal(housekeeping.AGENT_TMP_FLOOR_MS, AGENT_FLOOR_H * HOUR);
@@ -287,10 +297,9 @@ test('agent tmp: the floor is 72 h and /var/tmp is a default root', () => {
   }
 });
 
-test('agent tmp: a cc-* dir idle past the floor is a target, with its bytes', () => {
+test('agent tmp: an agent-tmp-* dir idle past the floor is a target, with its bytes', () => {
   const d = agentDir();
-  age(d, AGENT_FLOOR_H + 1);
-  const r = housekeeping.scanAgentTmp({ roots: [root] });
+  const r = housekeeping.scanAgentTmp({ roots: [root], now: STALE() });
   assert.deepEqual(
     r.targets.map(t => t.path),
     [d]
@@ -299,58 +308,125 @@ test('agent tmp: a cc-* dir idle past the floor is a target, with its bytes', ()
 });
 
 test('agent tmp: idle less than the floor is kept', () => {
-  const d = agentDir();
-  age(d, AGENT_FLOOR_H - 1);
-  assert.deepEqual(agentScan(), []);
+  agentDir();
+  assert.deepEqual(agentScan({ now: after(AGENT_FLOOR_H - 1) }), []);
 });
 
 test('agent tmp: one fresh file deep inside keeps the whole dir', () => {
   const d = agentDir();
-  age(d, AGENT_FLOOR_H + 1);
-  const t = Date.now() / 1000;
+  const t = (STALE() - HOUR) / 1000;
   fs.utimesSync(path.join(d, 'repo', 'src', 'a.js'), t, t);
   assert.deepEqual(agentScan(), []);
+});
+
+// Review M1: cp -a, rsync -a and tar copy old mtimes onto the new dir itself.
+test('agent tmp: a dir filled just now with old mtimes (cp -a / tar) is kept: ctime is fresh', () => {
+  const d = agentDir();
+  age(d, AGENT_FLOOR_H * 4);
+  assert.deepEqual(housekeeping.scanAgentTmp({ roots: [root] }).targets, []);
+});
+
+// The top dir and each entry are judged separately: a dir renamed into an
+// agent-tmp-* name has a fresh ctime on the top alone, a chmod on one file a
+// fresh ctime on that file alone. The clock is put between the two ctimes.
+const statsUnder = d => {
+  const out = [];
+  const walk = q => {
+    const st = fs.lstatSync(q);
+    out.push({ p: q, st });
+    if (st.isDirectory()) for (const n of fs.readdirSync(q)) walk(path.join(q, n));
+  };
+  walk(d);
+  return out;
+};
+const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const newestOf = rows => Math.max(...rows.map(r => Math.max(r.st.mtimeMs, r.st.ctimeMs)));
+
+test('agent tmp: a fresh ctime on the top dir alone keeps it (renamed into place)', () => {
+  const src = path.join(root, 'old-work');
+  fs.mkdirSync(path.join(src, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'sub', 'f'), 'x');
+  pause(60);
+  const d = path.join(root, 'agent-tmp-moved-AbC123');
+  fs.renameSync(src, d);
+  const rows = statsUnder(d);
+  const inner = newestOf(rows.slice(1));
+  assert.ok(rows[0].st.ctimeMs > inner + 30, 'fixture: the rename refreshed the top ctime');
+  const now = inner + AGENT_FLOOR_H * HOUR + 10;
+  assert.deepEqual(agentScan({ now }), []);
+});
+
+test('agent tmp: a fresh ctime on one inner file alone keeps the dir (chmod)', () => {
+  const d = agentDir();
+  pause(60);
+  const f = path.join(d, 'repo', 'src', 'a.js');
+  fs.chmodSync(f, 0o600);
+  const rows = statsUnder(d);
+  const others = newestOf(rows.filter(r => r.p !== f));
+  assert.ok(fs.lstatSync(f).ctimeMs > others + 30, 'fixture: the chmod refreshed only that ctime');
+  const now = others + AGENT_FLOOR_H * HOUR + 10;
+  assert.deepEqual(agentScan({ now }), []);
 });
 
 test('agent tmp: a .keep at the top keeps the dir, whatever its age', () => {
   const d = agentDir();
   fs.writeFileSync(path.join(d, '.keep'), 'repro for D#123, until 2026-12-01');
-  age(d, 24 * 30);
-  assert.deepEqual(agentScan(), []);
+  assert.deepEqual(agentScan({ now: after(24 * 30) }), []);
 });
 
+// Review H1: Claude Code keeps its listening sockets in cc-socks dirs.
 for (const name of [
+  'cc-socks',
+  'cc-socks-1000',
+  'cc-review-AbC123',
   'rv-6310-claims',
   'tmp.AbCdEfGhIj',
-  'claude-mem-testrun-AbC123',
-  'cc',
-  'CC-task-AbC123',
+  'agent-tmp',
+  'agent-tmp-',
+  'AGENT-TMP-task-AbC123',
 ]) {
-  test(`agent tmp: '${name}' (no cc- prefix) is not a target`, () => {
-    const d = agentDir(name);
-    age(d, AGENT_FLOOR_H + 1);
+  test(`agent tmp: '${name}' (no agent-tmp-<x> name) is not a target`, () => {
+    agentDir(name);
     assert.deepEqual(agentScan(), []);
   });
 }
 
-test('agent tmp: a regular file named cc-* is not a target', () => {
-  const f = path.join(root, 'cc-notes');
-  fs.writeFileSync(f, 'x');
-  age(f, AGENT_FLOOR_H + 1);
+test('agent tmp: a socket inside keeps the dir and is reported as skipped', async () => {
+  const d = agentDir();
+  // A short path: a unix socket path is capped near 104 bytes.
+  const sock = path.join(d, 's');
+  const net = await import('node:net');
+  const srv = net.createServer();
+  await new Promise(res => srv.listen(sock, res));
+  try {
+    const r = housekeeping.scanAgentTmp({ roots: [root], now: STALE() });
+    assert.deepEqual(r.targets, []);
+    assert.deepEqual(r.skipped, [{ path: d, reason: 'socket-or-fifo' }]);
+  } finally {
+    await new Promise(res => srv.close(res));
+  }
+});
+
+test('agent tmp: a FIFO inside keeps the dir', { skip: process.platform === 'win32' }, () => {
+  const d = agentDir();
+  const r = spawnSync('mkfifo', [path.join(d, 'f')]);
+  assert.equal(r.status, 0, String(r.stderr));
   assert.deepEqual(agentScan(), []);
 });
 
-test('agent tmp: a symlink named cc-* is neither followed nor deleted', () => {
+test('agent tmp: a regular file named agent-tmp-* is not a target', () => {
+  fs.writeFileSync(path.join(root, 'agent-tmp-notes'), 'x');
+  assert.deepEqual(agentScan(), []);
+});
+
+test('agent tmp: a symlink named agent-tmp-* is neither followed nor deleted', () => {
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-housekeeping-out-'));
   try {
     fs.writeFileSync(path.join(outside, 'f'), 'x');
-    age(outside, AGENT_FLOOR_H + 1);
-    const link = path.join(root, 'cc-link-AbC123');
+    const link = path.join(root, 'agent-tmp-link-AbC123');
     fs.symlinkSync(outside, link);
-    const t = (Date.now() - (AGENT_FLOOR_H + 1) * HOUR) / 1000;
-    fs.lutimesSync(link, t, t);
     assert.deepEqual(agentScan(), []);
-    housekeeping.sweepTmp({ roots: [root], apply: true, minAgeMs: HOUR });
+    housekeeping.sweepTmp({ roots: [root], apply: true, minAgeMs: HOUR, now: STALE() });
     assert.ok(fs.lstatSync(link).isSymbolicLink());
     assert.ok(fs.existsSync(path.join(outside, 'f')));
   } finally {
@@ -361,15 +437,15 @@ test('agent tmp: a symlink named cc-* is neither followed nor deleted', () => {
 test('agent tmp: a symlink inside is not followed: its target neither keeps the dir nor is deleted', () => {
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-housekeeping-out-'));
   try {
-    fs.writeFileSync(path.join(outside, 'live'), 'x'); // fresh: would keep the dir if followed
     const d = agentDir();
     fs.symlinkSync(outside, path.join(d, 'link'));
-    age(d, AGENT_FLOOR_H + 1);
-    const t = (Date.now() - (AGENT_FLOOR_H + 1) * HOUR) / 1000;
-    fs.lutimesSync(path.join(d, 'link'), t, t);
-    fs.utimesSync(d, t, t);
-    assert.deepEqual(agentScan(), [d]);
-    const r = housekeeping.sweepTmp({ roots: [root], apply: true, minAgeMs: HOUR });
+    const now = STALE();
+    // Fresh at `now`: would keep the dir if the walk followed the link.
+    fs.writeFileSync(path.join(outside, 'live'), 'x');
+    const t = (now - HOUR) / 1000;
+    fs.utimesSync(path.join(outside, 'live'), t, t);
+    assert.deepEqual(agentScan({ now }), [d]);
+    const r = housekeeping.sweepTmp({ roots: [root], apply: true, minAgeMs: HOUR, now });
     assert.equal(r.agent.deleted, 1);
     assert.ok(!fs.existsSync(d));
     assert.ok(fs.existsSync(path.join(outside, 'live')));
@@ -379,70 +455,96 @@ test('agent tmp: a symlink inside is not followed: its target neither keeps the 
 });
 
 test('agent tmp: another uid is not a target', () => {
-  const d = agentDir();
-  age(d, AGENT_FLOOR_H + 1);
+  agentDir();
   assert.deepEqual(agentScan({ uid: process.getuid() + 1 }), []);
 });
 
 test('agent tmp: more entries than the cap is skipped and says why', () => {
   const d = agentDir();
   for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(d, `f${i}`), 'x');
-  age(d, AGENT_FLOOR_H + 1);
-  const r = housekeeping.scanAgentTmp({ roots: [root], maxEntries: 4 });
+  const r = housekeeping.scanAgentTmp({ roots: [root], maxEntries: 4, now: STALE() });
   assert.deepEqual(r.targets, []);
   assert.deepEqual(r.skipped, [{ path: d, reason: 'too-many-entries' }]);
 });
 
 test('agent tmp: a target that turns fresh between scan and delete is kept (recheck)', () => {
   const d = agentDir();
-  age(d, AGENT_FLOOR_H + 1);
-  const { targets } = housekeeping.scanAgentTmp({ roots: [root] });
+  const now = STALE();
+  const { targets } = housekeeping.scanAgentTmp({ roots: [root], now });
   assert.equal(targets.length, 1);
+  const t = (now - HOUR) / 1000;
   fs.writeFileSync(path.join(d, 'repo', 'new.js'), 'y');
-  const r = housekeeping.removeAgentTargets({ targets });
+  fs.utimesSync(path.join(d, 'repo', 'new.js'), t, t);
+  const r = housekeeping.removeAgentTargets({ targets, now });
   assert.equal(r.deleted, 0);
   assert.ok(fs.existsSync(d));
 });
 
-test('agent tmp: CLI --apply deletes stale cc-* and vitest dirs and nothing else, 0 exit', () => {
+test('agent tmp: CLI --apply deletes stale agent-tmp-* and vitest dirs and nothing else, 0 exit', () => {
   const stale = agentDir();
-  age(stale, AGENT_FLOOR_H + 1);
-  const fresh = agentDir('cc-live-XyZ789');
-  const kept = agentDir('cc-kept-QwE456');
+  const kept = agentDir('agent-tmp-kept-QwE456');
   fs.writeFileSync(path.join(kept, '.keep'), 'why');
-  age(kept, AGENT_FLOOR_H + 1);
   const foreign = agentDir('rv-6314-r2-delta');
-  age(foreign, AGENT_FLOOR_H + 1);
+  const socks = agentDir('cc-socks');
   const vit = vitestDir();
   age(vit, 2);
-  const r = spawnSync('node', [SCRIPT, 'tmp', '--apply', `--root=${root}`], { encoding: 'utf8' });
+  const now = STALE();
+  // Fresh at `now`: modified one hour before it.
+  const fresh = agentDir('agent-tmp-live-XyZ789');
+  const t = (now - HOUR) / 1000;
+  fs.utimesSync(path.join(fresh, 'report.md'), t, t);
+  const r = cli(['--apply'], now);
   assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout);
   assert.equal(out.deleted, 1);
   assert.equal(out.agent.deleted, 1);
   assert.equal(out.agent.minAgeMs, AGENT_FLOOR_H * HOUR);
   assert.deepEqual(
-    out.agent.targets.map(t => t.path),
+    out.agent.targets.map(x => x.path),
     [stale]
   );
   assert.ok(!fs.existsSync(stale));
   assert.ok(!fs.existsSync(vit));
-  for (const p of [fresh, kept, foreign]) assert.ok(fs.existsSync(p), p);
+  for (const p of [fresh, kept, foreign, socks]) assert.ok(fs.existsSync(p), p);
+});
+
+// Review L3: --min-age-minutes is the vitest floor only.
+test('agent tmp: CLI --min-age-minutes does not lower the agent-tmp-* floor', () => {
+  const d = agentDir();
+  const r = cli(['--apply', '--min-age-minutes=60'], after(2));
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.agent.targets, []);
+  assert.equal(out.agent.deleted, 0);
+  assert.ok(fs.existsSync(d));
+});
+
+test('agent tmp: the CLI clock seam is ignored unless the roots are redirected', () => {
+  const d = agentDir();
+  // TMPDIR=root makes the fixture's parent a DEFAULT root ($TMPDIR, os.tmpdir()),
+  // so the only difference between the two runs is --root. Dry runs.
+  const env = { ...process.env, TMPDIR: root, CLAUDEMD_TMP_SWEEP_TEST_NOW_MS: String(STALE()) };
+  delete env.CLAUDEMD_TMP_SWEEP_ROOTS;
+  const listed = args => {
+    const r = spawnSync('node', [SCRIPT, 'tmp', ...args], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout).agent.targets.map(x => x.path);
+  };
+  assert.ok(!listed([]).includes(d), 'default roots: the real clock judges, the fixture is fresh');
+  assert.deepEqual(listed([`--root=${root}`]), [d], 'redirected root: the seam clock judges');
+  assert.ok(fs.existsSync(d));
 });
 
 test(
-  'agent tmp: CLI --apply exits 3 when a cc-* target cannot be deleted',
+  'agent tmp: CLI --apply exits 3 when an agent-tmp-* target cannot be deleted',
   { skip: process.getuid() === 0 && 'root ignores the mode bits' },
   () => {
     const d = agentDir();
-    age(d, AGENT_FLOOR_H + 1);
     const src = path.join(d, 'repo', 'src');
-    const t = (Date.now() - (AGENT_FLOOR_H + 1) * HOUR) / 1000;
     fs.chmodSync(src, 0o555);
-    fs.utimesSync(src, t, t);
     let r;
     try {
-      r = spawnSync('node', [SCRIPT, 'tmp', '--apply', `--root=${root}`], { encoding: 'utf8' });
+      r = cli(['--apply'], STALE());
     } finally {
       fs.chmodSync(src, 0o755);
     }

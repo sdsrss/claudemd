@@ -18,10 +18,14 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           and the newest mtime anywhere inside is older than the floor
           (60 min, or 24 h while a vitest watch-mode process of this uid runs).
           Also reclaims agent temp residue (spec §5-EXT), reported under
-          \`agent\`: a real directory owned by this uid, named cc-*, with no
-          .keep at its top, in which no entry (read with lstat; a symlink is
-          never followed) changed for 72 h; one past 200000 entries or with an
-          unreadable subdirectory is listed under \`skipped\` instead.
+          \`agent\`: a real directory owned by this uid, named agent-tmp-*,
+          with no .keep at its top, in which no entry (read with lstat; a
+          symlink is never followed) has an mtime or ctime within 72 h; one
+          holding a socket or FIFO, past 200000 entries or with an unreadable
+          subdirectory is listed under \`skipped\` instead.
+          CLAUDEMD_TMP_SWEEP_TEST_NOW_MS (epoch ms) sets the clock ages are
+          judged against, only together with --root or
+          CLAUDEMD_TMP_SWEEP_ROOTS (test seam).
           Roots: $TMPDIR, os.tmpdir(), /tmp, /var/tmp and ~/.cache/tmp,
           de-duplicated (CLAUDEMD_TMP_SWEEP_ROOTS, colon-separated, replaces
           the list).
@@ -79,8 +83,8 @@ refused   Judge the branches a \`git branch -d\` command left in place: the
 Options:
   --apply                tmp: delete (default is a dry run that only reports).
   --root=DIR             tmp: scan only DIR, an existing directory (test seam).
-  --min-age-minutes=N    tmp: override the vitest age floor (the cc-* floor
-                         stays 72 h).
+  --min-age-minutes=N    tmp: override the vitest age floor (the agent-tmp-*
+                         floor stays 72 h).
   --cwd=DIR              branches, refused: repository to inspect, or the
                          directory a -C in the command is relative to
                          (default: cwd).
@@ -272,24 +276,30 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
   return { minAgeMs, targets, ...removed };
 }
 
-// ---- agent temp residue (cc-*) ----
+// ---- agent temp residue (agent-tmp-*) ----
 //
 // Spec §5-EXT Agent temp residue: an agent names a temp dir it creates
-// cc-<task>-XXXXXX and retains one with a top-level .keep. A dir the creating
-// task did not remove is reaped here once nothing inside changed for 72 h.
-// The model-side rule waits 24 h, but it also checks that no open spec file,
-// paused checkpoint or deferred item names the dir; this sweep cannot, so it
-// waits longer and honours .keep alone.
+// agent-tmp-<task>-XXXXXX and retains one with a top-level .keep. A dir the
+// creating task did not remove is reaped here once nothing inside changed for
+// 72 h. The model-side rule waits 24 h, but it also checks that no open spec
+// file, paused checkpoint or deferred item names the dir; this sweep cannot,
+// so it waits longer and honours .keep alone.
 //
-// Freshness is the newest mtime of any entry, read with lstat: a symlink is
-// never followed, so a fresh file outside does not keep the dir and is not
-// deleted with it. mtime is what an extraction can set back (tar restores
-// archive times), which the 72 h floor and the recheck before each rm bound.
+// Not cc-*: Claude Code keeps its listening sockets in /tmp/cc-socks and
+// ~/.cache/tmp/cc-socks (0.119.0 pre-tag review H1). A socket or FIFO
+// anywhere inside also keeps the dir: something may be listening on it.
+//
+// Freshness is the newest of mtime and ctime of any entry, read with lstat: a
+// symlink is never followed, so a fresh file outside does not keep the dir
+// and is not deleted with it. ctime because `cp -a`, `rsync -a` and tar set
+// mtimes back, the dir's own included, and none of them can set ctime (review
+// M1). atime is left out, unlike systemd-tmpfiles: this walk's own readdir
+// refreshes a directory's atime, so a dir would never age.
 export const AGENT_TMP_FLOOR_MS = 72 * HOUR;
-const AGENT_DIR_NAME = /^cc-./;
+const AGENT_DIR_NAME = /^agent-tmp-./;
 const AGENT_MAX_ENTRIES = 200000;
 
-// Returns { bytes } for a cc-* dir idle past `cutoffMs`, { skip: reason } when
+// Returns { bytes } for an agent-tmp-* dir idle past `cutoffMs`, { skip: reason } when
 // it cannot be judged, null when it is not a target.
 function agentResidue(dir, uid, cutoffMs, maxEntries) {
   let st;
@@ -298,7 +308,7 @@ function agentResidue(dir, uid, cutoffMs, maxEntries) {
   } catch {
     return null;
   }
-  if (!st.isDirectory() || st.uid !== uid || st.mtimeMs >= cutoffMs) return null;
+  if (!st.isDirectory() || st.uid !== uid || Math.max(st.mtimeMs, st.ctimeMs) >= cutoffMs) return null;
   try {
     fs.lstatSync(path.join(dir, '.keep'));
     return null;
@@ -324,7 +334,8 @@ function agentResidue(dir, uid, cutoffMs, maxEntries) {
       } catch {
         return null; // vanished between readdir and lstat: something is at work in it
       }
-      if (s.mtimeMs >= cutoffMs) return null;
+      if (Math.max(s.mtimeMs, s.ctimeMs) >= cutoffMs) return null;
+      if (s.isSocket() || s.isFIFO()) return { skip: 'socket-or-fifo' };
       if (s.isDirectory()) stack.push(path.join(d, n));
       else if (s.isFile()) bytes += s.size;
     }
@@ -1095,6 +1106,14 @@ if (invokedAsMain(import.meta.url)) {
         process.exit(2);
       }
       opts.roots = [r];
+    }
+    // Test seam: the clock both arms judge age against, honoured only while the
+    // roots are redirected (--root or CLAUDEMD_TMP_SWEEP_ROOTS). ctime cannot
+    // be set back, so a suite ages a fixture by moving the clock forward.
+    const testNow = process.env.CLAUDEMD_TMP_SWEEP_TEST_NOW_MS;
+    if (testNow && (opts.roots || process.env.CLAUDEMD_TMP_SWEEP_ROOTS)) {
+      const n = Number(testNow);
+      if (Number.isFinite(n)) opts.now = n;
     }
     if (p.values['--min-age-minutes'] !== undefined) {
       const n = parsePositiveInt(p.values['--min-age-minutes']);

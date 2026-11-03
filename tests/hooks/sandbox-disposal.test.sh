@@ -429,7 +429,22 @@ chmod 755 "$HOME/.claude/.claudemd-state"
 [[ -z "$STDERR" ]] && echo "PASS: 29 an unwritable state dir prints nothing" \
   || { echo "FAIL: 29 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
 
-TOTAL=$((29 - ${SKIPPED:-0}))
+# Case 30 (0.119.0 pre-tag review M3): spec v8.5.0 §8.V4 has agents name
+# their temp dirs agent-tmp-<task>-…; both filters must see that name, or the
+# hook that checks "the creating task deletes it" goes blind to it.
+rm -rf "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+mkdir -p "$HOME/.claude/tmp" "$HOME/.claude/.claudemd-state" "$SYSTEM_FIXTURE"
+touch "$HOME/.claude/.claudemd-state/session-start.ref"
+sleep 1
+mkdir "$SYSTEM_FIXTURE/agent-tmp-sys-AbC123" "$HOME_FIXTURE/agent-tmp-home-AbC123"
+STDERR=$(SANDBOX_DISPOSAL_IMMEDIATE=1 CLAUDEMD_SCAN_SPECS_OVERRIDE="${SYSTEM_FIXTURE}|claudemd_only${RS}${HOME_FIXTURE}|both" bash "$HOOK" <<<'{}' 2>&1)
+if echo "$STDERR" | grep -q "agent-tmp-sys-AbC123" && echo "$STDERR" | grep -q "agent-tmp-home-AbC123"; then
+  echo "PASS: 30 agent-tmp-* dirs are flagged by both filters"
+else
+  echo "FAIL: 30 (stderr: $STDERR)"; FAIL=$((FAIL+1))
+fi
+
+TOTAL=$((30 - ${SKIPPED:-0}))
 if (( FAIL > 0 )); then
   echo "Tests: $((TOTAL - FAIL))/$TOTAL passed$( (( SKIPPED > 0 )) && echo " ($SKIPPED skipped)")"; exit 1
 fi
