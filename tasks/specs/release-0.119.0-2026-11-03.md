@@ -1,6 +1,6 @@
 # 0.119.0：spec v8.5.0（代理临时残留）与 agent-tmp-* 自动回收的发版
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -25,8 +25,8 @@
 - [x] S1：`next-release` rebase 到 main（5e2695f），切出 `release/v0.119.0`；五处版本号；CHANGELOG 条目单独扫描（2101 字节，OK）
 - [x] S2：`git add` 后 `npm run check`，`npm run smoke`
 - [x] S3：提交、推送、开 draft PR（#32）；f03fda9 的 PR CI 全绿（run 41647419898）
-- [ ] S4：发版前评审（新开的评审代理），修复轮
-- [ ] S5：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
+- [x] S4：发版前评审（新开的评审代理）两轮、修复轮（e72ba96、288057d）
+- [x] S5：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`（tag v0.119.0 在 288057d）
 
 ## 决策与进展
 
@@ -57,3 +57,7 @@
 - 修复轮 `npm run smoke` → 通过：SMOKE 2/2
 - 修复轮变异检验：前缀改回包含 `cc-`、去掉顶层 ctime、去掉内部 ctime、去掉 socket 判断、去掉 FIFO 判断、时钟接口不设门禁、`--min-age-minutes` 传到 agent 扫描，每个都至少让 1 个用例失败
 - 修复前后：`tmp-sweep.test.sh` 在修复前的 hook 和脚本上 17/20（8c、12、13 失败），修复后 20/20；`sandbox-disposal.test.sh` 用例 30 修复前失败，修复后 30/30；`housekeeping.test.js` 新用例在修复前的脚本上失败 10 个，修复后 113 通过、1 跳过
+- 最终提交 288057d 的 PR CI（run 41657087398）→ 通过：7/7
+- `git merge --ff-only` 到 main 并推送（288057d）；带注释的 tag v0.119.0 已推送；GitHub Release v0.119.0 已创建；PR #32 显示 MERGED（2026-11-03T15:08:33Z）
+- tag 的 `ci`（run 41660806138）→ 通过；`npm-publish`（run 41660806059）→ 通过，`publish` job 打出 `+ claudemd-cli@0.119.0`（15:38:20Z）
+- `npm view claudemd-cli@0.119.0 version _npmUser` → 通过：`0.119.0`，`GitHub Actions <npm-oidc-no-reply@github.com>`（15:39:31Z 可见，publish 后约 70 秒）；dist-tags latest = 0.119.0
