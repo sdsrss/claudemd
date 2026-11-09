@@ -1,6 +1,6 @@
 # 下一批次的遗留小修：tmp 回收的并发与挂载点、sandbox-disposal 遥测带目录名、askRate 标明未校准
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -35,7 +35,7 @@
 - [x] AC3：`sandbox-disposal` 的 warn 和 block 行带 `extra.names`，是 stderr / block 原因里列出的目录的 basename，最多 5 个；含 `"` 或 `\` 的名字仍是合法 JSON。验证：`bash tests/hooks/sandbox-disposal.test.sh`，新增用例改动前失败。
 - [x] AC4：`sampling-audit` 汇总和每个分类的 `askRate` 带 `precision: null`、`status: "collecting"`；计数不变。验证：`node --test tests/scripts/sampling-audit.test.js`，新增用例改动前失败。
 - [x] AC5：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。
-- [ ] AC6：随下一个非紧急批次发版（与 `tasks/specs/gate-precision-fixes-2026-11-03.md` 同批），CHANGELOG 写明这四处改动和 AC7 的 doctor 改动。验证：发版记录 `tasks/specs/release-*.md`。
+- [x] AC6：随下一个非紧急批次发版（与 `tasks/specs/gate-precision-fixes-2026-11-03.md` 同批），CHANGELOG 写明这四处改动和 AC7 的 doctor 改动。验证：发版记录 `tasks/specs/release-*.md`。
 - [x] AC7：doctor `runbook-review-step` 把写有 `pre-tag review` 或 `fresh … subagent(s)` 的手册算作有评审步骤；只在教训里提到评审者的手册仍然报。验证：`node --test tests/scripts/runbook-review-check.test.js`，新增用例改动前失败；本机 doctor 从 4/9 变成 2/9。
 - [x] AC8：F37 NPXARG 登记在 `docs/S8-RESIDUALS.md`，语料 `S8-NPXA1`–`S8-NPXA9`，闸门判定不变。验证：`bash tests/hooks/pre-bash-safety.test.sh`。
 - [x] AC9：发版前提前跑 bash 3.2.57 运行时套件，全部通过。验证：`BASH32_BIN=<本机编译的 3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh`。
@@ -54,7 +54,7 @@
 - [x] S2：改 `housekeeping.js`、`sandbox-disposal-check.sh`、`sampling-audit.js`、`RULE-HITS-SCHEMA.md` — 依赖：S1
 - [x] S3：`npm run check`、`npm run smoke`，分两个提交到 `next-release`（tmp 回收一个，两处遥测一个） — 覆盖 AC5 — 依赖：S2
 - [x] S5：第二轮：doctor 指纹（先写失败用例）、F37 登记、本机 bash 3.2，`npm run check`、`npm run smoke` — 覆盖 AC7–AC9 — 依赖：S3 — 执行：主会话
-- [ ] S4：随下一个批次发版 — 覆盖 AC6 — 依赖：S3、S5
+- [x] S4：随下一个批次发版 — 覆盖 AC6 — 依赖：S3、S5
 
 ## 决策与进展
 
@@ -72,7 +72,7 @@
 - 2026-11-03：bash 3.2 本机可以跑：在 `ubuntu:24.04` 容器里从源码编译（runbook 的写法），得到的 glibc 二进制能在宿主上运行。上一条"本机没有能在宿主上运行的 3.2"只对 `bash:3.2` 和 `loop-eng-bash32` 两个 musl 镜像成立。
 - 2026-11-03：提交（本地 `next-release`）：44fc93c（doctor 指纹），a567a1e（F37 登记）。
 - 2026-11-03（第三轮，"遗留的工作……按你的建议执行"）：`next-release` 推到 origin（b3ccb85..b66b622，不触发 CI）。F37 漏拒方向仍只登记：0/4,776 的上限按三分之一法则约为每条命令 0.06%，修它会让 `--prefix <目录> <包>` 这种真实写法新增误拒，并且算作要立刻发版的 §8 改动。复测脚本固定在 `tasks/npx-f37-2026-11-03/`（gitignored，`replay.sh` 复现了 4,776 / 7 / 放行 0），11-30 复测记为 D#737，出现 1 次放行来源不明的包就按"只会让放行变成拒绝"的方式修。loop-eng、loop-testing 的发版手册记忆在操作顺序里各加一句打 tag 前评审（loop_eng 仓库的 `RELEASING.md` §2 也没有这一步，没有改：那是另一个仓库，`CLAUDE.md` 有未提交的改动）；doctor `runbook-review-step` 变为 9/9 通过。其他项目的 MEMORY.md（9 个项目 190 行超过 150 字符，2 个超出 12KB）不在这里改：缩短等于改那些项目召回用的标签，合并条目要对照各自的代码。
-- 下一步：随下一个非紧急批次发版（11-09 起），与 `tasks/specs/gate-precision-fixes-2026-11-03.md` 同批；发版分支上再跑一次 bash 3.2（scratchpad 在 tmpfs 上，到时在 docker 里重新编译）。
+- 2026-11-09：随 0.120.0 发布（发版记录 `tasks/specs/release-0.120.0-2026-11-09.md`，tag v0.120.0 在 49459b8）。发版前评审补了挂载点的另一种情况：`agent-tmp-*` 目录本身就是挂载点时，顶层和所有条目设备号相同，b16adfc 的比较不触发；修复为顶层再与临时根比较。runbook-review-step 的 `fresh` 前加了词边界（`refresh … subagents` 曾被当成评审步骤）。
 
 ## 验证记录
 - `node --test tests/scripts/housekeeping.test.js` → 改前失败：新增 3 条（两条 ENOENT 记成错误，挂载点那条目录被列为目标）；改后通过：116 通过，0 失败，1 跳过（跳过的那条改前就跳过）。

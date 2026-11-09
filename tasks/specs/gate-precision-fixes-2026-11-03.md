@@ -1,6 +1,6 @@
 # 闸门准确率修复：banned-vocab 提交信息路径对齐、倍数按完整数字匹配、doctor 按实际拦截排序
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -31,7 +31,7 @@
 - [x] AC4：memory-read-check 拦截行带 `tags`，判定不变。验证：`bash tests/hooks/memory-read-check.test.sh` 新增用例（改前失败）。
 - [x] AC5：doctor 在有 ≥3 次拦截的文件时，详情第一段列出它、次数和标签；没有时输出不变。验证：`node --test tests/scripts/doctor.test.js` 新增用例（改前失败）；在本机跑 doctor，读 `memory-tag-specificity` 一行。
 - [x] AC6：`npm run check` 退出 0，`npm run smoke` 为 SMOKE 2/2。
-- [ ] AC7：随下一个非紧急批次发版，CHANGELOG 条目写明这三处改动，以及 `-F FILE` 不扫、here-doc 里引用的 `-m` 两处残留。验证：发版记录 `tasks/specs/release-*.md`。
+- [x] AC7：随下一个非紧急批次发版，CHANGELOG 条目写明这三处改动，以及 `-F FILE` 不扫、here-doc 里引用的 `-m` 两处残留。验证：发版记录 `tasks/specs/release-*.md`。
 
 ## 方案
 
@@ -54,7 +54,7 @@
 - 2026-11-03：Path 1 剥离只去掉 1 条真实误报，不是评估时估计的 2 条。另一条是 `-F -` here-doc 正文里引用的 `git commit -m "…"`，`-m` 提取器把它当成了说明，提取出来的文字里已经没有反引号。这个提取器不重新解析，在 hook 注释里记为残留。
 - 2026-11-03：第一次跑全量时有 3 个 node 测试失败，都是我的改动漏改的旧锚点：`hook-sigpipe-source.test.js` 的 Path 1 变异行仍写 `MSG_TEXT`；`tests/fixtures/banned-vocab-canonical.json` 里还是旧正则。修复并回 ed3d39f 和 23c8800（重建前是 a1e62f5、5a5eb5c、2535893，都没推送）。
 - 2026-11-03：提交 23c8800 时，说明里用反引号引了一个小数倍数，被已安装的 0.119.0 拦下（提示写的是 `8x slower`），改了措辞才过。这就是 ed3d39f 和 23c8800 要修的那两类问题。
-- 下一步：随下一个非紧急批次发版（本周两次额度已用完）。
+- 2026-11-09：随 0.120.0 发布（发版记录 `tasks/specs/release-0.120.0-2026-11-09.md`，tag v0.120.0 在 49459b8）。发版前评审改了 0680b63 的一处行为：静态扫描 0 个候选时，doctor 不再因为实际拦截变红（拦截也可能是闸门拦对了），只在详情里列出；`-m` 那条残留的条件也比本记录写的宽：命令里任何带引号的 `-m` / `--message` 值都会让 here-doc 里的说明不被扫描。
 
 ## 验证记录
 

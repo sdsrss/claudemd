@@ -1,6 +1,6 @@
 # 0.120.0：11-03 两批遗留修复的合批发版（闸门准确率、tmp 回收并发与挂载点、遥测字段、doctor 指纹）
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -25,10 +25,10 @@
 
 - [x] S1：从 `next-release` 切出 `release/v0.120.0`；五处版本号；CHANGELOG 条目单独扫描；四处 tmp 回收说明
 - [x] S2：`git add` 后 `npm run check`、`npm run smoke`；bash 3.2.57 运行时套件
-- [ ] S3：提交、推送、开 draft PR；PR CI 全绿
-- [ ] S4：发版前评审（新开的评审代理）
-- [ ] S5：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
-- [ ] S6：`next-release` 快进到 `main` 并推送；在 `next-release` 上关闭两份设计记录
+- [x] S3：提交、推送、开 draft PR；PR CI 全绿
+- [x] S4：发版前评审（新开的评审代理）
+- [x] S5：合入 `main`、带注释的 tag、GitHub Release；两条 tag 工作流、`npm view`、`_npmUser`
+- [x] S6：`next-release` 快进到 `main` 并推送；在 `next-release` 上关闭两份设计记录
 
 ## 决策与进展
 
@@ -54,6 +54,8 @@
   - L7（测试注释和名字）：改成"对照组用的是别的词"，与"整份文件里出现就算"一致。
   - 不改，记为遗留：L3（3e89c5c 的提交说明把"会连起来"说成 CHANGELOG 也写了；已推送）。
 - 不修，记为遗留（第一轮编号）：L5（同一文件两行索引时 `tags` 被覆盖、doctor 计数翻倍）；L8（§8：`npx --package=<包> ./路径` 和 `npm exec --package=<包> -- ./路径` 放行一个没钉版本的包，沙箱复现；`--package <包>` 拒绝；pre-bash-safety 在本范围内没有改动，属 F37 一族，是旧问题）；L9（`.5x`、`v1.8x`、`1,000.25x` 仍不完整引用，判定不变）；44fc93c、ed3d39f 等已推送提交说明里的不准确说法。
+- 2026-11-09：第二轮修复（49459b8）后跑 `node scripts/claim-drift.js --range=288057d..HEAD`：列出的名字里，与本版改动有关的（banned-vocab-check、tmp-sweep、housekeeping、`--message`、runbook-review-check、sandbox-disposal-check）逐行重读，没有与 head 代码矛盾的说法。
+- 2026-11-09：49459b8 的 PR CI 全绿后，`main` 快进到 49459b8 并推送，打带注释的 tag v0.120.0，建 GitHub Release；PR #33 显示 MERGED（22:05:42Z），远程 `release/v0.120.0` 已被 GitHub 删除，本地用 `git branch -d` 删除；`next-release` 快进到 49459b8 并推送。
 
 ## 验证记录
 
@@ -70,3 +72,7 @@
 - 第二轮修复：CHANGELOG 条目 2,934 字节，单独扫描通过；L6 新夹具在 `\bfresh\s` 变异下失败，还原后 5/5
 - 第二轮修复 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL
 - 第二轮修复 `npm run smoke` → 通过：SMOKE 2/2；bash 3.2.57 运行时 → 通过：44/44 个套件
+- 最终提交 49459b8 的 PR CI（run 42705744828）→ 通过：7/7
+- tag 的 `ci`（run 42708678183）→ 通过：7/7；`main` 的 `ci`（run 42708649853）→ 通过
+- tag 的 `npm-publish`（run 42708678231）→ 通过，`publish` job 打出 `+ claudemd-cli@0.120.0`（22:19:18Z）
+- `npm view claudemd-cli@0.120.0 version _npmUser` → 通过：`0.120.0`，`GitHub Actions <npm-oidc-no-reply@github.com>`；dist-tags latest = 0.120.0（22:28:45Z 查询）
