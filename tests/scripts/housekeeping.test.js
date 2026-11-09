@@ -574,6 +574,35 @@ test('agent tmp: an entry on another device (a mount point) keeps the dir, at sc
   assert.ok(fs.existsSync(path.join(mnt, 'a.js')));
 });
 
+// 0.120.0 pre-tag review H1: when the agent-tmp-* dir is itself the mount
+// point (`rclone mount remote: "$D"`), its top and every entry carry the
+// mounted filesystem's st.dev, so comparing entries with the top never fires.
+// The top is compared with its parent, the temp root.
+test('agent tmp: a dir that is itself a mount point is kept, at scan and at recheck (0.120.0 review H1)', () => {
+  const d = fs.realpathSync(agentDir());
+  const now = STALE();
+  const real = fs.lstatSync;
+  const m = mock.method(fs, 'lstatSync', (p, ...rest) => {
+    const st = real(p, ...rest);
+    if (p !== d && !String(p).startsWith(d + path.sep)) return st;
+    return new Proxy(st, {
+      get: (t, k) => (k === 'dev' ? t.dev + 1 : typeof t[k] === 'function' ? t[k].bind(t) : t[k]),
+    });
+  });
+  let scanned;
+  let removed;
+  try {
+    scanned = housekeeping.scanAgentTmp({ roots: [root], now });
+    removed = housekeeping.removeAgentTargets({ targets: [{ path: d, bytes: 2 }], now });
+  } finally {
+    m.mock.restore();
+  }
+  assert.deepEqual(scanned.targets, []);
+  assert.deepEqual(scanned.skipped, [{ path: d, reason: 'mount-point' }]);
+  assert.equal(removed.deleted, 0);
+  assert.ok(fs.existsSync(d));
+});
+
 test('agent tmp: CLI --apply deletes stale agent-tmp-* and vitest dirs and nothing else, 0 exit', () => {
   const stale = agentDir();
   const kept = agentDir('agent-tmp-kept-QwE456');

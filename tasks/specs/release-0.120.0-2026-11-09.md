@@ -34,6 +34,17 @@
 
 - 2026-11-09：`main` 的 CI（288057d，run 41660765490）为绿。
 - 2026-11-09：CHANGELOG 条目 2,641 字节，单独扫描通过。
+- 2026-11-09：aa3dfd9 的 PR CI（run 42697781748）7/7 通过。
+- 2026-11-09：第一轮评审（新开的评审代理，288057d..aa3dfd9）：Critical 0、High 1、Medium 4、Low 9。逐条核实后处理：
+  - H1（修代码，先写失败用例）：`agent-tmp-*` 目录本身就是挂载点时，顶层和所有条目的 st.dev 相同，原来的比较不触发，`rmSync` 会删掉挂载进来的内容。修法：顶层再和父目录（临时根）比较。新用例在修复前失败（目录出现在 `targets` 里）。
+  - M1（改文字）：here-doc 里引用 `git commit -m "…"` 时，提取器只扫那段引用，其余部分不扫，所以也会放行。在沙箱 HOME 里复现：同一段含 `significantly` 的说明，加上那行引用就放行，去掉就拒绝。hook 注释和 CHANGELOG"Not changed"改写。ed3d39f 自己的提交说明就是这种情况；它已在 `next-release` 上推送，不改写历史。
+  - M2、M3（修代码，先写失败用例）：静态扫描 0 个候选、但有文件被拦 ≥3 次时，0680b63 让检查变红并建议改标签；拦截也可能是闸门拦对了，doctor 分不清。改为这时检查保持通过，详情前面列出实际拦截。新用例在修复前失败（`ok` 为 false），在 0.119.0 上也失败（没有实际拦截那一段）。
+  - M4（修代码，先写失败用例）：`fresh` 前面没有词边界，`/claudemd-refresh so subagents` 被当成评审步骤。加 `\b`；代码注释和 CHANGELOG 改成"整份文件里出现就算，教训里的也算"。新用例在修复前失败。
+  - L1、L3、L4（CHANGELOG 写给用户的话，改）：跨行的反引号 CLI 与 hook 仍可能不一致；`work/pass`、`robust.and` 这类形状也被剥掉；只有小写扩展名的文件名被剥掉（沙箱复现：`-F msg-robust.txt` 放行，`.TXT` 拒绝）。
+  - L2（hook 注释，随本轮一起改）：剥离后的空格会把两侧的词连起来（`should`x`work`、`70%/p99 faster` 改后拒绝，`claudemd-cli lint` 也拒绝）。
+  - L6：随 M3 的修复解决，`ok=false` 时又一定有候选列表，`commands/claudemd-doctor.md` 的说法重新成立。
+  - L7：发布的代码注释引用了本地文档 `docs/claudemd-effect-assessment-2026-11-03.md`。使用者 11-03 定的是这份文档只放本地（文档第 10 节），所以不提交，两处代码注释改为引用已跟踪的 `tasks/specs/batch-residuals-2026-11-03.md`。
+  - 不修，记为遗留：L5（同一文件两行索引时 `tags` 被覆盖、doctor 计数翻倍）；L8（§8：`npx --package=<包> ./路径` 和 `npm exec --package=<包> -- ./路径` 放行一个没钉版本的包，沙箱复现；`--package <包>` 拒绝；pre-bash-safety 在本范围内没有改动，属 F37 一族，是旧问题）；L9（`.5x`、`v1.8x`、`1,000.25x` 仍不完整引用，判定不变）；44fc93c、ed3d39f 等已推送提交说明里的不准确说法。
 
 ## 验证记录
 
@@ -42,3 +53,7 @@
 - `npm run check`（`git add` 之后）→ 通过：exit 0；node 1804/1807（3 个跳过）；shell 1784 条 PASS、0 条 FAIL
 - `npm run smoke` → 通过：SMOKE 2/2
 - `BASH32_BIN=<scratchpad 里编译的 3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 通过：44/44 个套件（3.2.57 在 `ubuntu:24.04` 里编译，源码包 sha256 与 ci.yml 一致）
+- 第一轮修复：三个新用例（housekeeping"目录本身是挂载点"、doctor"0 个候选时保持通过"、runbook-review-check"refresh … subagents"）在修复前各自失败
+- 第一轮修复 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL
+- 第一轮修复 `npm run smoke` → 通过：SMOKE 2/2；bash 3.2.57 运行时 → 通过：44/44 个套件
+- CHANGELOG 条目修改后 2,856 字节，单独扫描通过

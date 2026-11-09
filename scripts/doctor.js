@@ -1245,18 +1245,14 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
           })
           .join(', ') +
         `${hot.length > 5 ? ` +${hot.length - 5} more` : ''}. `;
-  if (tagFindings.length === 0 && hot.length > 0) {
-    push(
-      'memory-tag-specificity',
-      false,
-      `${observedText}Static scan: ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates. ` +
-        `Fix: drop or rename the matched tag in that project's MEMORY.md.`
-    );
-  } else if (tagFindings.length === 0) {
+  // The observed block never turns the check red on its own: a deny can be the
+  // gate working (the file really was unread), and doctor cannot tell a true
+  // deny from a false one (0.120.0 pre-tag review M3).
+  if (tagFindings.length === 0) {
     push(
       'memory-tag-specificity',
       true,
-      `scanned ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates`
+      `${observedText}scanned ${scannedFiles} MEMORY.md file(s), 0 generic-tag candidates`
     );
   } else {
     // Group by memDir+file for readable output: one row per (memDir, file)

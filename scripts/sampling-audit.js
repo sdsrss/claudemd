@@ -1398,7 +1398,7 @@ function ruleStatus(k) {
 }
 
 // askRate carries its classifier's label the way each byRule entry does (D3,
-// docs/claudemd-effect-assessment-2026-11-03.md §5). With precision null the
+// tasks/specs/batch-residuals-2026-11-03.md). With precision null the
 // JSON's `assent: 0` read as a 0% assent rate; only the rendered report said
 // the count could not be read. mergeAskRate adds the counts and leaves these.
 function emptyAskRate() {

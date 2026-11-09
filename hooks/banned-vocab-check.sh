@@ -151,13 +151,16 @@ fi
 # `claudemd-cli lint` (scripts/lib/lint.js#stripIdentifiers) cannot drift:
 # until 2026-11-03 Path 1 scanned unstripped text, so a word quoted in a
 # backtick span denied here while the CLI passed the same message. Of the 13
-# real Path 1 denies in the 30 days to 11-03 this clears 1; a second, a
-# backticked `git commit -m "…"` quoted inside an `-F -` here-doc, still denies,
-# because the -m extractor below reads that quoted -m as the message (accepted
-# residual: not re-parsing the extractor). A stripped region becomes spaces, so it
-# cannot join its neighbours into a single-space phrase (`should work`); only
-# the two ratio rows, which allow `[[:space:]]+`, could (`3x `y` faster`) — the
-# 4,758-command replay of 2026-11-03 found no such command.
+# real Path 1 denies in the 30 days to 11-03 this clears 1. Accepted residual
+# (not re-parsing the extractor): when an `-F -` here-doc quotes a
+# `git commit -m "…"`, the -m extractor below takes that quoted text as the
+# whole message, so a banned word in the quoted text denies and one anywhere
+# else in that message passes (0.120.0 pre-tag review M1). A stripped region
+# becomes one space, so a word glued to it on both sides joins its neighbours
+# (`should`x`work` → `should work`, `70%/p99 faster` → `70%  faster` for the
+# ratio rows' `[[:space:]]+`); `claudemd-cli lint` denies the same text.
+# sed pairs backticks within a line, lint across lines, so a span that crosses
+# a line can still differ.
 bv_sanitize() {
   printf '%s\n' "$1" \
     | awk "$HOOK_SANITIZE_FENCE_AWK" \

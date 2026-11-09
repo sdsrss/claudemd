@@ -43,15 +43,17 @@ const FLOW_TOKENS = [
 // plus reasonable self-authored variants; NOT on the word "self-review".
 // `pre-tag review` and `fresh … subagent(s)` were added on 2026-11-03, when 2
 // of the 4 runbooks flagged on this machine had the step in those words
-// ("fresh-subagent pre-tag review", "r1: two fresh blind subagents"). A
-// reviewer named only inside a lesson ("a pre-ship reviewer earns its cost",
-// "fresh context, `general-purpose`") still does not count.
+// ("fresh-subagent pre-tag review", "r1: two fresh blind subagents"). The
+// patterns match anywhere in the file, a lesson's text included; a reviewer
+// named in other words ("a pre-ship reviewer earns its cost", "fresh context,
+// `general-purpose`") does not count, and neither does "refresh … subagents"
+// (0.120.0 pre-tag review M4: `fresh` needs a word boundary in front).
 const REVIEW_FINGERPRINT_RE = new RegExp(
   [
     'Author\\s*≠\\s*reviewer',
     'review\\s+before\\s+tag',
     'pre[- ]tag\\s+review',
-    'fresh\\b[^\\n]{0,20}\\bsubagents?\\b',
+    '\\bfresh\\b[^\\n]{0,20}\\bsubagents?\\b',
     // 中文: “tag/发版/发布…前…评审/review” within a short span
     '(tag|发版|发布)[^\\n]{0,20}前[^\\n]{0,30}(评审|review)',
   ].join('|'),

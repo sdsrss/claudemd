@@ -317,7 +317,10 @@ export function sweepVitestTmp({ apply = false, minAgeMs, ...opts } = {}) {
 // sshfs, rclone). Path lookup crosses a mount point under lstat as under stat,
 // so the mount point itself already carries the mounted filesystem's st.dev. A
 // bind mount of the same filesystem keeps st.dev and is not caught; it needs
-// root or a user namespace.
+// root or a user namespace. The dir itself can be the mount point
+// (`rclone mount remote: "$D"`); its top and every entry then share the mounted
+// st.dev, so the top is also compared with its parent, the temp root (0.120.0
+// pre-tag review H1).
 export const AGENT_TMP_FLOOR_MS = 72 * HOUR;
 const AGENT_DIR_NAME = /^agent-tmp-./;
 const AGENT_MAX_ENTRIES = 200000;
@@ -338,6 +341,13 @@ function agentResidue(dir, uid, cutoffMs, maxEntries) {
   } catch {
     // no .keep: go on
   }
+  let parent;
+  try {
+    parent = fs.lstatSync(path.dirname(dir));
+  } catch {
+    return null;
+  }
+  if (parent.dev !== st.dev) return { skip: 'mount-point' };
   let bytes = 0;
   let seen = 0;
   const stack = [dir];

@@ -142,6 +142,27 @@ test('a pre-tag review or fresh-subagent spawn step counts; a reviewer named onl
   }
 });
 
+// 0.120.0 pre-tag review M4: `fresh` had no word boundary in front, so
+// "/claudemd-refresh so subagents load it" read as a review step.
+test('"refresh … subagents" is not a fresh-subagent review step', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
+  try {
+    const dir = path.join(tmp, '-p-mike', 'memory');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'ship-runbook.md'),
+      '# mike runbook\n4. /claudemd-refresh so subagents load it\n5. git tag -a vX.Y.Z; git push origin vX.Y.Z\n'
+    );
+    const out = scanRunbookReviewSteps({ rootDir: tmp });
+    assert.deepEqual(
+      out.missing.map(m => m.project),
+      ['-p-mike']
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('中文 review fingerprint (tag 前……评审) is recognized', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
   try {

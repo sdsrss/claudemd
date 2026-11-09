@@ -198,7 +198,7 @@ if [[ -n "$FOUND" ]]; then
   LIST=$(printf '%s' "$FOUND" | sed -e '/^$/d' -e 's/^/  - /' | head -n 5)
   # The row names what the advisory listed (basenames, the same five), or
   # whether it was right cannot be checked afterwards: 73 warn rows in 30 days
-  # carried only a count (D2, docs/claudemd-effect-assessment-2026-11-03.md §5).
+  # carried only a count (D2, tasks/specs/batch-residuals-2026-11-03.md).
   # The escape helper comes with hook-common.sh; without it no row is written.
   NAMES=""
   while IFS= read -r p; do

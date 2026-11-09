@@ -1109,6 +1109,36 @@ test('memory-tag-specificity leads with files the gate actually denied ≥3 time
   assert.ok(staticBlock, 'the static candidate list follows the observed block');
 });
 
+// 0.120.0 pre-tag review M2/M3: a deny can be the gate working (the runbook
+// really was unread), and doctor cannot tell a true deny from a false one. With
+// no generic-tag candidate the check stays green and shows the observed block.
+test('memory-tag-specificity stays ok with 0 generic-tag candidates and shows the observed denies', async () => {
+  const mem = box.claude('projects/-work-obs/memory');
+  fs.mkdirSync(mem, { recursive: true });
+  fs.writeFileSync(
+    path.join(mem, 'MEMORY.md'),
+    '- [Runbook](runbook.md) [ship-runbook, release-checklist] — desc\n'
+  );
+  const row =
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      hook: 'memory-read-check',
+      event: 'deny',
+      project: '-work-obs',
+      session_id: 'aaaaaaaa-1111-2222-3333-444444444444',
+      spec_section: '§11-memory-read',
+      extra: { missing: ['runbook.md'], match_count: 1, tags: { 'runbook.md': ['ship-runbook'] } },
+    }) + '\n';
+  fs.writeFileSync(box.claude('logs/claudemd.jsonl'), row.repeat(3));
+  const c = (await doctor({})).checks.find(x => x.name === 'memory-tag-specificity');
+  assert.ok(c, 'memory-tag-specificity check must exist');
+  assert.equal(c.ok, true);
+  assert.match(
+    c.detail,
+    /^Observed in 30d \(memory-read-check denies ≥3\): -work-obs\/runbook\.md 3× \(tags: ship-runbook×3\)\. scanned \d+ MEMORY\.md file\(s\), 0 generic-tag candidates$/
+  );
+});
+
 test('memory-tag-specificity output is unchanged below the observed threshold', async () => {
   writeMemTagFixture({ denies: 2 });
   const c = (await doctor({})).checks.find(x => x.name === 'memory-tag-specificity');
