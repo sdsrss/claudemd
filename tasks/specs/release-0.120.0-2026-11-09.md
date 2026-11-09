@@ -44,7 +44,16 @@
   - L2（hook 注释，随本轮一起改）：剥离后的空格会把两侧的词连起来（`should`x`work`、`70%/p99 faster` 改后拒绝，`claudemd-cli lint` 也拒绝）。
   - L6：随 M3 的修复解决，`ok=false` 时又一定有候选列表，`commands/claudemd-doctor.md` 的说法重新成立。
   - L7：发布的代码注释引用了本地文档 `docs/claudemd-effect-assessment-2026-11-03.md`。使用者 11-03 定的是这份文档只放本地（文档第 10 节），所以不提交，两处代码注释改为引用已跟踪的 `tasks/specs/batch-residuals-2026-11-03.md`。
-  - 不修，记为遗留：L5（同一文件两行索引时 `tags` 被覆盖、doctor 计数翻倍）；L8（§8：`npx --package=<包> ./路径` 和 `npm exec --package=<包> -- ./路径` 放行一个没钉版本的包，沙箱复现；`--package <包>` 拒绝；pre-bash-safety 在本范围内没有改动，属 F37 一族，是旧问题）；L9（`.5x`、`v1.8x`、`1,000.25x` 仍不完整引用，判定不变）；44fc93c、ed3d39f 等已推送提交说明里的不准确说法。
+  - 修复提交 3e89c5c 改了代码，按手册新开评审，只审修复提交（深度 2/2）。
+- 2026-11-09：第二轮评审（新开的评审代理，aa3dfd9..3e89c5c）：Critical 0、High 0、Medium 1、Low 7；三处代码修复成立，三个新用例在 aa3dfd9 上失败、在 3e89c5c 上通过。全是文字和测试覆盖，按手册不再开评审，自己跑 claim-drift：
+  - M1（CHANGELOG"Not changed"、hook 两处注释）：条件比"here-doc 里引用 `git commit -m`"宽：命令里任何带引号的 `-m` / `--message` 值都会让提取器只扫这些值。沙箱复现：here-doc 之后跟 `git tag -a v1 -m "v1"`，或 here-doc 里写 `python3 -m 'venv'`，含 `significantly` 的说明都放行；去掉就拒绝。改写成这个条件。
+  - L1、L2（hook 注释、CHANGELOG）：剥离后的空格让两侧的词连成会被拒绝的短语，不只是"两侧都粘住"；CHANGELOG 补上"也会新拒绝"这个方向（与 lint 一致）。CHANGELOG 不引用具体例子：双反引号里的反引号会被 lint 配对，例子会让条目自己扫出命中。
+  - L4（README、`--help`、tmp-sweep.sh 头注释）：改成"本身是或含有另一个文件系统的挂载"，README 加上同文件系统 bind mount 识别不了。
+  - L5（CHANGELOG）："列为 skipped"改成"其他条件都满足时列为 skipped"。
+  - L6（测试）：加一个只有 `fresh-subagent` 连字符写法的夹具；把正则改成 `\bfresh\s` 的变异让它失败。
+  - L7（测试注释和名字）：改成"对照组用的是别的词"，与"整份文件里出现就算"一致。
+  - 不改，记为遗留：L3（3e89c5c 的提交说明把"会连起来"说成 CHANGELOG 也写了；已推送）。
+- 不修，记为遗留（第一轮编号）：L5（同一文件两行索引时 `tags` 被覆盖、doctor 计数翻倍）；L8（§8：`npx --package=<包> ./路径` 和 `npm exec --package=<包> -- ./路径` 放行一个没钉版本的包，沙箱复现；`--package <包>` 拒绝；pre-bash-safety 在本范围内没有改动，属 F37 一族，是旧问题）；L9（`.5x`、`v1.8x`、`1,000.25x` 仍不完整引用，判定不变）；44fc93c、ed3d39f 等已推送提交说明里的不准确说法。
 
 ## 验证记录
 
@@ -57,3 +66,7 @@
 - 第一轮修复 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL
 - 第一轮修复 `npm run smoke` → 通过：SMOKE 2/2；bash 3.2.57 运行时 → 通过：44/44 个套件
 - CHANGELOG 条目修改后 2,856 字节，单独扫描通过
+- 3e89c5c 的 PR CI（run 42703108934）：被下一次推送取代，未看完
+- 第二轮修复：CHANGELOG 条目 2,934 字节，单独扫描通过；L6 新夹具在 `\bfresh\s` 变异下失败，还原后 5/5
+- 第二轮修复 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL
+- 第二轮修复 `npm run smoke` → 通过：SMOKE 2/2；bash 3.2.57 运行时 → 通过：44/44 个套件

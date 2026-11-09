@@ -10,19 +10,19 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 ## [0.120.0] - 2026-11-09
 
-**`banned-vocab-check` no longer denies a commit for a word inside backticks or a path, and quotes a decimal ratio whole. `doctor` names the memory files the §11 gate actually denied. `tmp-sweep` keeps an `agent-tmp-*` directory that is or holds a mount point. Spec unchanged (v8.5.0).**
+**`banned-vocab-check` no longer denies a commit for a word inside backticks or a path, and quotes a decimal ratio whole. `doctor` names the memory files the §11 gate actually denied. `tmp-sweep` keeps an `agent-tmp-*` directory that is or holds a mount of another filesystem. Spec unchanged (v8.5.0).**
 
 **What changes for users.**
-- `banned-vocab-check`: the commit-message scan now skips fenced blocks, backtick spans, paths and file names, as the scan of the previous reply's prose already did, so a word in backticks or in something shaped like a path or file name (`work/pass`, `robust.and`) no longer denies a commit. `claudemd-cli lint` pairs backticks across lines, the hook within a line, so a span that crosses a line can still differ. A file name with a lower-case extension (`-F msg-robust.txt`) no longer counts as a hit. A ratio such as `1.8x` was quoted as `8x` in the deny text and the log row; it is now quoted whole, which on its own changes no verdict.
+- `banned-vocab-check`: the commit-message scan now skips fenced blocks, backtick spans, paths and file names, as the prose scan already did, so a word in backticks or in a path- or file-shaped word (`work/pass`, `robust.and`, `msg-robust.txt`, not an upper-case extension) no longer denies a commit. Skipped text becomes a space, so the words around it can now join into a phrase that is denied, as in `claudemd-cli lint`; lint pairs backticks across lines, the hook within a line. A ratio such as `1.8x` was quoted as `8x` in the deny text and the log row; it is now quoted whole, which on its own changes no verdict.
 - `memory-read-check` deny rows in `~/.claude/logs/claudemd.jsonl` also record which `MEMORY.md` tags matched (`extra.tags`). `doctor`'s `memory-tag-specificity` check lists first any memory file the gate denied 3 or more times in 30 days, with its count and tags (`tags not recorded` for rows written before 0.120.0); those lines do not change whether the check passes.
 - `doctor`'s `runbook-review-step` check also counts `pre-tag review` or `fresh … subagent(s)` anywhere in a ship runbook, a lesson included, as its review step; `refresh … subagents` does not count.
-- `tmp-sweep`: when several sweeps run at once, a directory another sweep already removed is no longer recorded as an error (`housekeeping.js tmp --apply` exited 3). An `agent-tmp-*` directory that is, or holds, a mount of another filesystem (FUSE: sshfs, rclone) is kept and listed as skipped (`mount-point`); a bind mount of the same filesystem is not detected.
+- `tmp-sweep`: when several sweeps run at once, a directory another sweep already removed is no longer recorded as an error that made the sweep exit 3. An `agent-tmp-*` directory that is, or holds, a mount of another filesystem (FUSE: sshfs, rclone) is kept, and listed as skipped (`mount-point`) when otherwise due; a bind mount of the same filesystem is not detected.
 - `sandbox-disposal-check` warn and block rows name the reported directories (`extra.names`: basenames, at most five). `sampling-audit --json` gives `askRate` a `precision` and a `status` (today `null` and `collecting`), as `byRule` has, so its `assent` count is not read as a measured rate.
 
 **What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back to 0.119.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
 
 **Not changed.**
-- `banned-vocab-check` still does not read the file of `git commit -F FILE`, and still scans words in double quotes. When an `-F -` here-doc quotes a `git commit -m "…"`, it still scans only that quoted text, so a banned word elsewhere in that message passes.
+- `banned-vocab-check` still does not read the file of `git commit -F FILE`, and still scans words in double quotes. When the command also holds a quoted `-m` or `--message` value (a `git tag -m "v1"` after an `-F -` here-doc, a `python3 -m 'venv'` inside it), it scans only those values, so a banned word in the here-doc message passes.
 - The §8 `npx` check still denies when a flag's value or a redirection sits where it expects the package name, as in `npx --version 2>&1`; this is registered as F37 in `docs/S8-RESIDUALS.md`.
 
 ## [0.119.0] - 2026-11-03

@@ -108,9 +108,10 @@ test('missing root dir degrades to empty result, not throw', () => {
 
 // Shapes from the live corpus on 2026-11-03: doctor flagged 4 of 9 runbooks,
 // and two of them (gsd-lite, claude-mem-lite) had a review step before the tag
-// in words the fingerprint did not know. The controls are the other two: a
-// reviewer named only inside a lesson is not a step, and stays flagged.
-test('a pre-tag review or fresh-subagent spawn step counts; a reviewer named only in a lesson does not', () => {
+// in words the fingerprint did not know. The controls are the other two: they
+// name a reviewer in other words ("a pre-ship reviewer", "fresh context"), so
+// they stay flagged. The patterns match anywhere in the file, lessons included.
+test('a pre-tag review or fresh-subagent spawn step counts; a reviewer named in other words does not', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
   try {
     const mk = (project, content) => {
@@ -144,7 +145,7 @@ test('a pre-tag review or fresh-subagent spawn step counts; a reviewer named onl
 
 // 0.120.0 pre-tag review M4: `fresh` had no word boundary in front, so
 // "/claudemd-refresh so subagents load it" read as a review step.
-test('"refresh … subagents" is not a fresh-subagent review step', () => {
+test('"refresh … subagents" is not a fresh-subagent review step; "fresh-subagent" alone is', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-rrc-'));
   try {
     const dir = path.join(tmp, '-p-mike', 'memory');
@@ -153,11 +154,20 @@ test('"refresh … subagents" is not a fresh-subagent review step', () => {
       path.join(dir, 'ship-runbook.md'),
       '# mike runbook\n4. /claudemd-refresh so subagents load it\n5. git tag -a vX.Y.Z; git push origin vX.Y.Z\n'
     );
+    // 0.120.0 pre-tag review round 2 L6: the hyphenated form alone, with no
+    // other fingerprint in the file, still counts.
+    const dir2 = path.join(tmp, '-p-november', 'memory');
+    fs.mkdirSync(dir2, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir2, 'ship-runbook.md'),
+      '# november runbook\n4. One fresh-subagent spawn checks the diff.\n5. git tag -a vX.Y.Z; git push origin vX.Y.Z\n'
+    );
     const out = scanRunbookReviewSteps({ rootDir: tmp });
     assert.deepEqual(
       out.missing.map(m => m.project),
       ['-p-mike']
     );
+    assert.equal(out.scannedRunbooks, 2);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

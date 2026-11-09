@@ -152,15 +152,16 @@ fi
 # until 2026-11-03 Path 1 scanned unstripped text, so a word quoted in a
 # backtick span denied here while the CLI passed the same message. Of the 13
 # real Path 1 denies in the 30 days to 11-03 this clears 1. Accepted residual
-# (not re-parsing the extractor): when an `-F -` here-doc quotes a
-# `git commit -m "…"`, the -m extractor below takes that quoted text as the
-# whole message, so a banned word in the quoted text denies and one anywhere
-# else in that message passes (0.120.0 pre-tag review M1). A stripped region
-# becomes one space, so a word glued to it on both sides joins its neighbours
-# (`should`x`work` → `should work`, `70%/p99 faster` → `70%  faster` for the
-# ratio rows' `[[:space:]]+`); `claudemd-cli lint` denies the same text.
-# sed pairs backticks within a line, lint across lines, so a span that crosses
-# a line can still differ.
+# (not re-parsing the extractor): when the command holds any quoted `-m` or
+# `--message` value (MSG_REGEX below: a `git tag -m "v1"` after an `-F -`
+# here-doc, a quoted `git commit -m "…"` or `python3 -m 'venv'` inside it),
+# the extractor scans only those values, so a banned word elsewhere in the
+# here-doc message passes (0.120.0 pre-tag review M1, both rounds). A stripped
+# region becomes one space, which can join its neighbours into a phrase:
+# `should`x`work` → `should work`, and for the ratio rows' `[[:space:]]+`,
+# `70%/p99 faster` → `70%  faster`, `3x `hot path` faster` → `3x   faster`;
+# `claudemd-cli lint` denies the same texts. sed pairs backticks within a line,
+# lint across lines, so a span that crosses a line can still differ.
 bv_sanitize() {
   printf '%s\n' "$1" \
     | awk "$HOOK_SANITIZE_FENCE_AWK" \
@@ -224,7 +225,8 @@ done < <(printf '%s' "$CMD" | grep -oE -- "$MSG_REGEX" 2>/dev/null)
 # ACCEPTED RESIDUAL (2026-11-03): an `-F FILE` message is NOT scanned — the
 # fallback reads the command text, never the file. 501 of 2,703 real commits
 # in the 30 days to 11-03 used `-F FILE`; an `-F -` here-doc is in the command
-# and is scanned. Left as-is by the user's decision: this path denied 13 times
+# and is scanned, unless the command also holds a quoted `-m` / `--message`
+# value (see the residual above bv_sanitize). Left as-is by the user's decision: this path denied 13 times
 # in those 30 days with 0 true positives, so reading the file would add false
 # denies, not catches. Test case 63 pins it; change both if the file is read.
 [[ -z "$MSG_TEXT" ]] && MSG_TEXT="$CMD"
