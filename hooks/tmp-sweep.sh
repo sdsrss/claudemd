@@ -15,8 +15,8 @@
 # directory carrying the exact vitest signature (name, owner, children,
 # 40-hex file names, no symlinks) and idle past the floor, and (spec v8.5.0
 # §5-EXT Agent temp residue) an agent-tmp-* directory of this uid with no
-# .keep and no socket or FIFO in which no mtime or ctime is within 72 h, read
-# without following symlinks. See its USAGE.
+# .keep, no socket or FIFO and no entry on another filesystem, in which no
+# mtime or ctime is within 72 h, read without following symlinks. See its USAGE.
 #
 # Cost: every Bash call pays the hook preamble (sourcing two libs) plus a
 # `mkdir -p`, a noclobber open, an `rm`, two stats and a `date` — tens of milliseconds, measured at

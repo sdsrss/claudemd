@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.120.0] - 2026-11-09
+
+**`banned-vocab-check` no longer denies a commit for a word inside backticks or a path, and quotes a decimal ratio whole. `doctor` names the memory files the §11 gate actually denied. `tmp-sweep` keeps an `agent-tmp-*` directory that holds a mount point. Spec unchanged (v8.5.0).**
+
+**What changes for users.**
+- `banned-vocab-check`: the commit-message scan now skips fenced blocks, backtick spans, paths and file names, as the scan of the previous reply's prose and `claudemd-cli lint` already did; before, the same message could pass `claudemd-cli lint` and be denied by the hook. A file name in the command (`-F …/msg-robust.txt`) no longer counts as a hit. A ratio such as `1.8x` was quoted as `8x` in the deny text and the log row; it is now quoted whole, and which messages are denied is unchanged.
+- `memory-read-check` deny rows in `~/.claude/logs/claudemd.jsonl` also record which `MEMORY.md` tags matched (`extra.tags`). `doctor`'s `memory-tag-specificity` check lists first any memory file the gate denied 3 or more times in 30 days, with its count and tags (`tags not recorded` for rows written before 0.120.0), and flags such a file even when its static scan finds no generic tag.
+- `doctor`'s `runbook-review-step` check also accepts a review step written as `pre-tag review` or `fresh … subagent(s)`; a runbook that names a reviewer only inside a lesson is still flagged.
+- `tmp-sweep`: when several sweeps run at once, a directory another sweep already removed is no longer recorded as an error (`housekeeping.js tmp --apply` exited 3). An `agent-tmp-*` directory holding an entry on another filesystem, such as a FUSE mount, is kept and listed as skipped (`mount-point`); a bind mount of the same filesystem is not detected.
+- `sandbox-disposal-check` warn and block rows name the reported directories (`extra.names`: basenames, at most five). `sampling-audit --json` gives `askRate` a `precision` and a `status` (today `null` and `collecting`), as `byRule` has, so its `assent` count is not read as a measured rate.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back to 0.119.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- `banned-vocab-check` still does not read the file of `git commit -F FILE`, still scans words in double quotes, and reads a `git commit -m "…"` quoted inside an `-F -` here-doc as the message.
+- The §8 `npx` check still denies when a flag's value or a redirection sits where it expects the package name, as in `npx --version 2>&1`; this is registered as F37 in `docs/S8-RESIDUALS.md`.
+
 ## [0.119.0] - 2026-11-03
 
 **Spec v8.5.0: a temp directory that an earlier task or session left is deleted without asking you, under stated conditions. `tmp-sweep` also reaps `agent-tmp-*` directories idle 72 h without a `.keep`.**

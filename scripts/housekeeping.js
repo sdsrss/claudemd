@@ -21,8 +21,9 @@ tmp       Reclaim the per-run directories vitest leaves in the temp root.
           \`agent\`: a real directory owned by this uid, named agent-tmp-*,
           with no .keep at its top, in which no entry (read with lstat; a
           symlink is never followed) has an mtime or ctime within 72 h; one
-          holding a socket or FIFO, past 200000 entries or with an unreadable
-          subdirectory is listed under \`skipped\` instead.
+          holding a socket or FIFO, an entry on another filesystem (a mount
+          point), past 200000 entries or with an unreadable subdirectory is
+          listed under \`skipped\` instead.
           CLAUDEMD_TMP_SWEEP_TEST_NOW_MS (epoch ms) sets the clock ages are
           judged against, only together with --root or
           CLAUDEMD_TMP_SWEEP_ROOTS (test seam).
