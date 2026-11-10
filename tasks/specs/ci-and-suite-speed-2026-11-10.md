@@ -45,4 +45,5 @@
 - AC3：在 `hooks/ship-baseline-check.sh` 开头插 `exit 0` 后跑并行版：rc=1，`FAILED:` 列出 `fail-open.test.sh`、`preToolUse-jq-spawn-budget.test.sh`、`ship-baseline.test.sh`，并打印各自日志末尾；hook 已用 `git checkout` 还原。
 - AC4：run-all 串行 314.5 s（HEAD 0790ff6）→ 并行 161 / 163 / 163 / 166 / 200 s（中位 163 s）。`bash32-runtime.sh` 串行 305 s（`git archive` a0445a6）→ 并行 128 s。本机 12 核。
 - `npm run smoke` → `SMOKE: 2/2 suite(s) passed`；`npm run lint` exit 0；`shellcheck --severity=warning`（4 个改动的 shell 文件）exit 0；`bash32-constructs.sh` exit 0。
-- CI 上的效果（ubuntu node-20 腿、macOS 腿、tag 后 npm-publish 时长）要等下一次 PR CI 和发版才能读到。
+- PR CI 上的效果（2026-11-10，draft PR #35 只为跑 CI 而开，读完后未合并关闭）：运行 42836192198 在 2414208 上 7/7 通过，无排队。对照最近 5 次成功的 PR CI（42766725085、42705744828、42697781748、41657087398、41647419898）：最慢任务 11.9 min（基线 17.2–20.6）；ubuntu node-20 8.1 min（12.7–18.6）；macOS 三条 10.2–11.9 min（14.4–20.6）；ubuntu node-22/24 6.4 / 4.8 min（6.7–10.3）。只有 1 次运行，托管机器速度有波动。
+- tag 推送后的效果（只跑 npm-publish、macOS 排队 0、总时长 < 20 min）要等下一次发版才能读到（D#767）。
