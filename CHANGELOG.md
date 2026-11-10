@@ -8,6 +8,20 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.120.1] - 2026-11-09
+
+**The §8 `npx` check now checks every package named by `--package` or `-p`, not only the first one written with a space. Spec unchanged (v8.5.0).**
+
+**What changes for users.**
+- `pre-bash-safety-check`: `npx --package=<pkg> ./run.js` and `npm exec --package=<pkg> -- ./bin` were allowed for an unpinned package that is not installed where the command runs: the check skipped `--package=<pkg>` and judged only the path after it. A second `-p` (`npx -p cowsay@1.5.0 -p <pkg> cowsay`) went unchecked the same way. Now each value of `-p`, `--package`, `-p=` and `--package=` before the first word that does not start with `-` is checked as `--package <pkg>` already was: allowed when it is a path, pinned (`<pkg>@1.2.3`), or found in the lockfile or `node_modules`; denied otherwise. This covers `npx`, `npm exec`, `npm x`, `bunx`, `bun x`, `pnpm dlx` and `yarn dlx`. The change only adds denies: what 0.120.0 denied is still denied.
+- So a remote `--package=` value (`https://…/x.tgz`, `github:user/repo`, `git+https://…`) is denied, as the spaced form was, and so is a local `file:` spec (`--package=file:./pkg.tgz`), as `-p file:./pkg.tgz` already was; that one is a known false deny, registered under F37 in `docs/S8-RESIDUALS.md`.
+- An allowed `--package=` value found in the lockfile or `node_modules` writes its own `npx-allow-local` row to `~/.claude/logs/claudemd.jsonl`.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code; from 0.119.0 one refresh also brings 0.120.0's changes. If a package you trust is denied, pin it (`--package=<pkg>@<version>`) or install it in the project. To go back to 0.120.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- When another flag that takes a value comes first (`npx --cache ./c <pkg>`), the check still reads that value as the package, and a `--package=` after it is not reached (F37).
+
 ## [0.120.0] - 2026-11-09
 
 **`banned-vocab-check` no longer denies a commit for a word inside backticks or a path, and quotes a decimal ratio whole. `doctor` names the memory files the §11 gate actually denied. `tmp-sweep` keeps an `agent-tmp-*` directory that is or holds a mount of another filesystem. Spec unchanged (v8.5.0).**

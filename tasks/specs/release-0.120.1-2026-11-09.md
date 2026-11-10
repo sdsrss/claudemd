@@ -35,7 +35,7 @@
 - [x] S1：先写失败用例（语料行 + 带 cwd 的用例），在 0.120.0 的 hook 上确认失败
 - [x] S2：改 hook；`--package` 语料行全绿；F37 说明
 - [x] S3：真实命令新旧回放（`git archive` 取 v0.120.0 和新 hook），分别数放行变拒绝、拒绝变放行
-- [ ] S4：版本号、CHANGELOG 条目；`npm run check`、`npm run smoke`、bash 3.2.57 运行时
+- [x] S4：版本号、CHANGELOG 条目；`npm run check`、`npm run smoke`、bash 3.2.57 运行时
 - [ ] S5：release 分支、draft PR、PR CI；发版前评审
 - [ ] S6：合入 `main`、tag、GitHub Release、tag 工作流、`npm view`
 - [ ] S7：`next-release` 快进；本记录收尾；延期项 D#750 关闭，spec 挂载点条件记延期项
@@ -52,3 +52,8 @@
 - 36 条探针新旧对比（`git archive v0.120.0` 对新 hook）：17 条放行变拒绝，0 条拒绝变放行
 - 真实命令回放（`replay.py`，新旧 hook 都是快照，并发 8，沙箱 HOME，会话 id `t`）：转录 741 份，不同 Bash 命令 91,112 条，含 npx/npm/yarn/bun 字样的 7,970 条全部回放；旧版拒绝 461、新版拒绝 461；放行变拒绝 0，拒绝变放行 0；沙箱 HOME 里 0 个文件
 - `npm run lint:sh` → 通过：exit 0
+- CHANGELOG 条目 1,929 字节，`node bin/claudemd-lint.js lint --file <单独取出的条目>` → 通过（OK: no §10-V hits）
+- `node scripts/version-cascade-check.js` → 通过（插件版本 0.120.1 五处一致）
+- `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL；pre-bash-safety 1303/1303，`Residuals: xfn=107 xfp=25`
+- `npm run smoke` → 通过：SMOKE 2/2
+- `BASH32_BIN=<scratchpad 里的 3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 通过：44/44 个套件
