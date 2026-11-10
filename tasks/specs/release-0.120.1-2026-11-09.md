@@ -1,6 +1,6 @@
 # 0.120.1：§8 npx 闸门检查 `--package=` 和第二个 `-p` 指名的包；0.120.0 遗留项的处理
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -36,9 +36,9 @@
 - [x] S2：改 hook；`--package` 语料行全绿；F37 说明
 - [x] S3：真实命令新旧回放（`git archive` 取 v0.120.0 和新 hook），分别数放行变拒绝、拒绝变放行
 - [x] S4：版本号、CHANGELOG 条目；`npm run check`、`npm run smoke`、bash 3.2.57 运行时
-- [ ] S5：release 分支、draft PR、PR CI；发版前评审
-- [ ] S6：合入 `main`、tag、GitHub Release、tag 工作流、`npm view`
-- [ ] S7：`next-release` 快进；本记录收尾；延期项 D#750 关闭，spec 挂载点条件记延期项
+- [x] S5：release 分支、draft PR、PR CI；发版前评审
+- [x] S6：合入 `main`、tag、GitHub Release、tag 工作流、`npm view`
+- [x] S7：`next-release` 快进；本记录收尾；延期项 D#750 关闭，spec 挂载点条件记延期项
 
 ## 决策与进展
 
@@ -52,6 +52,8 @@
   - L6（改 CHANGELOG）：评审者构造的 1,500 个 `-p`、15,400 字符的命令，在有三种 lockfile 的目录里，0.120.0 133 ms 拒绝，dd2a676 超过 3 秒被杀（按放行算），属 E3。CHANGELOG"旧版拒绝的仍拒绝"补上"除非多出的检查让很长的命令超过 3 秒限制（E3）"。
   - L7（改 CHANGELOG 措辞）：`--package=https://…/x@1.0.0.tgz` 因 `*@[0-9]*` 按钉版本放行，空格写法同样放行，属 F17。CHANGELOG 改成"远程值得到与空格写法相同的判定，所以 `https://…/x.tgz`、`github:…`、`git+https://…` 被拒"。
   - 修复只改文字和测试，不改代码，按手册不再开评审，自己跑 claim-drift。
+- 2026-11-09：修复提交 c7b3603 后 `node scripts/claim-drift.js --range=49459b8..HEAD`：列出的名字里与本版有关的（pre-bash-safety-check、`--prefix`、`--no-install`、`--yes`，README 79/110/377 行、ARCHITECTURE 179/325 行、RULE-HITS-SCHEMA 35/36 行）逐行重读，没有与 head 代码矛盾的说法。
+- 2026-11-10：c7b3603 的 PR CI 7/7 通过后，`main` 快进到 c7b3603 并推送，打带注释的 tag v0.120.1，建 GitHub Release；PR #34 显示 MERGED（06:29:15Z），远程 `release/v0.120.1` 已被 GitHub 删除，本地 `git branch -d`；`next-release` 对齐到 `main` 并推送。延期项 D#750 关闭；spec 挂载点条件记为延期项 D#754。
 
 ## 验证记录
 
@@ -70,3 +72,7 @@
 - 评审修复后：`bash tests/hooks/pre-bash-safety.test.sh` → 通过：1305/1305，`Residuals: xfn=107 xfp=25`；`S8-NPXP24` 在去掉 `-p=` 一支的变异体上放行（变红），`S8-NPXP25` 在去掉 `-c` 一支的变异体上放行（变红）
 - 评审修复后 CHANGELOG 条目 2,068 字节，单独扫描 → 通过（OK: no §10-V hits）
 - 评审修复后 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL；pre-bash-safety 1305/1305
+- 修复提交 c7b3603 的 PR CI（run 42766725085）→ 通过：7/7
+- tag 的 `ci`（run 42768838781）→ 通过：7/7；`main` 的 `ci`（run 42768822012）→ 通过
+- tag 的 `npm-publish`（run 42768838859）→ 通过，`publish` job 打出 `+ claudemd-cli@0.120.1`（07:00:52Z）
+- `npm view claudemd-cli@0.120.1 version _npmUser` → 通过：`0.120.1`，`GitHub Actions <npm-oidc-no-reply@github.com>`；dist-tags latest = 0.120.1（07:01:50Z 查询；07:00:45Z、07:01:01Z 两次查询还是 404，注册表延迟）
