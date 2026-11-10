@@ -1894,3 +1894,5 @@ pass	S8-NPXP20 control: an empty --package= value	npx --package= ./run.js
 xfp	S8-NPXP21 F37 a local file: package spec is read as an unpinned package name	npm exec --package=file:./pkg.tgz -- ./bin
 xfp	S8-NPXP22 F37 same, spaced -p (already denied before L8)	npx -p file:./pkg.tgz ./bin
 xfn	S8-NPXP23 F37 a path-like flag value ends the pass, so a --package= after it goes unchecked	npx --cache ./c --package=some-unknown-pkg ./run.js
+deny	S8-NPXP24 -p= does not end the pass: the -p after it is read	npx -p=cowsay@1.5.0 -p some-unknown-pkg cowsay
+deny	S8-NPXP25 the value of -c is skipped, and a -p after it is read	npx -c cowsay@1.5.0 -p some-unknown-pkg

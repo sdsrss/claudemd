@@ -11,7 +11,7 @@
 ## 测量（2026-11-09，本机现存转录 10-11..11-09，741 份，91,102 条不同的 Bash 命令；排除本会话）
 
 - 调用 npx 一族的命令 3,784 条。
-- 带 `--package=` 的真实命令 1 条：gsd-lite 的 `npm exec --yes --package="file://$SP/gsd-lite-0.17.0.tgz" -- node -e …`，0.120.0 已因后面的 `node` 拒绝。
+- 带 `--package=` 的真实命令 2 条，都是 gsd-lite 装自己打的本地包：`npm exec --yes --package="file://$SP/gsd-lite-0.17.0.tgz" -- node -e …`（10-21）和 `npm exec --yes --package="file:$N/enginepkg-1.0.0.tgz" -- enginepkg`（11-02，子代理）；0.120.0 已因 `--` 之后的 `node`、`enginepkg` 拒绝。（第一次只数出 1 条：截命令片段的正则取到了第二条前面散文里的 "npx"，把它当成了噪音；发版前评审 M1 指出。）
 - 同一个运行器段里有两个及以上 `-p` / `--package` 的：0 条。
 - 读代码找到的同类漏洞：`npx -p <钉版本的包> -p <来源不明的包> <命令>` 放行（循环在第一个 `-p` 的值处停下）；`pnpm dlx` / `yarn dlx` / `bunx` 的 `--package=` 同样放行；`--package=` 的值是远程地址（`https://…tgz`、`github:…`、`git+https://…`）也放行，而空格写法这些都拒绝。
 - npm 11.19.0 的 `bin/npx-cli.js`：第一个不以 `-` 开头的词（或 `--`）之前都是 npm 的参数；`-p`、`-p=`、`--package`、`--package=` 都是 `--package`，可以重复；之后的词交给要运行的命令。
@@ -19,7 +19,7 @@
 ## 范围
 
 - 做：
-  - `hooks/pre-bash-safety-check.sh`：另走一遍同一段词，收集第一个位置参数或 `--` 之前所有 `-p X`、`--package X`、`-p=X`、`--package=X` 的值；原来的 `pkg_token` 不变，收集到的其他值逐个过同一套判定（本地路径 / 钉版本 / lockfile 或 node_modules），任何一个拒绝就拒绝。`--no-install` / `--no` 照旧使所有包放行。
+  - `hooks/pre-bash-safety-check.sh`：另走一遍同一段词，收集第一个不以 `-` 开头的词之前（`--` 当作参数跳过）所有 `-p X`、`--package X`、`-p=X`、`--package=X` 的值；原来的 `pkg_token` 不变，收集到的其他值逐个过同一套判定（本地路径 / 钉版本 / lockfile 或 node_modules），任何一个拒绝就拒绝。`--no-install` / `--no` 照旧使所有包放行。
   - 语料行（拒绝、对照、已知误拒）、带 cwd 的用例、`docs/S8-RESIDUALS.md` F37 的说明、CHANGELOG 条目。
   - 按发版手册发 0.120.1（发版节奏：§8 漏拒属立即发版的 (a) 类）。
 - 不做：
@@ -43,13 +43,22 @@
 ## 决策与进展
 
 - 2026-11-09：L8 选择立即修复发版而不是只登记。理由：修法不需要新的切词（`-p` / `--package` 本来就在闸门的参数表里，只是漏了 `=` 写法和重复出现），能做到只加拒绝；使用者还没装 0.120.0（本机仍是 0.119.0，日志里 0 行 0.120.0），一次 `/claudemd-refresh` 同时装上两版。
+- 2026-11-09：PR CI（dd2a676，run 42762062099）7/7 通过。
+- 2026-11-09：发版前评审（新开的评审代理，49459b8..dd2a676）：Critical 0、High 0、Medium 1、Low 7；声明 1–8 在代码上成立，评审者重跑回放得到同样的 461/461、0/0（不同 Bash 命令 91,140 条，回放 7,974 条，转录新增所致）。逐条核实后处理：
+  - M1（改文字）：`--package=` 的真实命令是 2 条，不是 1 条，两条都是 `file:` 本地包，正是 F37 新登记的（3）误拒形状。改 F37 真实命中一格和本记录测量一节；两条在两版上都被拒，判定不变。
+  - L1、L2、L3（改本记录）：探针数 15 条；修复前的数字重跑并写明两次运行的差别；范围一行改成"第一个不以 `-` 开头的词之前，`--` 当参数跳过"，与代码、hook 注释、CHANGELOG 一致。代价：`npm exec -- --package=<包> ./bin`（`--` 之后的 `--package=` 其实是命令名）新增误拒，形状没有真实用法，接受。
+  - L4（补测试）：收集循环里 `-c` / `--call` 跳过取值、`-p=` 两支没有用例，去掉任何一支测试仍全绿。加 `S8-NPXP24`（`-p=` 之后的 `-p`）、`S8-NPXP25`（`-c` 的值之后的 `-p`）；各自在对应变异体上变红，在 0.120.0 上失败。
+  - L5（登记）：`npm exec --package=localpkg -- eslint && npx localpkg` 写两行相同的 `npx-allow-local`（去重键带运行器，行里不带）；成因在 0.120.0 就有（`npm exec localpkg && npx localpkg` 已写两行），本版让 `--package=` 也走到这里。`docs/RULE-HITS-SCHEMA.md` 的说法与代码一致，CHANGELOG 没有相关说法。不改。
+  - L6（改 CHANGELOG）：评审者构造的 1,500 个 `-p`、15,400 字符的命令，在有三种 lockfile 的目录里，0.120.0 133 ms 拒绝，dd2a676 超过 3 秒被杀（按放行算），属 E3。CHANGELOG"旧版拒绝的仍拒绝"补上"除非多出的检查让很长的命令超过 3 秒限制（E3）"。
+  - L7（改 CHANGELOG 措辞）：`--package=https://…/x@1.0.0.tgz` 因 `*@[0-9]*` 按钉版本放行，空格写法同样放行，属 F17。CHANGELOG 改成"远程值得到与空格写法相同的判定，所以 `https://…/x.tgz`、`github:…`、`git+https://…` 被拒"。
+  - 修复只改文字和测试，不改代码，按手册不再开评审，自己跑 claim-drift。
 
 ## 验证记录
 
-- 修复前：`bash tests/hooks/pre-bash-safety.test.sh` → 失败（预期）：1290/1302，`S8-NPXP1`–`S8-NPXP10` 期望拒绝得到放行，`S8-NPXP21` 已知误拒变放行，带 cwd 的 `[npx --package]` 两个断言失败（另取出单跑：`PASS=0 FAIL=2`）
+- 修复前（评审修复后的测试文件对 `git archive v0.120.0` 的 hook）：`bash tests/hooks/pre-bash-safety.test.sh` → 失败（预期）：1290/1305，15 条 FAIL：`S8-NPXP1`–`S8-NPXP10`、`S8-NPXP24`、`S8-NPXP25` 期望拒绝得到放行，`S8-NPXP21` 已知误拒变放行，带 cwd 的两个断言。第一次红灯运行是 1290/1302、12 条 FAIL：当时还没有 `S8-NPXP23`–`S8-NPXP25`，带 cwd 的对照因为断言顺序在旧 hook 上也通过（`-p localpkg` 那一例先写了 localpkg 行），调换顺序后单跑 `PASS=0 FAIL=2`
 - 修复后：`bash tests/hooks/pre-bash-safety.test.sh` → 通过：1302/1302，`Residuals: xfn=106 xfp=25`
 - 变异：去掉收集循环的位置参数边界 → `S8-NPXP17`、`S8-NPXP18` 变红；`--` 结束收集这一支没有可区分的真实形状，删掉（`--` 后的第一个词就是命令，本来就停）
-- 36 条探针新旧对比（`git archive v0.120.0` 对新 hook）：17 条放行变拒绝，0 条拒绝变放行
+- 36 条探针新旧对比（`git archive v0.120.0` 对新 hook）：15 条放行变拒绝，12 条两版都放行，9 条两版都拒绝，0 条拒绝变放行（原写 17，数错，发版前评审 L1）
 - 真实命令回放（`replay.py`，新旧 hook 都是快照，并发 8，沙箱 HOME，会话 id `t`）：转录 741 份，不同 Bash 命令 91,112 条，含 npx/npm/yarn/bun 字样的 7,970 条全部回放；旧版拒绝 461、新版拒绝 461；放行变拒绝 0，拒绝变放行 0；沙箱 HOME 里 0 个文件
 - `npm run lint:sh` → 通过：exit 0
 - CHANGELOG 条目 1,929 字节，`node bin/claudemd-lint.js lint --file <单独取出的条目>` → 通过（OK: no §10-V hits）
@@ -57,3 +66,7 @@
 - `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL；pre-bash-safety 1303/1303，`Residuals: xfn=107 xfp=25`
 - `npm run smoke` → 通过：SMOKE 2/2
 - `BASH32_BIN=<scratchpad 里的 3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 通过：44/44 个套件
+- PR CI（dd2a676，run 42762062099）→ 通过：7/7
+- 评审修复后：`bash tests/hooks/pre-bash-safety.test.sh` → 通过：1305/1305，`Residuals: xfn=107 xfp=25`；`S8-NPXP24` 在去掉 `-p=` 一支的变异体上放行（变红），`S8-NPXP25` 在去掉 `-c` 一支的变异体上放行（变红）
+- 评审修复后 CHANGELOG 条目 2,068 字节，单独扫描 → 通过（OK: no §10-V hits）
+- 评审修复后 `npm run check`（`git add` 之后）→ 通过：exit 0；node 1807/1810（3 个跳过）；shell 1784 条 PASS、0 条 FAIL；pre-bash-safety 1305/1305
