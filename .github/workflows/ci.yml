@@ -18,26 +18,24 @@ name: ci
 # "this repo uses lightweight tags" is not a fact you can carry from one tag to
 # the next. Two sources, every time.
 #
-# Tag pushes run the full matrix too (v0.50.0). The marketplace channel
-# serves the git tag/release directly, but only the npm channel had a
-# tag-time test gate (npm-publish.yml, Linux-only). Without this trigger a
-# red-at-tag-time release reached marketplace consumers with no check status
-# on the tagged commit. The atomic ship flow (push main + push tag) runs the
-# matrix twice on the same commit — accepted cost for channel parity.
+# No tag trigger (removed 2026-11-10; added in v0.50.0 so a tagged commit
+# carried a check status). The ship flow pushes main and the tag at the same
+# commit (v0.117.7–v0.120.1: 5/5 SHAs equal), and GitHub attaches the main
+# run's checks to that commit, so a tag run repeated the full matrix. With
+# npm-publish's own macOS leg that was 7 macOS jobs against a concurrency of 5,
+# and npm-publish waited 13–17 min in the queue on every release. npm-publish.yml
+# keeps its own test jobs ahead of `publish` and refuses a tag whose commit is
+# not on main. tests/scripts/workflow-step-exec.test.js pins this block.
 on:
   push:
     branches: [main]
-    tags: ['v*.*.*']
   pull_request:
 
-# The atomic ship flow pushes main and then the tag, so the SAME commit enters
-# this workflow twice and the full 6-leg matrix ran twice for every release —
-# measured on c4ec550: three runs, 14 legs, for one commit. Grouping by ref
-# keeps the main-push run and the tag run distinct (they are different refs and
-# the tag run is the one that appears on the release), while a superseding push
-# to the same ref cancels the run it superseded. Cancelling here is safe: this
-# workflow only reports, it publishes nothing — npm-publish.yml gates that and
-# deliberately does NOT cancel (audit-2026-08-22 条目 19).
+# Grouping by ref keeps a main-push run and a pull-request run distinct, while a
+# superseding push to the same ref cancels the run it superseded. Cancelling
+# here is safe: this workflow only reports, it publishes nothing —
+# npm-publish.yml gates that and deliberately does NOT cancel
+# (audit-2026-08-22 条目 19).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

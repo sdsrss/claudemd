@@ -349,3 +349,33 @@ test('REL-L3: every workflow declares its own top-level permissions', () => {
     );
   }
 });
+
+test('ci.yml runs on main pushes and pull requests, not on tag pushes', () => {
+  // The ship flow pushes main and the tag at the same commit (v0.117.7–v0.120.1:
+  // 5/5 SHAs equal), so a tag-triggered run repeated the main run's matrix. With
+  // npm-publish's own macOS leg that was 7 macOS jobs against a concurrency of 5,
+  // and npm-publish waited 13–17 min in the queue on every release
+  // (docs/claudemd-optimization-review-2026-11-10.md §2). GitHub attaches the
+  // main run's checks to the commit the tag names; npm-publish.yml keeps its own
+  // test jobs before `publish` (contributing-rollback-drift.test.js pins `needs:`).
+  const src = fs
+    .readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8')
+    .split('\n')
+    .filter(l => !/^\s*#/.test(l));
+  const on = src.findIndex(l => /^on:\s*$/.test(l));
+  assert.notEqual(on, -1, 'ci.yml has no block-style `on:` key');
+  const end = src.findIndex((l, i) => i > on && /^[A-Za-z]/.test(l));
+  const block = src.slice(on + 1, end === -1 ? src.length : end);
+  assert.ok(
+    block.some(l => /^\s+branches:\s*\[\s*main\s*\]/.test(l)),
+    'ci.yml no longer runs on pushes to main'
+  );
+  assert.ok(
+    block.some(l => /^\s+pull_request:/.test(l)),
+    'ci.yml no longer runs on pull requests'
+  );
+  assert.ok(
+    !block.some(l => /^\s+tags\s*:/.test(l)),
+    'ci.yml runs on tag pushes again: the tag names the commit main just tested, so the run repeats it'
+  );
+});
