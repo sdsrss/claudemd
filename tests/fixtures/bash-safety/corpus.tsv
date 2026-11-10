@@ -1866,3 +1866,31 @@ xfn	S8-NPXA6 F37 same, --cache with a relative path	npx --cache ./c some-unknown
 pass	S8-NPXA7 control: a redirection after a pinned package	npx cowsay@1.5.0 2>&1
 deny	S8-NPXA8 control: a redirection after an unpinned package	npx some-unknown-pkg 2>&1
 deny	S8-NPXA9 control: a flag that takes no value is skipped	npx --yes some-unknown-pkg
+# --package / -p name the packages npx installs (npm's bin/npx-cli.js: every word before the first
+# positional or `--` is an npm option, -p and -p= mean --package, and the option repeats). The loop
+# checked the value of a spaced -p/--package only, and only the first one, so `--package=<pkg>` and a
+# second -p went unchecked whenever the word after them was a path or a resolvable package. 0.120.0
+# pre-tag review L8. Every package named that way is now checked like a spaced --package.
+deny	S8-NPXP1 the value of --package= is installed; the path after it is the command	npx --package=some-unknown-pkg ./run.js
+deny	S8-NPXP2 same through npm exec and --	npm exec --package=some-unknown-pkg -- ./bin
+deny	S8-NPXP3 a second -p names a package too	npx -p cowsay@1.5.0 -p some-unknown-pkg cowsay
+deny	S8-NPXP4 a scoped --package= value	npx --package=@scope/some-unknown-pkg ./run.js
+deny	S8-NPXP5 a quoted --package= value	npx --package="some-unknown-pkg" ./run.js
+deny	S8-NPXP6 a remote --package= value, as the spaced -p form	npm exec --package=https://example.com/x.tgz -- ./bin
+deny	S8-NPXP7 pnpm dlx --package=	pnpm dlx --package=some-unknown-pkg ./run.js
+deny	S8-NPXP8 yarn dlx --package=	yarn dlx --package=some-unknown-pkg ./run.js
+deny	S8-NPXP9 bunx --package=	bunx --package=some-unknown-pkg ./run.js
+deny	S8-NPXP10 a later runner segment	npx cowsay@1.5.0 && npm exec --package=some-unknown-pkg -- ./bin
+deny	S8-NPXP11 control: -p= was already read as the package word	npx -p=some-unknown-pkg ./run.js
+pass	S8-NPXP12 control: a pinned --package= value	npx --package=cowsay@1.5.0 ./run.js
+pass	S8-NPXP13 control: a pinned scoped --package= value	npx --package=@scope/some-pkg@2.0.0 ./run.js
+pass	S8-NPXP14 control: two pinned -p values	npx -p cowsay@1.5.0 -p prettier@3.0.0 cowsay
+pass	S8-NPXP15 control: a --package= value that is a local path	npm exec --package=./local-dir -- ./bin
+pass	S8-NPXP16 control: --no forbids the install	npx --no --package=some-unknown-pkg ./run.js
+pass	S8-NPXP17 control: --package= after the command is the command's own argument	npx ./run.js --package=some-unknown-pkg
+pass	S8-NPXP18 control: same after a pinned package	npx cowsay@1.5.0 --package=some-unknown-pkg
+pass	S8-NPXP19 control: same after --	npm exec -- ./bin --package=some-unknown-pkg
+pass	S8-NPXP20 control: an empty --package= value	npx --package= ./run.js
+xfp	S8-NPXP21 F37 a local file: package spec is read as an unpinned package name	npm exec --package=file:./pkg.tgz -- ./bin
+xfp	S8-NPXP22 F37 same, spaced -p (already denied before L8)	npx -p file:./pkg.tgz ./bin
+xfn	S8-NPXP23 F37 a path-like flag value ends the pass, so a --package= after it goes unchecked	npx --cache ./c --package=some-unknown-pkg ./run.js

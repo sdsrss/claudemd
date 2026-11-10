@@ -1642,8 +1642,8 @@ if (( bypass_rm == 1 )); then
 fi
 
 # Pattern 2: fetch-execute package runner (npx / npm exec / pnpm dlx / yarn dlx
-# / bunx) with first non-flag arg being a bare/scoped package name without
-# @<version> pin. §8 forbids "execute scripts of unknown origin"; npx's siblings
+# / bunx) with first non-flag arg, or a package named by -p/--package before
+# it, being a bare/scoped package name without @<version> pin. §8 forbids "execute scripts of unknown origin"; npx's siblings
 # fetch+run an unpinned unknown package identically (npx is literally a shortcut
 # for `npm exec`), so the §8 NPX gate (lockfile → local → pinned) applies to the
 # whole family. `npm install` / `npm run` / `pnpm install` / `yarn add` are NOT
@@ -1790,6 +1790,38 @@ if [[ -n "$runner" ]]; then
       esac
     done
     set +f
+    # Every package named by --package (0.120.0 pre-tag review L8). npm's
+    # bin/npx-cli.js reads each word before the first positional or `--` as an
+    # npm option, reads -p and -p= as --package, and lets the option repeat. The
+    # loop above takes only the first spaced -p/--package value and skips
+    # `--package=<pkg>`, so `npx --package=<pkg> ./run.js` was judged on the path
+    # alone. This pass collects the value of every -p, --package, -p= and
+    # --package= up to the first word that does not start with `-` (`--` is
+    # skipped like any flag; the word after it is the command); each one other
+    # than the word above goes through the same verdict below. The word above
+    # is still checked exactly as before, so the pass can only add denies. Not
+    # handled: the value of any other flag that takes one ends the pass early
+    # (F37).
+    _npx_cands=("$pkg_token")
+    _pk_want=0
+    set -f
+    for tok in $npx_tail; do
+      if (( _pk_want != 0 )); then
+        (( _pk_want == 1 )) && [[ "$tok" != "$pkg_token" ]] && _npx_cands+=("$tok")
+        _pk_want=0
+        continue
+      fi
+      case "$tok" in
+        -p|--package) _pk_want=1 ;;
+        -c|--call) _pk_want=2 ;;
+        --package=?*|-p=?*) [[ "${tok#*=}" != "$pkg_token" ]] && _npx_cands+=("${tok#*=}") ;;
+        --*|-[a-zA-Z]) ;;
+        *) break ;;
+      esac
+    done
+    set +f
+    # Not indented, as the segment loop above: the body is the pre-L8 check.
+    for pkg_token in "${_npx_cands[@]}"; do
     # The same runner, package and --no-install flag give the same verdict and
     # the same record, so a later segment naming them again is skipped: `npx
     # vitest run a; npx vitest run b` would otherwise list one deny twice, or
@@ -1839,6 +1871,7 @@ if [[ -n "$runner" ]]; then
           ;;
       esac
     fi
+    done
   fi
 fi
 done

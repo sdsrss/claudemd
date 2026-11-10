@@ -543,6 +543,43 @@ else
 fi
 rm -rf "${f16_home:?}" "${f16_proj:?}" "${f16_else:?}"
 
+# --package= / a second -p (S8-NPXP rows) when the command word after them
+# resolves where the command runs: the corpus has no cwd, so there every
+# unpinned name is denied and the case below cannot be told from the plain
+# one. Here localbin is installed, so the old loop allowed on it and never
+# looked at the package; an installed --package= value is allowed and gets its
+# own npx-allow-local row, which shows it was examined.
+pkg_home=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+pkg_proj=$(mktemp -d "${TMPDIR:-/tmp}/claudemd-test-XXXXXX")
+mkdir -p "$pkg_home/.claude/logs" "$pkg_proj/node_modules/localpkg" "$pkg_proj/node_modules/.bin"
+printf '#!/bin/sh\n' > "$pkg_proj/node_modules/.bin/localbin"
+chmod +x "$pkg_proj/node_modules/.bin/localbin"
+pkg_run() {
+  local out
+  out=$(jq -cn --arg c "$1" --arg d "$pkg_proj" '{session_id:"pkgopt",cwd:$d,tool_name:"Bash",tool_input:{command:$c}}' \
+    | HOME="$pkg_home" bash "$HOOK" 2>/dev/null)
+  if [[ "$out" == *'"deny"'* ]]; then echo deny; else echo allow; fi
+}
+# The control runs first and its row is counted before the second case, whose
+# spaced `-p localpkg` writes a localpkg row of its own.
+pkg_local=$(pkg_run "npx --package=localpkg localbin")
+pkg_row=$(jq -rc 'select(.event=="npx-allow-local" and .extra.pkg=="localpkg")' "$pkg_home/.claude/logs/claudemd.jsonl" 2>/dev/null | grep -c .)
+pkg_unknown=$(pkg_run "npx --package=some-unknown-pkg localbin")
+pkg_second=$(pkg_run "npx -p localpkg -p some-unknown-pkg localbin")
+if [[ "$pkg_unknown" == deny && "$pkg_second" == deny ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [npx --package]: an unknown package named by --package= / a second -p before an installed command word gave '$pkg_unknown' / '$pkg_second' (want deny / deny)"
+  FAIL=$((FAIL + 1))
+fi
+if [[ "$pkg_local" == allow && "$pkg_row" -ge 1 ]]; then
+  PASS=$((PASS + 1))
+else
+  echo "FAIL [npx --package control]: an installed --package= value gave '$pkg_local' with $pkg_row npx-allow-local row(s) for it (want allow, >=1)"
+  FAIL=$((FAIL + 1))
+fi
+rm -rf "${pkg_home:?}" "${pkg_proj:?}"
+
 # 0.106.0 pre-tag review M2 + L5. The comment-quote pass runs the hook a second
 # time on the blanked text. That run must write only its own deny row: every
 # allow-side row it repeated doubled a row the first run had already written for
