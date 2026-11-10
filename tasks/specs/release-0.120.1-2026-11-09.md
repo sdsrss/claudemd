@@ -54,6 +54,9 @@
   - 修复只改文字和测试，不改代码，按手册不再开评审，自己跑 claim-drift。
 - 2026-11-09：修复提交 c7b3603 后 `node scripts/claim-drift.js --range=49459b8..HEAD`：列出的名字里与本版有关的（pre-bash-safety-check、`--prefix`、`--no-install`、`--yes`，README 79/110/377 行、ARCHITECTURE 179/325 行、RULE-HITS-SCHEMA 35/36 行）逐行重读，没有与 head 代码矛盾的说法。
 - 2026-11-10：c7b3603 的 PR CI 7/7 通过后，`main` 快进到 c7b3603 并推送，打带注释的 tag v0.120.1，建 GitHub Release；PR #34 显示 MERGED（06:29:15Z），远程 `release/v0.120.1` 已被 GitHub 删除，本地 `git branch -d`；`next-release` 对齐到 `main` 并推送。延期项 D#750 关闭；spec 挂载点条件记为延期项 D#754。
+- 2026-11-10 遗留复查（发版后，不改代码）：
+  - L5 真实频率：两份日志 10-08..11-10 共 4,170 行 `npx-allow-local`，同一会话、同一秒、同一包的重复 2 对；`isFiredEvent('npx-allow-local')` 实跑为 false，降级评审不计这类行。维持不改。
+  - 安装状态：`installed_plugins.json` 仍是 0.119.0，日志里 0.120.0、0.120.1 各 0 行；本记录收尾提交留在 `next-release`，`/claudemd-refresh` 装到的 `main` HEAD 就是 tag。
 
 ## 验证记录
 
