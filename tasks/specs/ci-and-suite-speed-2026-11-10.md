@@ -1,6 +1,6 @@
 # 发版 CI 去重与 shell 套件并行
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -24,10 +24,25 @@
 - AC4：完整套件耗时，与基线 314.5 s 对比，写出数字。
 - AC5：runbook 第 10 步改为看 main 的 ci 运行和 npm-publish。
 
+## 计划
+
+- [x] S1：ci.yml 删 tag 触发，先写失败的测试（a0445a6）
+- [x] S2：`run_suites_bg` 与 run-all.sh / bash32-runtime.sh 并行化，`timeout-guard.test.sh` 加用例
+- [x] S3：AC2–AC4 试跑与计时
+- [x] S4：runbook 第 10 步（记忆文件，不在仓库里）
+
 ## 决策与进展
 
 - 2026-11-10：不减 macOS 腿。09-22 以来 21 次失败的 ci 运行每次只红一条腿，10 次在 macOS 腿上。
+- 2026-11-10：第一轮并行试跑（5 次 run-all + 1 次 bash 3.2 运行时）暴露两个问题。① 本规范文件没有 `- [ ]` 清单，`spec-status-drift.test.js` 5/5 次报红（a0445a6 带进来的，补了"计划"一节）。② bash 3.2 运行时下 `sandbox-disposal.test.sh` 的 12b 红 1 次：该用例扫描真实 `/tmp`，hook 最多列 5 条，其他套件同时建的 mktemp 目录把探针挤出了列表。改为由 `suite_runs_alone` 让它和 `hook-budget.test.sh`（按安静机器上的比例计时）在并行批次之前单独跑。
+- 2026-11-10：语言漂移的预防（UserPromptSubmit 注入）不在本规范内：hook 文字会进模型上下文，属于 L3，等用户另行决定。
 
 ## 验证记录
 
-（实施后填写）
+- AC1：新测试 `ci.yml runs on main pushes and pull requests, not on tag pushes` 在改 ci.yml 前 0/1，改后 `workflow-step-exec.test.js` 7/7。
+- `timeout-guard.test.sh`：旧 `run-suite.sh` 上 10/15（新增 5 条失败），新库 15/15，bash 3.2 下 15/15。变异：把 `-P "$(suite_jobs)"` 改成 `-P 1`，"suites ran at the same time" 一条变红（4 s），14/15。
+- AC2（第二轮，`suite_runs_alone` 之后）：`bash tests/run-all.sh` 连跑 5 次，全部 `OVERALL: all suites passed`，shell PASS 行 1,790 条（串行基线 1,784 + 新增 6），node `fail 0`。在 bash 3.2 下跑 run-all 一次：通过，178 s。
+- AC3：在 `hooks/ship-baseline-check.sh` 开头插 `exit 0` 后跑并行版：rc=1，`FAILED:` 列出 `fail-open.test.sh`、`preToolUse-jq-spawn-budget.test.sh`、`ship-baseline.test.sh`，并打印各自日志末尾；hook 已用 `git checkout` 还原。
+- AC4：run-all 串行 314.5 s（HEAD 0790ff6）→ 并行 161 / 163 / 163 / 166 / 200 s（中位 163 s）。`bash32-runtime.sh` 串行 305 s（`git archive` a0445a6）→ 并行 128 s。本机 12 核。
+- `npm run smoke` → `SMOKE: 2/2 suite(s) passed`；`npm run lint` exit 0；`shellcheck --severity=warning`（4 个改动的 shell 文件）exit 0；`bash32-constructs.sh` exit 0。
+- CI 上的效果（ubuntu node-20 腿、macOS 腿、tag 后 npm-publish 时长）要等下一次 PR CI 和发版才能读到。

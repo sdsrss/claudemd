@@ -153,19 +153,36 @@ echo "== bash 3.2 runtime: $COUNT suite(s) under $B32_VER =="
 
 FAILED=0
 RAN=0
+# 600s, double run-all.sh's default 300s cap. Same reasoning that file records for
+# raising 120 → 300: a real hang is infinite, so a longer cap catches it just
+# as well, and the only cost is minutes on a run someone is already debugging.
+# 3.2 is slower than 5.x at the per-row spawns pre-bash-safety.test.sh drives,
+# and this leg exists to report portability, not to time it.
+# Same schedule as run-all.sh: the suites suite_runs_alone names one at a time
+# first, then the rest in parallel with pre-bash-safety.test.sh, the slowest,
+# first.
+B32_ARGS=()
 while IFS= read -r t; do
   [[ -n "$t" ]] || continue
   RAN=$((RAN + 1))
-  # 600s, double run-all.sh's default 300s cap. Same reasoning that file records for
-  # raising 120 → 300: a real hang is infinite, so a longer cap catches it just
-  # as well, and the only cost is minutes on a run someone is already debugging.
-  # 3.2 is slower than 5.x at the per-row spawns pre-bash-safety.test.sh drives,
-  # and this leg exists to report portability, not to time it.
-  if ! run_suite "$t" 600 >"$SHIM/out.log" 2>&1; then
-    FAILED=$((FAILED + 1))
-    echo "FAIL: $(basename "$t") under bash 3.2"
-    grep -E '^(FAIL|FAILED|TIMEOUT|not ok)' "$SHIM/out.log" | head -8 | sed 's/^/      /'
+  if suite_runs_alone "$(basename "$t")"; then
+    run_suites_bg "$SHIM" 600 "$t"
+  elif [[ "$(basename "$t")" == pre-bash-safety.test.sh ]]; then
+    B32_ARGS=(600 "$t" ${B32_ARGS[@]+"${B32_ARGS[@]}"})
+  else
+    B32_ARGS+=(600 "$t")
   fi
+done <<EOF
+$SUITES
+EOF
+(( ${#B32_ARGS[@]} == 0 )) || run_suites_bg "$SHIM" "${B32_ARGS[@]}"
+while IFS= read -r t; do
+  [[ -n "$t" ]] || continue
+  name=$(basename "$t")
+  [[ "$(cat "$SHIM/$name.rc" 2>/dev/null)" != 0 ]] || continue
+  FAILED=$((FAILED + 1))
+  echo "FAIL: $name under bash 3.2"
+  grep -E '^(FAIL|FAILED|TIMEOUT|not ok)' "$SHIM/$name.log" 2>/dev/null | head -8 | sed 's/^/      /'
 done <<EOF
 $SUITES
 EOF

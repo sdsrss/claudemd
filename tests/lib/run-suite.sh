@@ -75,12 +75,67 @@ run_suite() {
       rc=$?
     fi
   fi
-  if (( rc != 0 )); then
-    if (( rc == 124 )); then
-      record_suite_failure "$name (rc=124 TIMEOUT after ${secs}s)"
-    else
-      record_suite_failure "$name (rc=$rc)"
-    fi
-  fi
+  (( rc == 0 )) || record_suite_rc "$name" "$rc" "$secs"
   return "$rc"
+}
+
+# record_suite_rc <name> <rc> <timeout-seconds>
+#   The failure line run_suite records, shared with the callers that collect a
+#   suite's exit code from run_suites_bg's .rc file.
+record_suite_rc() {
+  if (( $2 == 124 )); then
+    record_suite_failure "$1 (rc=124 TIMEOUT after ${3}s)"
+  else
+    record_suite_failure "$1 (rc=$2)"
+  fi
+}
+
+# suite_runs_alone <basename> — true for the suites that must not share the
+# machine with other suites, so run-all.sh and bash32-runtime.sh run them one at
+# a time before the parallel batch:
+#   hook-budget.test.sh      compares hook wall time to a ratio measured on a
+#                            quiet machine.
+#   sandbox-disposal.test.sh case 12b scans the real /tmp, and the hook lists 5
+#                            entries; other suites' mktemp dirs pushed the probe
+#                            off that list (1 of 6 parallel trial runs, under
+#                            bash 3.2, 2026-11-10).
+suite_runs_alone() {
+  case "$1" in
+    hook-budget.test.sh | sandbox-disposal.test.sh) return 0 ;;
+  esac
+  return 1
+}
+
+# suite_jobs — how many suites run_suites_bg runs at once: CLAUDEMD_TEST_JOBS
+# when it is a positive integer, else the online CPU count, else 1.
+suite_jobs() {
+  local n="${CLAUDEMD_TEST_JOBS:-}"
+  case "$n" in '' | *[!0-9]* | 0) n=$(getconf _NPROCESSORS_ONLN 2>/dev/null) ;; esac
+  case "$n" in '' | *[!0-9]* | 0) n=1 ;; esac
+  printf '%s\n' "$n"
+}
+
+# run_suites_bg <out-dir> <cap> <suite> [<cap> <suite>]...
+#   Runs each suite through run_suite, $(suite_jobs) at a time, and waits for
+#   all of them. Each writes its stdout+stderr (and run_suite's TIMEOUT line) to
+#   <out-dir>/<basename>.log and its exit code to <out-dir>/<basename>.rc;
+#   nothing is printed and nothing is recorded, because the runs are child
+#   processes: the caller reads the .rc files in its own order. Suites start in
+#   argument order, so pass the slowest first. Basenames must be unique.
+#   The 40 hook suites took 266 s one at a time on a 12-core machine
+#   (2026-11-10, docs/claudemd-optimization-review-2026-11-10.md §3).
+run_suites_bg() {
+  local out="$1" lib
+  shift
+  lib="${BASH_SOURCE[0]}"
+  # -0 and -P are in both GNU and BSD xargs. The child is `bash` from PATH, so
+  # under tests/lib/bash32-runtime.sh's shim the runner itself is bash 3.2 too.
+  # It exits 0 whatever the suite did, so xargs never stops early.
+  printf '%s\0' "$@" | xargs -0 -n 2 -P "$(suite_jobs)" bash -c '
+    . "$1"
+    CLAUDEMD_SUITE_LOG_DIR=""
+    name=$(basename "$4")
+    run_suite "$4" "$3" >"$2/$name.log" 2>&1
+    echo "$?" >"$2/$name.rc"
+  ' _ "$lib" "$out"
 }

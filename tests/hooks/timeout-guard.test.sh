@@ -107,6 +107,44 @@ if [[ -n "$CLAUDEMD_SUITE_TIMEOUT_BIN" ]]; then
 fi
 unset CLAUDEMD_SUITE_LOG_DIR
 
+# run_suites_bg (2026-11-10): run-all.sh runs the hook suites in parallel. Each
+# suite must leave <name>.log (stdout and stderr) and <name>.rc behind, with the
+# same exit code run_suite returns, and the suites must overlap in time.
+BGDIR="$TMP/bg"
+mkdir -p "$BGDIR"
+SLOW1="$TMP/slow1.test.sh"
+SLOW2="$TMP/slow2.test.sh"
+printf '#!/usr/bin/env bash\nsleep 2\necho slow-done\n' > "$SLOW1"
+printf '#!/usr/bin/env bash\nsleep 2\necho slow-done\n' > "$SLOW2"
+START=$(date +%s)
+CLAUDEMD_TEST_JOBS=3 run_suites_bg "$BGDIR" 10 "$SLOW1" 10 "$SLOW2" 10 "$NOISY"
+ELAPSED=$(( $(date +%s) - START ))
+if [[ "$(cat "$BGDIR/slow1.test.sh.rc" 2>/dev/null)" == 0 && "$(cat "$BGDIR/slow2.test.sh.rc" 2>/dev/null)" == 0 ]]; then
+  ok "run_suites_bg: passing suites leave rc 0"
+else ng "run_suites_bg: passing suites' .rc files missing or non-zero"; fi
+if [[ "$(cat "$BGDIR/noisy.test.sh.rc" 2>/dev/null)" == 3 ]]; then
+  ok "run_suites_bg: a failing suite's exit 3 lands in its .rc file"
+else ng "run_suites_bg: noisy.test.sh.rc is '$(cat "$BGDIR/noisy.test.sh.rc" 2>/dev/null)' (expected 3)"; fi
+if grep -q marker-stdout "$BGDIR/noisy.test.sh.log" 2>/dev/null \
+  && grep -q marker-stderr "$BGDIR/noisy.test.sh.log" 2>/dev/null \
+  && grep -q slow-done "$BGDIR/slow1.test.sh.log" 2>/dev/null; then
+  ok "run_suites_bg: each suite's stdout and stderr land in its own log"
+else ng "run_suites_bg: suite output missing from $BGDIR/*.log"; fi
+# Two 2 s suites one after the other take at least 4 s.
+if (( ELAPSED < 4 )); then ok "run_suites_bg: suites ran at the same time (${ELAPSED}s for two 2 s suites)"
+else ng "run_suites_bg: ${ELAPSED}s for two 2 s suites — they ran one after the other"; fi
+if [[ -n "$CLAUDEMD_SUITE_TIMEOUT_BIN" ]]; then
+  run_suites_bg "$BGDIR" 1 "$HANG"
+  if [[ "$(cat "$BGDIR/hang.test.sh.rc" 2>/dev/null)" == 124 ]] && grep -q '^TIMEOUT: hang.test.sh' "$BGDIR/hang.test.sh.log" 2>/dev/null; then
+    ok "run_suites_bg: a hung suite is killed at its cap (rc 124, TIMEOUT line in its log)"
+  else ng "run_suites_bg: hung suite not reported as 124 + TIMEOUT"; fi
+fi
+JOBS=$(CLAUDEMD_TEST_JOBS=x suite_jobs)
+case "$JOBS" in
+  '' | *[!0-9]* | 0) ng "suite_jobs: CLAUDEMD_TEST_JOBS=x gave '$JOBS', not a positive count" ;;
+  *) ok "suite_jobs: an unusable CLAUDEMD_TEST_JOBS falls back to a positive count ($JOBS)" ;;
+esac
+
 TOTAL=$((PASS+FAIL))
 if (( FAIL > 0 )); then
   echo "Tests: $PASS/$TOTAL passed"

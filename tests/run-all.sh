@@ -75,11 +75,44 @@ INTEGRATION_SUITE_FLOOR=2
 HOOK_SUITES=0
 INTEGRATION_SUITES=0
 
+# replay_suites <dir> <cap> <suite> [<cap> <suite>]...
+#   After run_suites_bg (tests/lib/run-suite.sh): print each suite's log in
+#   argument order under its `-- <name>` header and count and name its failure,
+#   as the one-at-a-time loop did while it ran.
+replay_suites() {
+  local dir="$1" name rc
+  shift
+  while (( $# >= 2 )); do
+    name=$(basename "$2")
+    echo "-- $name"
+    cat "$dir/$name.log" 2>/dev/null
+    rc=$(cat "$dir/$name.rc" 2>/dev/null)
+    case "$rc" in
+      0) ;;
+      '' | *[!0-9]*)
+        echo "FAIL: $name left no exit status"
+        record_suite_failure "$name (no exit status)"
+        FAIL=$((FAIL + 1))
+        ;;
+      *)
+        record_suite_rc "$name" "$rc" "$1"
+        FAIL=$((FAIL + 1))
+        ;;
+    esac
+    shift 2
+  done
+}
+
 echo "== Shell hook tests =="
+# The suites run in parallel (run_suites_bg, $(suite_jobs) at a time;
+# CLAUDEMD_TEST_JOBS=1 runs them one at a time) and their logs print when all
+# are done. pre-bash-safety.test.sh starts first because it is the slowest
+# (87 of 266 s on 2026-11-10). The suites suite_runs_alone names run one at a
+# time before the others start; that function says why for each.
+HOOK_ARGS=()
 for t in "$HERE"/hooks/*.test.sh; do
   [[ -f "$t" ]] || continue
   HOOK_SUITES=$((HOOK_SUITES + 1))
-  echo "-- $(basename "$t")"
   # 300s, not the 120s default (v0.64.1). pre-bash-safety.test.sh drives one hook
   # process per corpus row, and v0.64.0 took that corpus 500 → 598 rows: 65s on
   # Linux here, and macOS runners are ~4x slower at process creation, so the leg
@@ -99,10 +132,20 @@ for t in "$HERE"/hooks/*.test.sh; do
   # 36251410770 with every other suite green. That suite alone gets 600s, on the
   # same infinite-hang argument; the others keep 300s. The per-row spawn is
   # still the cost driver and still deferred.
-  SUITE_CAP=300
-  [[ "$(basename "$t")" != "pre-bash-safety.test.sh" ]] || SUITE_CAP=600
-  run_suite "$t" "$SUITE_CAP" || FAIL=$((FAIL + 1))
+  if suite_runs_alone "$(basename "$t")"; then
+    echo "-- $(basename "$t") (alone)"
+    run_suite "$t" 300 || FAIL=$((FAIL + 1))
+  elif [[ "$(basename "$t")" == pre-bash-safety.test.sh ]]; then
+    HOOK_ARGS=(600 "$t" ${HOOK_ARGS[@]+"${HOOK_ARGS[@]}"})
+  else
+    HOOK_ARGS+=(300 "$t")
+  fi
 done
+if (( ${#HOOK_ARGS[@]} > 0 )); then
+  echo "-- $(( ${#HOOK_ARGS[@]} / 2 )) suite(s), $(suite_jobs) at a time"
+  run_suites_bg "$SUITE_LOG_DIR" "${HOOK_ARGS[@]}"
+  replay_suites "$SUITE_LOG_DIR" "${HOOK_ARGS[@]}"
+fi
 
 echo "== Node.js script tests =="
 # --test-timeout caps EACH test (ms); a single deadlocked test fails instead of
@@ -183,12 +226,16 @@ fi
 NODE_TMP=""
 
 echo "== Integration tests =="
+INT_ARGS=()
 for t in "$HERE"/integration/*.test.sh; do
   [[ -f "$t" ]] || continue
   INTEGRATION_SUITES=$((INTEGRATION_SUITES + 1))
-  echo "-- $(basename "$t")"
-  run_suite "$t" 300 || FAIL=$((FAIL + 1))
+  INT_ARGS+=(300 "$t")
 done
+if (( ${#INT_ARGS[@]} > 0 )); then
+  run_suites_bg "$SUITE_LOG_DIR" "${INT_ARGS[@]}"
+  replay_suites "$SUITE_LOG_DIR" "${INT_ARGS[@]}"
+fi
 
 # Shellcheck, locally (v0.62.1). CI has gated this at warning+ since the 2026-07-24
 # audit, but the local suite did not — so v0.62.0 shipped a tag whose CI went red on
