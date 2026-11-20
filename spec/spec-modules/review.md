@@ -16,8 +16,6 @@ trigger-window: head
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. Spawn the reviewer without a name and ask for the whole report in its final message (§11-O Long reports). A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
 - **Ship order**: branch finished → pre-ship review → ship → deploy → monitoring checklist.
 
-## §12 PLUGINS
-
 ### Review-finding repair
 - **Receiving a review** (any source): verify each finding against the code before implementing it.
 - **Critical/High**: repair as L2. Iron Law #1 applies — failing test first.

@@ -8,7 +8,8 @@
 // `<!--module:`) is a build error: read as text, it would put the chunk after
 // it into the module before it, silently. A chunk that starts inside a `##`
 // section (its first heading is `###`) is prefixed with that `##` heading, so
-// the module keeps the context the source gave it.
+// the module keeps the context the source gave it, unless the module's previous
+// chunk already ended inside that section (one `##` heading per section).
 // Metadata (when to load, tier-2 triggers) lives in spec/spec-modules.json and
 // is written into each module's frontmatter, where the hooks read it.
 
@@ -25,15 +26,20 @@ export function splitModules(text) {
   let current = 'none';
   let lastH2 = null; // the most recent `##` heading
   let lastH2Before = null; // the `##` heading in force where the current chunk began
+  const endH2 = {}; // per module: the `##` heading in force where its last chunk ended
   let chunk = [];
   const flush = () => {
     if (current !== 'none' && chunk.some(l => l.trim())) {
       const firstHeading = chunk.find(l => /^#{2,3} /.test(l));
       const lines =
-        firstHeading && firstHeading.startsWith('### ') && lastH2Before !== null
+        firstHeading &&
+        firstHeading.startsWith('### ') &&
+        lastH2Before !== null &&
+        endH2[current] !== lastH2Before
           ? [lastH2Before, '', ...chunk]
           : chunk;
       (out[current] ??= []).push(lines.join('\n').replace(/^\n+|\n+$/g, ''));
+      endH2[current] = lastH2;
     }
     chunk = [];
   };

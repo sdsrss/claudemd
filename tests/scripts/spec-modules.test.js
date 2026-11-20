@@ -41,6 +41,42 @@ test('spec-modules: a chunk that starts at ### carries its ## heading; none is d
   assert.ok(!JSON.stringify(parts).includes('maintainer'));
 });
 
+test('spec-modules: a module that resumes inside the ## section it already opened does not repeat the heading', () => {
+  // review.md carried `## §12 PLUGINS` twice: §12 holds a review chunk, a ship
+  // chunk, then a second review chunk (prompt-audit 2026-11-20 N9).
+  const src = [
+    '# AI-CODING-SPEC v9.9.9 — Extended',
+    '<!-- module: a -->',
+    '## §12 TWO',
+    '### first a',
+    'body a1',
+    '<!-- module: b -->',
+    '### only b',
+    'body b',
+    '<!-- module: a -->',
+    '### second a',
+    'body a2',
+    '<!-- module: b -->',
+    '## §13 THREE',
+    'body b2',
+    '<!-- module: a -->',
+    '### third a',
+    'body a3',
+  ].join('\n');
+  const parts = splitModules(src);
+  assert.deepEqual(parts.a, [
+    '## §12 TWO\n### first a\nbody a1',
+    '### second a\nbody a2',
+    '## §13 THREE\n\n### third a\nbody a3',
+  ]);
+  assert.deepEqual(parts.b, ['## §12 TWO\n\n### only b\nbody b', '## §13 THREE\nbody b2']);
+  for (const name of Object.keys(REGISTRY)) {
+    const text = fs.readFileSync(path.join(MOD_DIR, `${name}.md`), 'utf8');
+    const h2 = text.split('\n').filter(l => l.startsWith('## '));
+    assert.equal(new Set(h2).size, h2.length, `${name}.md repeats a ## heading: ${h2.join(' | ')}`);
+  }
+});
+
 test('spec-modules: an unregistered marker or an empty registry entry is a build error', () => {
   const src = '# AI-CODING-SPEC v1.0.0 — Extended\n<!-- module: x -->\n## A\nz\n';
   assert.throws(() => buildModules(src, { y: { loadsOn: 'y' } }), /no registry entry: x/);
