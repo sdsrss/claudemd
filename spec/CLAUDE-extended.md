@@ -115,7 +115,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single slice regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional, on user request): review the plan from the angles the user names.
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
@@ -373,7 +373,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 
 **v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition, and agent temp residue (with core §8.V4's summary) adds no mount at or under the dir; four core HARD rules (Hard-AUTH override, Report shape, Honesty, Specificity) state their reason; core §2 drops the repo-only §13 META pointer and §11 the cross-session pointer; §4.FULL builds per slice, and a lite→FULL escalation re-runs plan and AUTH; `review.md` no longer repeats `## §12 PLUGINS`. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
 
-**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24204 bytes (Δ 227); extended 39113 → 38806 bytes (Δ -307); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24204/25000 (**796 bytes headroom**); extended 38806/50000 (**11194 bytes headroom**).
+**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24218 bytes (Δ 241); extended 39113 → 38807 bytes (Δ -306); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24218/25000 (**782 bytes headroom**); extended 38807/50000 (**11193 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

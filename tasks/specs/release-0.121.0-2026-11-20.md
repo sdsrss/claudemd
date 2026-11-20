@@ -45,6 +45,15 @@
   - L11（测试标签）：四个钉住项的版本标签改为 v8.6.0，随本轮一起改。
   - L12（范围外，不在本次 diff）：`/claudemd-clean-residue --apply`（`scripts/clean-residue.js:202`）递归删除前不查挂载点。记为遗留与待办。
 
+- 2026-11-20：第二轮评审（新开的评审代理，只审修复提交 197d1b5..17dd6fc）：Critical 0、High 0、Medium 0、Low 6，都在发布的文字里。处理：
+  - L1（规范 changelog）：v8.6.0 条目里第 6 步的新文字仍写 "TDD per task"、"lite step 7 … unchanged"，改掉。
+  - L2（规范 changelog、钉住项 why）："re-checked nothing" 说过头了：安全检查（发版前 STRIDE）一直在。改为"只在用户要求时才复查计划"。
+  - L3（改规范）：FULL 第 2 步的 "single task regardless of runtime" 改为 "single slice"，计划的单位统一为 slice；新加整行钉住，先红后绿。
+  - L4（`docs/prompt-audit-2026-11-20.md`，被跟踪的分析文档）：在第 7 节补一条更正。
+  - L5（不改，记为遗留）：`hooks/tmp-sweep.sh:141` 说 "every condition" 但列表还少 "resolves inside that root" 和会话 scratchpad 的转录 24 h 条件；本批之前就如此。改它要动 hook 代码、再开一轮评审，已到第 2 轮深度上限；放进 `next-release` 的下一批。
+  - L6（改规范理由句）：Specificity 理由改为 "a reader can check a claim that names what was measured and, for a ratio, against what"，不再要求绝对数也带基线。
+  - 都是纯文字修复：按手册不再派评审，用 `scripts/claim-drift.js` 自查。
+
 ## 验证记录
 - `npm run check`（发版分支，版本号已改）→ 通过（exit=0；node 1815 条，1812 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
 - `npm run smoke` → 通过（SMOKE: 2/2 suite(s) passed）

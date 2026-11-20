@@ -61,7 +61,7 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single slice regardless of runtime; annotate wall-clock + offline-window.
 3. **Plan review** (optional, on user request): review the plan from the angles the user names.
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.

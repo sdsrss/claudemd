@@ -230,3 +230,4 @@
 - **N2–N7、N8**：作为规范 v8.6.0（minor）提交在 `next-release` 上，随下一批发版发出。设计记录 `tasks/specs/prompt-audit-fixes-2026-11-20.md`，changelog 见 `spec/CLAUDE-changelog.md` v8.6.0。N8 整节删除，没有移进核心：核心 §0 Ambiguity 和 §2.1 已经覆盖这种情况。N2 关闭了待办 D#754。
 - **N11**：`~/.claude/rules/context7.md` 已删除，影响本机所有项目。`context7-mcp` 技能和 context7 MCP 服务器自带的说明都还在。逐字节恢复：`sed -n '/^Use Context7/,$p' ~/.claude/skills/context7-mcp/SKILL.md > ~/.claude/rules/context7.md`。
 - **仍未处理**（这次没有要求）：N2b、N9、N10、F11、F14、B6、B7、converge 汇报格式。
+- **更正（0.121.0 发版前评审）**：第 3.2 节 N4 处理里说 "`plan.md:93` 的 \"Re-run step 3\" 仍然成立"，不对：第 3 步改为按需后，lite 升级到 FULL 时重跑它只在用户要求时才复查计划。0.121.0 改为重跑第 2、4 步（用户重新确认计划和风险）。第二轮（N2b、N9、N10、F11、converge、F14）见设计记录 `tasks/specs/prompt-audit-fixes-2026-11-20.md`。
