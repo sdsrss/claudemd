@@ -473,10 +473,10 @@ const PINS = [
     line: '- no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it',
   },
   {
-    what: '§5-EXT Agent temp residue — anything else stays §5 Hard; tmp-sweep reaps agent-tmp-* at 72 h (mtime and ctime, no socket) (v8.5.0)',
+    what: '§5-EXT Agent temp residue — anything else stays §5 Hard; tmp-sweep reaps agent-tmp-* at 72 h (mtime and ctime, no socket, no mount) (v8.6.0)',
     file: EXT,
     anchor: 'Anything else in a temp root has no known creator',
-    line: "Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.",
+    line: "Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO, it neither is nor holds a mount of another filesystem, and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.",
   },
   {
     what: 'core §5 Hard — the eleven hard-AUTH categories and the self-enforced tag (v6.28.0 wording)',
@@ -704,7 +704,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '156b0bb4f502a09e' },
+  { file: CORE, heading: '', sha256: '574cf2328787636b' },
   { file: CORE, heading: '## §0 SPINE', sha256: '7b7a9634be2dc9b7' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
@@ -716,28 +716,28 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '7db962169948ef25' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'dadbe6efc009e4cf' },
-  { file: EXT, heading: '', sha256: 'c8849e2b2675bdfd' },
+  { file: EXT, heading: '', sha256: 'bc98e4755148331b' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
-  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: 'de6a948d62a326c1' },
+  { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '4acf6f1d7a1fc865' },
   {
     file: EXT,
     heading: '## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)',
     sha256: 'fdb6b1b5759ca2c2',
   },
   { file: EXT, heading: '## §2.S SPEC ARTIFACT', sha256: '8e461fa93acb1d8a' },
-  { file: EXT, heading: '## §4 FLOW', sha256: 'c82f5c80a7f350e3' },
-  { file: EXT, heading: '## §6 DEBUG', sha256: '474a96377fa1bdf9' },
+  { file: EXT, heading: '## §4 FLOW', sha256: 'b48869a90945b483' },
+  { file: EXT, heading: '## §6 DEBUG', sha256: 'da9f027c2e2bd592' },
   { file: EXT, heading: '## §7-EXT VALIDATE (L3)', sha256: 'a0bc0e2da432b216' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: '3178c89ebb3775c5' },
   { file: EXT, heading: '## §10-R COMPLETE', sha256: '023253b216dcd619' },
   { file: EXT, heading: '## 汇报', sha256: 'f46384510714a963' },
-  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '983d7886bad4a9dc' },
-  { file: EXT, heading: '## §12 PLUGINS', sha256: 'a50532f806aabd1a' },
+  { file: EXT, heading: '## §11-O ORCHESTRATE', sha256: '1a7fb4eace34759e' },
+  { file: EXT, heading: '## §12 PLUGINS', sha256: '05bbefc89fd2a318' },
   { file: EXT, heading: '## §13 META (Agent-facing)', sha256: '1b8fc572dfcd738b' },
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: 'dbf4af6a30a420e0' },
+  { file: EXT, heading: '## Recent changes', sha256: '54a48345a90a2330' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '1dc829efcec0260a' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '408e7db996a99fbf' },
@@ -785,8 +785,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: 'd95a21b784b37bd1' },
-  { file: EXT, count: 53, sha256: '27824fad65127518' },
+  { file: CORE, count: 18, sha256: '5fffeba41cf8fd60' },
+  { file: EXT, count: 52, sha256: '4a0cec95841deff8' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

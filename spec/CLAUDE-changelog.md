@@ -6,6 +6,19 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.6.0 (minor, 2026-11-20) — The L3 flow drops the methods copied from retired skills
+
+Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`; analysis `docs/prompt-audit-2026-11-20.md`. Minor, because two L3 requirements are removed (§13 META: a relaxed rule). No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: a prompt audit against Claude Opus 5.5 (the `/doctor prompt-audit` method, with the nine modules added to its scope) traced these lines to skills this spec no longer routes to: `sp:writing-plans` (2-5 minute tasks), `gs:/autoplan` (CEO / design / eng review), `sp:subagent-driven-development` (subagents and a review per sub-task) and the systematic-debugging phases, all written into extended on 2026-04-21. v7.3.0 removed the skill names and kept the methods. Anthropic's migration guide for Claude Opus 5 says delegate-more guidance written for earlier models should come out, that subagents should not be used for review or verification, and that self-check instructions trigger extra work; its Claude Opus 5.5 section lists such instructions for re-testing.
+- **§4.FULL step 2**: "user-reviewed: slices, each with the files it touches and how it is verified." Was: "user-reviewed. 2-5 min tasks with file paths / code / verify steps."
+- **§4.FULL step 3**: "**Plan review** (optional, on user request): review the plan from the angles the user names." Was: "(optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph)." §4.FULL-lite step 3: "Plan review: as FULL.3." Was: "Plan self-critique: inline 3-view (CEO / design / eng)."
+- **§4.FULL step 6**: "**Build**: TDD per task." Was: "TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones." §4.FULL-lite step 6: "Build: TDD." Was: "Build: TDD. Per-task review collapsed into step 7." The pre-ship review (FULL step 8, lite step 7) and §12 Author ≠ reviewer are unchanged.
+- **§12**: the bullet "**L3 two-tier review**: a fresh-subagent review per sub-task, then one pre-ship review across the whole change." is removed.
+- **§11-O**: removed "L3 build: `plan.md` §4.FULL step 6.", "Impact analysis before structural modifications; module overview before changes to unfamiliar code." (core §2.1 keeps "Export-surface edit → impact analysis first"), and the **Cross-session reference** section (on "上次/之前/yesterday", scan `tasks/` by mtime, confirm, ASK on ≥2 matches). That section disagreed with itself ("confirm", then "ASK only if no match"); core §0 Ambiguity and §2.1 "Did we / why → memory first" cover the case; and the module it sat in loads only on subagent prompts.
+- **Iron Law #3** (§6, heading unchanged): "Find the root cause and state the chain from trigger to symptom before changing code (core §1 Fix at the root). At L2+ a change that only hides the symptom is not a fix; the fix carries §7 evidence." Was: "Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Symptom-only fixes banned at L2+."
+- **§5-EXT**: the `tmp-sweep` sentence adds "it neither is nor holds a mount of another filesystem", the condition the hook has applied since plugin 0.120.0.
+
 ## v8.5.0 (minor, 2026-11-03) — An earlier task's temp dirs are deleted, not asked about
 
 Design record `tasks/specs/agent-temp-residue-2026-11-03.md`; analysis `docs/claude-session-audit-2026-11-03.md` (local). Minor, because a delete class moves from §5 Hard to Soft (§13 META: a relaxed rule). No HARD rule added or removed; every rule keeps its ID.

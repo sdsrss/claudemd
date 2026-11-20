@@ -5,7 +5,7 @@ triggers: 报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.5.0 — module: debug
+# AI-CODING-SPEC v8.6.0 — module: debug
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -22,7 +22,7 @@ sideways          → STOP + stash → re-plan (note pivot reason)
 ```
 
 ### Iron Law #3: NO FIX WITHOUT ROOT CAUSE (L2+)
-Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Symptom-only fixes banned at L2+.
+Find the root cause and state the chain from trigger to symptom before changing code (core §1 Fix at the root). At L2+ a change that only hides the symptom is not a fix; the fix carries §7 evidence.
 
 ### Three-strike rule
 Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user repeat-failure feedback (e.g. "又失败 / 又挂 / again") counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.

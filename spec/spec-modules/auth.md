@@ -5,7 +5,7 @@ triggers:
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.5.0 — module: auth
+# AI-CODING-SPEC v8.6.0 — module: auth
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -53,7 +53,7 @@ Strict prefix match (NOT glob):
 - nothing inside it changed in the last 24 h
 - no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
 
-Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
+Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO, it neither is nor holds a mount of another filesystem, and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
 
 ## Appendix B — Canonical examples
 

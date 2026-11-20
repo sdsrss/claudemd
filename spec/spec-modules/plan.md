@@ -5,7 +5,7 @@ triggers: 架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refact
 trigger-window: head
 ---
 
-# AI-CODING-SPEC v8.5.0 — module: plan
+# AI-CODING-SPEC v8.6.0 — module: plan
 
 <!-- generated from spec/CLAUDE-extended.md by scripts/build-spec-modules.js; edit the source, then rebuild -->
 
@@ -61,11 +61,11 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
-3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
+2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+3. **Plan review** (optional, on user request): review the plan from the angles the user names.
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
-6. **Build**: TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones.
+6. **Build**: TDD per task.
 7. **Branch finish**: rebase / squash, changelog, clean tree.
 8. **Pre-ship review**: fresh subagent, whole change (`review.md`).
 9. **Optional** (user request only): a second opinion (another model or tool).
@@ -81,10 +81,10 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 
 1. Clarify: as FULL.1 if scope fuzzy; else skip.
 2. Plan: as FULL.2.
-3. Plan self-critique: inline 3-view (CEO / design / eng).
+3. Plan review: as FULL.3.
 4. AUTH: §5 hard.
 5. Isolate: as FULL.5.
-6. Build: TDD. Per-task review collapsed into step 7.
+6. Build: TDD.
 7. Pre-ship review: one fresh-subagent pass (per-task drift + cross-cutting).
 8. Ship: per `ship.md`.
 9. Deploy: as FULL.11.

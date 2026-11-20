@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.5.0 — Extended
+# AI-CODING-SPEC v8.6.0 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -47,7 +47,7 @@ Strict prefix match (NOT glob):
 - nothing inside it changed in the last 24 h
 - no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
 
-Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
+Anything else in a temp root has no known creator and stays a §5 Hard delete. The plugin's `tmp-sweep` hook deletes an `agent-tmp-*` directory once no mtime or ctime in it is within 72 h, it holds no socket or FIFO, it neither is nor holds a mount of another filesystem, and it has no `.keep`; it cannot check the last condition, so a `.keep` (why, and until when) is how one is retained.
 
 <!-- module: ship -->
 ## §2-EXT Released-artifact checklist (L3 hard upgrade, core §2)
@@ -114,11 +114,11 @@ Common drift source: plan sketches (type lists / table fields / filesystem shape
 For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 Modules, cross-cutting architecture.
 
 1. **Clarify**: product + tech questions in one ask, tagged `[product]` / `[tech]`.
-2. **Plan**: in the spec file's plan section, user-reviewed. 2-5 min tasks with file paths / code / verify steps. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
-3. **Plan review** (optional): 3-view self-critique (CEO / design / eng) on user request or auth/payment/crypto/cross-module ≥5. Default: user reviews + inline eng self-critique (1 paragraph).
+2. **Plan**: in the spec file's plan section, user-reviewed: slices, each with the files it touches and how it is verified. Runtime-heavy ops (backfill / migration / build / model training) = single task regardless of runtime; annotate wall-clock + offline-window.
+3. **Plan review** (optional, on user request): review the plan from the angles the user names.
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
-6. **Build**: TDD per task, independent sub-tasks in subagents; fresh-subagent review per sub-task, 2-stage (spec, quality) on §5-hard ones.
+6. **Build**: TDD per task.
 7. **Branch finish**: rebase / squash, changelog, clean tree.
 8. **Pre-ship review**: fresh subagent, whole change (`review.md`).
 9. **Optional** (user request only): a second opinion (another model or tool).
@@ -134,10 +134,10 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 
 1. Clarify: as FULL.1 if scope fuzzy; else skip.
 2. Plan: as FULL.2.
-3. Plan self-critique: inline 3-view (CEO / design / eng).
+3. Plan review: as FULL.3.
 4. AUTH: §5 hard.
 5. Isolate: as FULL.5.
-6. Build: TDD. Per-task review collapsed into step 7.
+6. Build: TDD.
 7. Pre-ship review: one fresh-subagent pass (per-task drift + cross-cutting).
 8. Ship: per `ship.md`.
 9. Deploy: as FULL.11.
@@ -159,7 +159,7 @@ sideways          → STOP + stash → re-plan (note pivot reason)
 ```
 
 ### Iron Law #3: NO FIX WITHOUT ROOT CAUSE (L2+)
-Investigate → Analyze → Hypothesize → Implement (with §7 evidence). Symptom-only fixes banned at L2+.
+Find the root cause and state the chain from trigger to symptom before changing code (core §1 Fix at the root). At L2+ a change that only hides the symptom is not a fix; the fix carries §7 evidence.
 
 ### Three-strike rule
 Same error signature 3× → roll back the path that introduced it. Signature = `error_msg_normalized[:80]` + `exception_type`; 2+ matching = same. **Manual trigger**: user repeat-failure feedback (e.g. "又失败 / 又挂 / again") counts as a strike regardless of signature match. Reset on user "continue / 忽略" or approach explicitly pivots (new file, new hypothesis stated in prose). After 3 fails, question architecture — no 4th patch.
@@ -266,12 +266,6 @@ Universal session rules live in core §11 SESSION — they bind whether or not t
 - **Integration re-verify**: after a subagent reports done with evidence, main runs integration check (integration / e2e / cross-module smoke) on merged state before claiming its own done. Do not duplicate unit tests.
 - **A subagent has nobody to ASK**: §0's ambiguity ASK and §5's `[AUTH REQUIRED]` both block on a user, and a spawned agent has none — the harness says so in its own system text. So inside a subagent: pick a reading per §0 and state it in the report, and STOP at a §5 hard-AUTH boundary — finish the in-scope non-hard work, list the boundary under open items as `<op> needs AUTH`, and leave the operation to main. Never self-authorize, never wait for an answer that cannot arrive.
 - **Subagent non-convergence (HARD)**: 3× similar-signature failure on one sub-task → pull back to main; no 4th spawn.
-- L3 build: `plan.md` §4.FULL step 6.
-- Impact analysis before structural modifications; module overview before changes to unfamiliar code.
-
-### Cross-session reference
-User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <7d, confirm "你说的是 `<slug>`?"; ASK only if no match.
-**Multi-candidate**: ≥2 matches → list as `<slug> (<date>) — <goal>` and ASK; never guess.
 
 <!-- module: review -->
 ## §12 PLUGINS
@@ -279,7 +273,6 @@ User says "上次/之前/yesterday" → scan `tasks/` and `tasks/specs/` mtime <
 ### Hard cooperation rules
 - **Author ≠ reviewer (HARD)**: reviewer = fresh subagent, empty context, with or without a review skill installed. No self-review in costume. No subagent can be spawned, or a harness or tool setting blocks it → name the block and ASK once; refused or impossible → L2: report the review as could not run, naming the block; L3 not executable: escalate.
 - **Blind brief**: an empty context is not independence — the spawn prompt carries the author's view in. Give the artifact (commit range / paths), the contract (spec / issue / acceptance criteria) and the questions; withhold the author's rationale, its verdict (`fixed` / `correct`), earlier rounds' findings and any expected count. Author claims worth checking go in a separate `claims to falsify` list. Each finding cites file:line plus a reproducing command or quoted evidence; unexamined scope goes under `NOT CHECKED`. Spawn the reviewer without a name and ask for the whole report in its final message (§11-O Long reports). A re-review after repair is a new spawn, never a message to the reviewer who found the defect.
-- **L3 two-tier review**: a fresh-subagent review per sub-task, then one pre-ship review across the whole change.
 - **Ship order**: branch finished → pre-ship review → ship → deploy → monitoring checklist.
 
 <!-- module: ship -->
@@ -377,9 +370,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.5.0 (minor, 2026-11-03)** — Agent temp residue: an `agent-tmp-*` directory in a temp root, or an ended session's scratchpad directory, that an earlier task or session left (owned by the user, not a symlink, idle 24 h, no `.keep`, named by no open spec file, paused checkpoint or deferred item) is a core §5 Soft delete: removed without asking, one report line each (§5-EXT, `auth.md`); anything else outside the project stays §5 Hard. §8.V4 names temp dirs `agent-tmp-<task>-…`, states the class's conditions and has the `.keep` say why and until when; §5.1 Never-downgrade and §5.1-EXT `aggressive` cover the class; §7-EXT-TMP names what `tmp-sweep` reaps. From 2026-10-06 to 11-03, 8 report open items asked the user to approve deleting a directory an earlier task or session left in a temp root; no reply refused. Design record `tasks/specs/agent-temp-residue-2026-11-03.md`. No HARD rule added or removed.
+**v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
 
-**Sizing** (v8.5.0, 2026-11-03, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23505 → 23977 bytes (Δ +472); extended 37363 → 39113 bytes (Δ +1750); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23977/25000 (**1023 bytes headroom**); extended 39113/50000 (**10887 bytes headroom**).
+**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 23977 bytes (Δ 0); extended 39113 → 38202 bytes (Δ -911); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23977/25000 (**1023 bytes headroom**); extended 38202/50000 (**11798 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY
