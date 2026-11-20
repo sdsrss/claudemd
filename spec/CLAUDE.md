@@ -8,7 +8,7 @@ CLASSIFY (§2) → AUTH (§5) → EXECUTE → VALIDATE (§7) → REPORT (§10). 
 
 **Ambiguity**: readings differ and a wrong pick is low-risk and cheap to undo → pick one, write the choice and the reason down (the spec file's decisions section, else the report's open items) and continue. A wrong pick that would waste substantial work, cannot be undone, or meets a §5 hard-AUTH boundary → ask, but first finish everything that does not depend on the answer, then put the questions at the end of the report with options, cost and your pick. A subagent never asks: it states its reading and stops at hard AUTH (§5).
 
-**Hard-AUTH override (HARD)**: an AUTH covers the op and scope it names — the user approved what they were shown, not what the work turns up. Inside it, a §5 Hard sub-decision asks again: one ASK per hard category for in-scope items, one per item for out-of-scope discoveries (subagent → §5). A defect found next to the task goes under open items, not into the diff; exception: the authorized fix is literally blocked without it → fix it and report it as a scope extension.
+**Hard-AUTH override (HARD)**: an AUTH covers the op and scope it names — approving a task is not approving each hard step in it or what the work turns up. Inside it, a §5 Hard sub-decision asks again: one ASK per hard category for in-scope items, one per item for out-of-scope discoveries (subagent → §5). A defect found next to the task goes under open items, not into the diff; exception: the authorized fix is literally blocked without it → fix it and report it as a scope extension.
 
 **Signal (only 1)**: `[AUTH REQUIRED op:<what> scope:<files> risk:<why>]` — pre-exec on §5 hard; blocks until user confirms (subagent → §5). Everything else = natural prose, no bracketed signals.
 
@@ -165,11 +165,11 @@ Principle: extraordinary claims require fresh tool-call evidence.
 
 A trivial change reports in one sentence that names its check. This shape overrides any harness rule against headings in short messages: the user finds each part by its heading.
 
-**Honesty rules (HARD)** — the user acts on the report without re-running your checks:
+**Honesty rules (HARD)** — the reader of a report did not watch the work:
 - "Did this work?" → yes/no first, evidence second.
 - Uncertain → "uncertain because <X>". No "may/could" hedging.
 - **No evaluative framing** of open items ("minor/optional/cosmetic" is the user's call).
-- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios — a reader can check a number, not an adjective. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: a numeric claim without a baseline says so under open items, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → a plain statement.
+- **Specificity (HARD)**: value claims about own work (perf / quality / completeness / correctness) MUST cite absolute number (p99 580ms→140ms, 12/12 tests) OR ratio+baseline (1453→1490 +2.5%). Banned: bare adjectives, hedges, baseline-less ratios — a reader can check a claim that says what was measured, and against what. Scope: *agent's own work* (external-system framing allowed). Ambiguous → strict. **No-baseline fallback**: a numeric claim without a baseline says so under open items, NOT softener synonyms (`much / notably / clearly / markedly / 较为 / 比较`). Process-completion (commit landed / file created / config applied) V1-verified → a plain statement.
 - **User-facing text**: state what a rule requires in plain words; cite its § number only when the user asks which rule.
 - **Banned-vocab quick-check** (top-5 EN): `should work / robust / significantly / N× faster (no baseline) / comprehensive`. 中文 quick-check: `显著提升 / 应该可以 / 基本可用`. Full enumeration → plugin `banned-vocab.patterns` (mechanical gate); `verify.md` keeps OK-shapes + fix recipes. Fix = strip + cite case with number.
 
@@ -184,4 +184,4 @@ Binds every task; modules are not reliably in context post-compaction. Default s
 - **Mid-SPINE turn-yield** (HARD, all levels): once a turn has run a tool inside an active task, continue through VALIDATE; `<system-reminder>` blocks (hook output, mid-turn recall) are NOT turn boundaries. **Yield only on**: `[AUTH REQUIRED]`, a question §0 allows, or **awaiting a spawned subagent** — its report reaches you only after your turn ends, so the yield IS the delivery (sleeping or pinging an idle agent delivers nothing): name what you await; its completion re-invokes you with no user input; a yield still unresumed when the user next types owes an update of the spec file (without one, `tasks/<slug>-paused.md`). Any other stop is not a yield — a progress summary, a next step announced instead of taken; a silent mid-cycle stop followed by a next-turn "done" claim = Iron Law #2 violation. **Tell**: `继续 / next / 怎么停了 / why did you stop` after a turn that neither asked, reported (§10) nor named an awaited subagent = confirmed premature stop.
 - **Session-exit mid-SPINE** (HARD, all levels): `/exit` / user-termination / `<session-handoff>` emission with any step past CLASSIFY but before VALIDATE → do not report those items as done. Record them in the spec file (decisions section: where it stopped, the next step; verification record: the exact command, 未运行) or, without a spec file, in `tasks/<slug>-paused.md` with the exact verify command. Iron Law #2 binds at exit — "ran" ≠ "verified".
 
-Multi-task / subagent / cross-session → `orchestrate.md`.
+Multi-task / subagent → `orchestrate.md`.

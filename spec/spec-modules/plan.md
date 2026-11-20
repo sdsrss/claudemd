@@ -65,7 +65,7 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 3. **Plan review** (optional, on user request): review the plan from the angles the user names.
 4. **AUTH**: §5 hard. User confirms plan and risk.
 5. **Isolate**: worktree or branch (stash before switching). At L3 this overrides core §7 Git's current-branch default.
-6. **Build**: TDD per task.
+6. **Build**: TDD per slice.
 7. **Branch finish**: rebase / squash, changelog, clean tree.
 8. **Pre-ship review**: fresh subagent, whole change (`review.md`).
 9. **Optional** (user request only): a second opinion (another model or tool).
@@ -85,9 +85,9 @@ For L3 hitting: auth/payment/crypto, prod data-migration, breaking schema, ≥4 
 4. AUTH: §5 hard.
 5. Isolate: as FULL.5.
 6. Build: TDD.
-7. Pre-ship review: one fresh-subagent pass (per-task drift + cross-cutting).
+7. Pre-ship review: one fresh-subagent pass (per-slice drift + cross-cutting).
 8. Ship: per `ship.md`.
 9. Deploy: as FULL.11.
 10. Monitor: declarative checklist.
 
-**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run step 3 on the widened scope; add the security pass if security surface appeared. Do NOT silently continue under lite.
+**Escalate to §4.FULL** if any FULL trigger appears mid-work (new auth/payment/crypto; Modules >3; data-migration introduced). Re-run steps 2 and 4 on the widened scope (the user re-confirms the plan and its risk); add the security pass if security surface appeared. Do NOT silently continue under lite.
