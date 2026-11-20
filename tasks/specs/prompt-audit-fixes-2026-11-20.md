@@ -62,8 +62,8 @@
 
 不在本仓库：
 - [x] R6 converge 汇报格式：`~/.claude/skills/converge/SKILL.md`（用户级、不在任何仓库），汇报改成核心 §10 的三部分
-- [ ] R7 F14：code-graph-mcp 仓库（用户自己的）`claude-plugin/scripts/adopt.js`、`src/mcp/server/mod.rs`、`tests/routing_bench.rs` 的 "Grep" 写法
-- [ ] R8 B6、B7：mattpocock/skills（第三方）的两句；上游 2026-11-19 的 main 仍有这两句
+- [x] R7 F14：code-graph-mcp 仓库（用户自己的）`claude-plugin/scripts/adopt.js`、`src/mcp/server/mod.rs`、`tests/routing_bench.rs` 的 "Grep" 写法。已推送到 code-graph-mcp 的 `main`（eaf5dca5），不单独发版，随它下一次发版发出（使用者选 2A）
+- [x] R8 B6、B7：mattpocock/skills（第三方）的两句；上游 2026-11-19 的 main 仍有这两句。不向上游提 issue（使用者选 3B）；按使用者"做减法"的要求，在本项目的 `.claude/settings.local.json` 里停用该插件（`claude plugin disable … --scope local`），用户级设置不动
 
 理由的来源（R2，不编造）：
 - Hard-AUTH override：v8.0.0 changelog（相邻缺陷进遗留、用户的"精准修改"）、v6.11.0 `[add]` §5 Obvious-follow-on；理由取授权本身的含义：用户批准的是给他看过的范围。
@@ -72,6 +72,8 @@
 - Specificity：v6.x changelog 的 30 天审计（被拦的词换成同义词再出现）；理由取可核对性：数字能核对，形容词不能。
 
 - 2026-11-20（第二轮）：R1–R4 完成，并入 v8.6.0（尚未发布）。核心 23,977 → 24,192 字节（+215，余量 808）；extended 38,638 字节。R6 完成：converge 第六步改成 `## 汇报` 三部分，六项内容全部保留、按三部分归位；原文件备份在本会话 scratchpad。R7 在 code-graph-mcp 仓库里另有记录 `tasks/specs/grep-directive-wording.md`。
+
+- 2026-11-20（R8）：停用的依据：10-21 到 11-20 本机 167 个会话里 Skill 调用 13 次，mattpocock 2 次（都是 `pr`，不在本项目）；本项目 31 个会话 0 次。它在每个会话列出 11 个技能（描述约 2.2 KB）。本仓库发布的文件（规范、hooks、commands、scripts、bin）不引用它；`tests/scripts/spec-structure.test.js` 禁止规范写插件技能名的那条检查里有它的前缀，属于通用检查，保留。
 
 ## 验证记录
 - `node --test tests/scripts/spec-structure.test.js`（只改钉住值、未打补丁）→ 失败（97 通过，1 失败：tmp-sweep 整行钉住）

@@ -16,6 +16,7 @@
 
 - 做：五处版本号；CHANGELOG 条目（≤3,000 字节）；按发版手册发布；发版后 `next-release` 快进到 `main`。
 - 不做：code-graph-mcp 与 mattpocock 两项（不在本仓库，见设计记录 R7、R8）。
+- 加入：`.github/workflows/ci.yml` 里 bash 3.2 的编译参数（使用者授权，见决策）；不进发布的文件。
 
 ## 计划
 
@@ -54,6 +55,8 @@
   - L6（改规范理由句）：Specificity 理由改为 "a reader can check a claim that names what was measured and, for a ratio, against what"，不再要求绝对数也带基线。
   - 都是纯文字修复：按手册不再派评审，用 `scripts/claim-drift.js` 自查。
 
+- 2026-11-20：使用者授权 CI 修改（"1A"，改编译参数而不是把矩阵固定在 ubuntu-24.04）。`ci.yml` 缓存未命中时用 `CC="gcc -std=gnu17 -fpermissive"` 编译；缺 bison 时先 `apt-get update` 再安装。`ci.yml` 不在发布的文件里，不再派评审；PR CI 的 bash 3.2 步骤就是对它的验证。
+
 ## 验证记录
 - `npm run check`（发版分支，版本号已改）→ 通过（exit=0；node 1815 条，1812 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
 - `npm run smoke` → 通过（SMOKE: 2/2 suite(s) passed）
@@ -63,3 +66,5 @@
 - 评审修复：`BASH32_BIN=<容器里编的 3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 通过（44/44 套件）
 - 评审修复：`npm run check` → 通过（exit=0；node 1819 条，1816 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）；`npm run smoke` → 通过（2/2）
 - 评审修复：CHANGELOG 条目 2,589 字节，单独扫描通过；`version-cascade-check`、`spec-coherence-audit --strict`（coreDelta=0, extendedDelta=0）通过
+- CI 修改：`ci.yml` 缓存未命中那段逐字取出，在 `ubuntu:26.04` 容器里重放（装了 gcc/make/curl，不装 bison，走安装分支）→ 通过（gcc 15.2.0；`GNU bash, version 3.2.57(2)-release`；bison 由该分支装上）
+- CI 修改：`node --test tests/scripts/workflow-step-exec.test.js tests/scripts/shared-scope-consumers.test.js` → 通过（14/14）；`prettier --check .github/workflows/ci.yml` → 通过

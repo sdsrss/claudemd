@@ -211,7 +211,12 @@ jobs:
             echo "$BASH32_SHA256  /tmp/bash32.tar.gz" | sha256sum -c -
             tar xzf /tmp/bash32.tar.gz -C /tmp
             cd "/tmp/bash-$BASH32_VERSION"
-            ./configure --quiet --without-bash-malloc >/dev/null 2>&1
+            # ubuntu-latest is ubuntu-26.04 from 2026-11 (GCC 15). Its default C23
+            # reads bash 3.2's `()` declarations as taking no arguments, and GCC 14+
+            # makes implicit function declarations errors: gnu17 + -fpermissive
+            # builds it. parse.y is regenerated, so yacc must be present.
+            command -v bison >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq bison; } >/dev/null
+            CC="gcc -std=gnu17 -fpermissive" ./configure --quiet --without-bash-malloc >/dev/null 2>&1
             make -s -j"$(nproc)" >/dev/null 2>&1
             cd "$GITHUB_WORKSPACE"
             mkdir -p "$CACHE_DIR"
