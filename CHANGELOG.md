@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.121.0] - 2026-11-20
+
+**Spec v8.6.0: L3 work drops plan rules copied from skills the spec no longer uses, an agent leaves a temp directory alone when a filesystem is mounted in it, and four HARD rules state their reason. Hooks and commands unchanged.**
+
+**What changes for users.**
+- Spec v8.6.0 (`~/.claude/CLAUDE.md` and `~/.claude/spec-modules/`):
+  - L3 work (`plan.md`): a plan lists slices, each with the files it touches and how it is verified, not 2-5 minute tasks with code. The CEO / design / eng self-critique is gone; a plan review runs when you ask for one, from the angles you name. The spec no longer has sub-tasks sent to subagents, each with a fresh-subagent review. The one independent review before shipping stays. These lines came from skills the spec stopped routing to, and Anthropic's Claude Opus 5 migration guidance says to remove delegate-more guidance written for earlier models and that self-check instructions trigger extra work.
+  - `orchestrate.md` drops the cross-session reference section ("上次 / yesterday": scan `tasks/`, confirm) and a strategy line. `debug.md`'s Iron Law #3 states its goal, the root cause and the chain from trigger to symptom before any change, instead of four phases.
+  - An agent deletes a leftover `agent-tmp-*` or scratchpad directory without asking only when no mount point is at or under it (`auth.md`, core §8.V4): a recursive delete enters a mounted filesystem, and FUSE mounts (sshfs, rclone) need no root. `tmp-sweep` has kept such directories since 0.120.0.
+  - Core: §0 Hard-AUTH override, the §10 report shape, Honesty and Specificity each carry a one-line reason; §2 drops a pointer only this repository used. `review.md` no longer repeats its `## §12 PLUGINS` heading.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. For a review per sub-task in L3 work, ask for it in the task. To go back to 0.120.1 (spec v8.5.0), follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- No HARD rule is added or removed; rule IDs and anchors in `spec/hard-rules.json` are unchanged.
+- No file under `hooks/`, `commands/` or `bin/`.
+
 ## [0.120.1] - 2026-11-09
 
 **The §8 `npx` check now checks every package named by `--package` or `-p`, not only the first one written with a space. Spec unchanged (v8.5.0).**
