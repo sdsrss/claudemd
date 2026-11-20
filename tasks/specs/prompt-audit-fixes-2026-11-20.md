@@ -71,7 +71,7 @@
 - Honesty rules：v8 计划 R1 保留的三条诚实规则；理由取汇报的用途：用户不重跑检查就据此决定下一步。
 - Specificity：v6.x changelog 的 30 天审计（被拦的词换成同义词再出现）；理由取可核对性：数字能核对，形容词不能。
 
-- 2026-11-20（第二轮）：R1–R4 完成，并入 v8.6.0（尚未发布）。核心 23,977 → 24,202 字节（+225，余量 798）；extended 38,638 字节。R6 完成：converge 第六步改成 `## 汇报` 三部分，六项内容全部保留、按三部分归位；原文件备份在本会话 scratchpad。R7 在 code-graph-mcp 仓库里另有记录 `tasks/specs/grep-directive-wording.md`。
+- 2026-11-20（第二轮）：R1–R4 完成，并入 v8.6.0（尚未发布）。核心 23,977 → 24,192 字节（+215，余量 808）；extended 38,638 字节。R6 完成：converge 第六步改成 `## 汇报` 三部分，六项内容全部保留、按三部分归位；原文件备份在本会话 scratchpad。R7 在 code-graph-mcp 仓库里另有记录 `tasks/specs/grep-directive-wording.md`。
 
 ## 验证记录
 - `node --test tests/scripts/spec-structure.test.js`（只改钉住值、未打补丁）→ 失败（97 通过，1 失败：tmp-sweep 整行钉住）
@@ -91,3 +91,4 @@
 - 第二轮：`npm run check` → 第一次失败（1 条：Recent changes 段哈希，改 Sizing 行之后没有更新）；更新后通过（exit=0；node 1815 条，1812 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
 - 第二轮：`npm run smoke` → 通过（SMOKE: 2/2 suite(s) passed）
 - 第二轮：converge `diff` 原文件与新文件 → 只有第六步变化
+- 第二轮：Report shape 理由句原写"the user reads every report in these three places"，与前一句"微改一句话汇报"矛盾，发版前自查时改为"the user finds each part by its heading"；钉住项先改、在旧文字上失败，改后 112/112 通过

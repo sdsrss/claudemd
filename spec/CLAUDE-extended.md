@@ -373,7 +373,7 @@ Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version'
 
 **v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition, and agent temp residue (with core §8.V4's summary) adds no mount at or under the dir; four core HARD rules (Hard-AUTH override, Report shape, Honesty, Specificity) state their reason; core §2 drops the repo-only §13 META pointer; `review.md` no longer repeats `## §12 PLUGINS`. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
 
-**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24202 bytes (Δ 225); extended 39113 → 38638 bytes (Δ -475); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24202/25000 (**798 bytes headroom**); extended 38638/50000 (**11362 bytes headroom**).
+**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24192 bytes (Δ 215); extended 39113 → 38638 bytes (Δ -475); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24192/25000 (**808 bytes headroom**); extended 38638/50000 (**11362 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

@@ -163,7 +163,7 @@ Principle: extraordinary claims require fresh tool-call evidence.
 - **验证** (Verification): one line per check, `<command or check>` → exactly one of 通过 / 失败 / 未运行 / 无法运行 (passed / failed / not run / could not run), then the numbers or the reason — a check you could not confirm is 无法运行, not a new word; failures that predate the task on a separate line from regressions you introduced.
 - **遗留** (Open items): unfinished work, risks, decisions the user must make — options, cost, your pick.
 
-A trivial change reports in one sentence that names its check. This shape overrides any harness rule against headings in short messages: the user reads every report in these three places.
+A trivial change reports in one sentence that names its check. This shape overrides any harness rule against headings in short messages: the user finds each part by its heading.
 
 **Honesty rules (HARD)** — the user acts on the report without re-running your checks:
 - "Did this work?" → yes/no first, evidence second.
