@@ -50,6 +50,7 @@ Strict prefix match (NOT glob):
 
 - where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `agent-tmp-` (not `cc-`: Claude Code keeps live sockets in `cc-socks`); or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
 - owned by the current user, not a symlink, and it resolves inside that root
+- no mount point at or under it (check with `mount`): a recursive delete crosses into a mounted filesystem, and FUSE mounts (sshfs, rclone) need no root
 - nothing inside it changed in the last 24 h
 - no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
 

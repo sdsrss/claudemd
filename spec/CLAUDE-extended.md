@@ -44,6 +44,7 @@ Strict prefix match (NOT glob):
 
 - where: a direct child of `$TMPDIR`, `/tmp`, `/var/tmp` or `~/.cache/tmp` whose name starts `agent-tmp-` (not `cc-`: Claude Code keeps live sockets in `cc-socks`); or a session directory beside your own under the harness scratchpad root (`<root>/<project>/<session-id>`) whose transcript (`~/.claude/projects/<project>/<session-id>.jsonl`) has had no write for 24 h
 - owned by the current user, not a symlink, and it resolves inside that root
+- no mount point at or under it (check with `mount`): a recursive delete crosses into a mounted filesystem, and FUSE mounts (sshfs, rclone) need no root
 - nothing inside it changed in the last 24 h
 - no `.keep` at its top, and no open spec file, `tasks/*-paused.md` or deferred item names it
 
@@ -370,9 +371,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
+**v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition, and agent temp residue (with core §8.V4's summary) adds no mount at or under the dir; four core HARD rules (Hard-AUTH override, Report shape, Honesty, Specificity) state their reason; core §2 drops the repo-only §13 META pointer; `review.md` no longer repeats `## §12 PLUGINS`. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
 
-**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 23977 bytes (Δ 0); extended 39113 → 38202 bytes (Δ -911); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 23977/25000 (**1023 bytes headroom**); extended 38202/50000 (**11798 bytes headroom**).
+**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24202 bytes (Δ 225); extended 39113 → 38638 bytes (Δ -475); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24202/25000 (**798 bytes headroom**); extended 38638/50000 (**11362 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

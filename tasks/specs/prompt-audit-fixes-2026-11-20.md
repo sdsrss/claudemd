@@ -1,5 +1,5 @@
 # 提示词审计修复（2026-11-20）：规范 v8.6.0
-状态：已完成
+状态：进行中
 
 ## 背景与目标
 
@@ -49,6 +49,30 @@
 
 - 2026-11-20：S1–S6 完成。tmp-sweep 整行钉住先改成新文字，在旧规范上失败（97 通过 / 1 失败），打补丁后通过。README 第 100 行"(spec v8.5.0 §5-EXT)"被版本级联闸门判为现行旧版本号，改为"(spec §5-EXT)"。不发版、不推送；推送和发版随下一批。
 
+## 第二轮（2026-11-20）：审计剩余各项
+
+用户："把剩下的做完了，一起推送 合并 发版 清理"。剩下的指审计第 7 节"仍未处理"的各项。
+
+本仓库（规范 v8.6.0 尚未发布，并入同一版本）：
+- [x] R1 N2b：§5-EXT Agent temp residue 加一条"其下没有挂载点"，核心 §8.V4 的摘要同步加上 — 收紧规则 — 验证：整行钉住先红后绿
+- [x] R2 F11：核心四行 HARD（§0 Hard-AUTH override、§10 Report shape、Honesty rules、Specificity）旁补理由，标题锚点不动（`hard-rules.json` 用它们） — 验证：整行钉住先红后绿
+- [x] R3 N9：`review.md` 两个同名 `## §12 PLUGINS`：构建脚本对同一模块、同一 `##` 段内的后续片段不再重复补标题 — 验证：`spec-modules.test.js` 新用例先红后绿
+- [x] R4 N10：核心第 48 行删掉"(spec self-edits: §EXT §13 META)"。上一轮汇报的剩余清单漏列了这一条，按"剩下的"一并处理；本仓库的 `.claude/rules/spec-edit.md` 已写明 spec 改动按 §13 META 走
+- [ ] R5 发版：plugin 0.121.0（minor，规范 minor 版本随之发出），按发版手册
+
+不在本仓库：
+- [x] R6 converge 汇报格式：`~/.claude/skills/converge/SKILL.md`（用户级、不在任何仓库），汇报改成核心 §10 的三部分
+- [ ] R7 F14：code-graph-mcp 仓库（用户自己的）`claude-plugin/scripts/adopt.js`、`src/mcp/server/mod.rs`、`tests/routing_bench.rs` 的 "Grep" 写法
+- [ ] R8 B6、B7：mattpocock/skills（第三方）的两句；上游 2026-11-19 的 main 仍有这两句
+
+理由的来源（R2，不编造）：
+- Hard-AUTH override：v8.0.0 changelog（相邻缺陷进遗留、用户的"精准修改"）、v6.11.0 `[add]` §5 Obvious-follow-on；理由取授权本身的含义：用户批准的是给他看过的范围。
+- Report shape：v8.0.0（用户自己的汇报格式），钉住项的 why（`transcript-structure-scan`、`sampling-audit` 按标题和三段名解析）。
+- Honesty rules：v8 计划 R1 保留的三条诚实规则；理由取汇报的用途：用户不重跑检查就据此决定下一步。
+- Specificity：v6.x changelog 的 30 天审计（被拦的词换成同义词再出现）；理由取可核对性：数字能核对，形容词不能。
+
+- 2026-11-20（第二轮）：R1–R4 完成，并入 v8.6.0（尚未发布）。核心 23,977 → 24,202 字节（+225，余量 798）；extended 38,638 字节。R6 完成：converge 第六步改成 `## 汇报` 三部分，六项内容全部保留、按三部分归位；原文件备份在本会话 scratchpad。R7 在 code-graph-mcp 仓库里另有记录 `tasks/specs/grep-directive-wording.md`。
+
 ## 验证记录
 - `node --test tests/scripts/spec-structure.test.js`（只改钉住值、未打补丁）→ 失败（97 通过，1 失败：tmp-sweep 整行钉住）
 - `grep -c` 逐条计数（extended，Recent changes 之外）→ 通过（9 条旧措辞 0 处；挂载点条件 1 处）
@@ -60,3 +84,10 @@
 - `npm run check` → 通过（exit=0；node 测试 1811 条，1808 通过、0 失败；shell 套件 OVERALL: all suites passed）
 - `npm run smoke` → 通过（SMOKE: 2/2 suite(s) passed）
 - `ls ~/.claude/rules/` → 通过（只剩 reply-language.md；`~/.claude/skills/context7-mcp/SKILL.md` 仍在）
+- 第二轮：新钉住项和构建用例（只改测试、未改规范）→ 失败（8 条：§8.V4 摘要、挂载点条件、Specificity、Hard-AUTH override、Report shape 覆盖句、Honesty、§2 Hard upgrade、构建不重复标题）
+- 第二轮：`node --test tests/scripts/spec-structure.test.js tests/scripts/spec-modules.test.js`（改规范、更新 6 个段落哈希后）→ 通过（112/112）
+- 第二轮：`node scripts/build-spec-modules.js` → 通过（只有 `auth.md`、`review.md` 变化）
+- 第二轮：`node scripts/spec-coherence-audit.js --strict` → 通过（coreDelta=0, extendedDelta=0）；`node scripts/version-cascade-check.js` → 通过
+- 第二轮：`npm run check` → 第一次失败（1 条：Recent changes 段哈希，改 Sizing 行之后没有更新）；更新后通过（exit=0；node 1815 条，1812 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
+- 第二轮：`npm run smoke` → 通过（SMOKE: 2/2 suite(s) passed）
+- 第二轮：converge `diff` 原文件与新文件 → 只有第六步变化
