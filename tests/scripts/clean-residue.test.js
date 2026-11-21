@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -600,9 +600,108 @@ test('CLI --apply never deletes a stale entry that contains its own $TMPDIR or c
     ['proj-cwd', 'proj-tmp'],
     'the JSON names what was protected'
   );
+  assert.deepEqual(
+    o.protected.map(p => p.reason),
+    ['contains-cwd-or-tmpdir', 'contains-cwd-or-tmpdir'],
+    'each protected entry carries its reason (D#921 added a second one)'
+  );
   assert.equal(o.claudeTmp.deleted, 1);
   assert.equal(o.remaining, 0);
-  assert.match(r.stderr, /2 stale entries skipped/);
+  assert.match(
+    r.stderr,
+    /2 stale entries skipped: 2 contain this process's cwd or \$TMPDIR \(see `protected`\)\./
+  );
+});
+
+// D#921 (0.121.0 pre-tag review L12): every recursive pass removed its targets
+// with rmSync, which enters a mount point at or under the target, and a user
+// mounts without root (FUSE: sshfs, rclone). Path lookup crosses a mount point
+// under lstat as under stat, so a mount point carries the mounted filesystem's
+// st.dev. This host refuses unprivileged mounts, so st.dev is faked for the
+// listed paths, and every path under them, as tests/scripts/housekeeping.test.js
+// does. rmSync's own walk is native and never sees the fake, so a pass that
+// skips the check deletes the "mounted" tree and the assertions below fail.
+const onOtherDevice = tops => {
+  const real = fs.lstatSync;
+  const hit = p => tops.some(t => p === t || String(p).startsWith(t + path.sep));
+  return mock.method(fs, 'lstatSync', (p, ...rest) => {
+    const st = real(p, ...rest);
+    if (!hit(p)) return st;
+    return new Proxy(st, {
+      get: (t, k) => (k === 'dev' ? t.dev + 1 : typeof t[k] === 'function' ? t[k].bind(t) : t[k]),
+    });
+  });
+};
+
+test('D#921: each recursive pass protects a stale entry with a mount point under it and still reaps its sibling', () => {
+  const sandbox = path.join(tmpDir, 'claudemd-work.mnt');
+  const sandboxMnt = path.join(sandbox, 'inner', 'mnt');
+  fs.mkdirSync(sandboxMnt, { recursive: true });
+  fs.writeFileSync(path.join(sandboxMnt, 'remote.txt'), 'x');
+  setMtime(sandbox, 30);
+  const sandboxPlain = path.join(tmpDir, 'claudemd-work.plain');
+  fs.mkdirSync(sandboxPlain);
+  setMtime(sandboxPlain, 30);
+
+  const ctmp = mkStale('claude-1000/sess-mnt', 30);
+  const ctmpMnt = path.join(ctmp, 'sub', 'mnt');
+  fs.mkdirSync(ctmpMnt, { recursive: true });
+  fs.writeFileSync(path.join(ctmpMnt, 'remote.txt'), 'x');
+  setMtime(ctmp, 30);
+  const ctmpPlain = mkStale('claude-1000/sess-plain', 30);
+
+  const proj = mkProj('-tmp-probe-mnt', 30);
+  const projMnt = path.join(proj, 'sub', 'mnt');
+  fs.mkdirSync(projMnt, { recursive: true });
+  fs.writeFileSync(path.join(projMnt, 'remote.txt'), 'x');
+  setMtime(proj, 30);
+  const projPlain = mkProj('-tmp-probe-plain', 30);
+
+  const m = onOtherDevice([sandboxMnt, ctmpMnt, projMnt]);
+  let a;
+  let b;
+  let c;
+  try {
+    a = clean({ tmpDir, apply: true, ageDaysMin: 1 });
+    b = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    c = cleanProbeProjects({ projectsDir: cliProjectsDir, apply: true, retentionDays: 7, cwd: '/nowhere' });
+  } finally {
+    m.mock.restore();
+  }
+  for (const [r, top, mnt, plain] of [
+    [a, sandbox, sandboxMnt, sandboxPlain],
+    [b, ctmp, ctmpMnt, ctmpPlain],
+    [c, proj, projMnt, projPlain],
+  ]) {
+    assert.ok(fs.existsSync(path.join(mnt, 'remote.txt')), `the mounted tree under ${top} was entered`);
+    assert.deepEqual(
+      r.protected.map(t => [t.path, t.reason]),
+      [[top, 'mount-point']],
+      `${top} is listed as protected for its mount`
+    );
+    assert.ok(!r.targets.some(t => t.path === top), `${top} is not a target`);
+    assert.ok(!fs.existsSync(plain), `the equally stale sibling ${plain} was still reaped`);
+  }
+});
+
+test('D#921: a stale entry that is itself a mount point is protected', () => {
+  // `rclone mount remote: "$D"`: the top and everything under it carry the
+  // mounted st.dev, so only a comparison with the parent sees it.
+  const top = mkStale('claude-1000/sess-is-mnt', 30);
+  fs.writeFileSync(path.join(top, 'remote.txt'), 'x');
+  setMtime(top, 30);
+  const m = onOtherDevice([top]);
+  let r;
+  try {
+    r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+  } finally {
+    m.mock.restore();
+  }
+  assert.ok(fs.existsSync(path.join(top, 'remote.txt')));
+  assert.deepEqual(
+    r.protected.map(t => [t.path, t.reason]),
+    [[top, 'mount-point']]
+  );
 });
 
 test('library: clean() protects a stale sandbox that contains the process cwd', () => {

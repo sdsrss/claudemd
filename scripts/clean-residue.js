@@ -28,7 +28,8 @@ Options:
   --help, -h          Print this message and exit.
 
 Never deleted, whatever the window: any entry that contains this process's own
-working directory or its $TMPDIR (reported under \`protected\`). Under the Claude
+working directory or its $TMPDIR, and any entry with a mount point at or under
+it (reported under \`protected\`, each with its reason). Under the Claude
 Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
 placed there sits inside the retention scope's target tree.
 
@@ -175,14 +176,65 @@ function containsSelf(target, self = selfPaths()) {
   return self.some(s => s === real || s.startsWith(real + path.sep));
 }
 
-// Split a target list into what may be deleted and what must not. Shared by
-// every directory-deleting pass so the guard cannot be present in one and
-// absent in another.
+// True when a mount point is at or under `target` (D#921). A recursive rmSync
+// enters mount points, and a user mounts without root (FUSE: sshfs, rclone).
+// Path lookup crosses a mount point under lstat as under stat, so the mount
+// point carries the mounted filesystem's st.dev; the target itself can be the
+// mount point, so its top is compared with its parent too. Same test as
+// housekeeping.js agentResidue(); a bind mount of the same filesystem keeps
+// st.dev and is not caught. lstat throughout: rmSync removes a symlink without
+// following it, so a link to a mount is not one.
+function holdsMount(target) {
+  let top;
+  let parent;
+  try {
+    top = fs.lstatSync(target);
+    parent = fs.lstatSync(path.dirname(target));
+  } catch {
+    return false; // gone, or the parent unreadable: rmSync reports why
+  }
+  if (top.dev !== parent.dev) return true;
+  if (!top.isDirectory()) return false;
+  const stack = [target];
+  while (stack.length > 0) {
+    const d = stack.pop();
+    let names;
+    try {
+      names = fs.readdirSync(d);
+    } catch {
+      continue; // rmSync cannot list it either, so it cannot descend past it
+    }
+    for (const n of names) {
+      const p = path.join(d, n);
+      let s;
+      try {
+        s = fs.lstatSync(p);
+      } catch {
+        continue;
+      }
+      if (s.dev !== top.dev) return true;
+      if (s.isDirectory()) stack.push(p);
+    }
+  }
+  return false;
+}
+
+// Split a target list into what may be deleted and what must not, each kept
+// one with its reason. Shared by every directory-deleting pass so the guards
+// cannot be present in one and absent in another.
 function partitionProtected(targets) {
   const self = selfPaths();
   const allowed = [];
   const protectedTargets = [];
-  for (const t of targets) (containsSelf(t.path, self) ? protectedTargets : allowed).push(t);
+  for (const t of targets) {
+    const reason = containsSelf(t.path, self)
+      ? 'contains-cwd-or-tmpdir'
+      : holdsMount(t.path)
+        ? 'mount-point'
+        : null;
+    if (reason) protectedTargets.push({ ...t, reason });
+    else allowed.push(t);
+  }
   return { allowed, protected: protectedTargets };
 }
 
@@ -860,11 +912,23 @@ if (invokedAsMain(import.meta.url)) {
   // means something is still writing into it.
   const unreapable = [...result.failures, ...ctmp.failures, ...cstate.failures, ...cprobe.failures];
   const agePath = t => ({ path: t.path, ageDays: Math.round(t.ageDays * 10) / 10 });
-  const protectedPaths = [...result.protected, ...ctmp.protected, ...cprobe.protected].map(agePath);
+  const protectedPaths = [...result.protected, ...ctmp.protected, ...cprobe.protected].map(t => ({
+    ...agePath(t),
+    reason: t.reason,
+  }));
   if (protectedPaths.length > 0) {
+    const n = reason => protectedPaths.filter(p => p.reason === reason).length;
+    const self = n('contains-cwd-or-tmpdir');
+    const mounts = n('mount-point');
+    const why = [
+      self > 0 ? `${self} contain${self === 1 ? 's' : ''} this process's cwd or $TMPDIR` : '',
+      mounts > 0
+        ? `${mounts} ha${mounts === 1 ? 's a mount point at or under it' : 've mount points at or under them'}`
+        : '',
+    ].filter(Boolean);
     console.error(
       `${protectedPaths.length} stale entr${protectedPaths.length === 1 ? 'y' : 'ies'} skipped: ` +
-        `contain${protectedPaths.length === 1 ? 's' : ''} this process's cwd or $TMPDIR (see \`protected\`).`
+        `${why.join('; ')} (see \`protected\`).`
     );
   }
   if (ctmp.skipped === 'symlink') {
