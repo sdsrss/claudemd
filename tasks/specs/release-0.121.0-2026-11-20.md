@@ -1,6 +1,6 @@
 # 0.121.0：规范 v8.6.0（提示词审计两轮修复）
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -22,10 +22,10 @@
 
 - [x] S1：从 `next-release` 切出 `release/v0.121.0`；五处版本号；CHANGELOG 条目单独扫描
 - [x] S2：`npm run check`、`npm run smoke`
-- [ ] S3：提交、推送、开 draft PR；PR CI 全绿
-- [ ] S4：发版前评审（新开的评审代理）
-- [ ] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
-- [ ] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支
+- [x] S3：提交、推送、开 draft PR；PR CI 全绿
+- [x] S4：发版前评审（新开的评审代理）
+- [x] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
+- [x] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支
 
 ## 决策与进展
 
@@ -56,6 +56,8 @@
   - 都是纯文字修复：按手册不再派评审，用 `scripts/claim-drift.js` 自查。
 
 - 2026-11-20：使用者授权 CI 修改（"1A"，改编译参数而不是把矩阵固定在 ubuntu-24.04）。`ci.yml` 缓存未命中时用 `CC="gcc -std=gnu17 -fpermissive"` 编译；缺 bison 时先 `apt-get update` 再安装。`ci.yml` 不在发布的文件里，不再派评审；PR CI 的 bash 3.2 步骤就是对它的验证。
+- 2026-11-20：PR CI（170b201）7/7 绿后合入 `main`，打带注释的 tag v0.121.0（16:15 -08:00），发 GitHub Release。远端发版分支随 PR 合并自动删除；本地 `git branch -d`。`next-release` 快进到 `main`。
+- 2026-11-21：`main` 的 ci（44842643827，170b201）在 macos-latest node 22 上红了两次，两次都是计时、输出都对：第一次 `spec-module-gate` 第 16 条 2.050 s（上限 2 s；同一提交其它 4 个 macOS 任务 1.07–1.36 s），重跑一次是 `session-end-check` 第 33e 条（hook 的 2 s 预算没用满就停了）。起因是本批的 2414208：shell 套件并行跑，这些套件和别的套件抢 CPU。修法只改测试：把按固定 2 s 计时的三个套件（另加 `reply-language`，同一类）放进 `suite_runs_alone`（fbc32e3）。测试改动按手册可以直接进 `main`；`main` 的 ci 在 fbc32e3 上转绿。npm 上的包是 tag 170b201 的，不受影响。
 
 ## 验证记录
 - `npm run check`（发版分支，版本号已改）→ 通过（exit=0；node 1815 条，1812 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
@@ -68,3 +70,14 @@
 - 评审修复：CHANGELOG 条目 2,589 字节，单独扫描通过；`version-cascade-check`、`spec-coherence-audit --strict`（coreDelta=0, extendedDelta=0）通过
 - CI 修改：`ci.yml` 缓存未命中那段逐字取出，在 `ubuntu:26.04` 容器里重放（装了 gcc/make/curl，不装 bison，走安装分支）→ 通过（gcc 15.2.0；`GNU bash, version 3.2.57(2)-release`；bison 由该分支装上）
 - CI 修改：`node --test tests/scripts/workflow-step-exec.test.js tests/scripts/shared-scope-consumers.test.js` → 通过（14/14）；`prettier --check .github/workflows/ci.yml` → 通过
+- PR CI run 44841035075（170b201）→ 通过（7/7；bash 3.2 编译与解析、运行两步都通过）
+- `npm run check`（170b201）→ 通过（exit=0；node 1820 条，1817 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）
+- npm-publish run 44842660173（tag v0.121.0）→ 通过（5 个测试任务 + publish；日志 `+ claudemd-cli@0.121.0`）
+- `npm view claudemd-cli dist-tags.latest` → 通过（0.121.0）；`npm view claudemd-cli@0.121.0 _npmUser` → 通过（GitHub Actions <npm-oidc-no-reply@github.com>）
+- `main` 的 ci run 44842643827（170b201）→ 失败（macos-latest node 22：第一次 spec-module-gate 第 16 条 2.050 s，重跑 session-end-check 第 33e 条；其余 6 个任务通过）
+- 修复后 `npm run check`（fbc32e3）→ 通过（exit=0；5 个套件单独跑，35 个并行；1817 通过、0 失败）
+- `main` 的 ci run 44846258310（fbc32e3）→ 通过（7/7；macOS 上第 16 条单独跑 0.87–1.02 s，第 33e 条通过）
+
+## 遗留
+- 第二轮评审 L5：`hooks/tmp-sweep.sh:141` 的条件列表少两条（见决策），放进下一批。
+- D#921：`/claudemd-clean-residue --apply` 递归删除前不查挂载点。

@@ -1,5 +1,5 @@
 # 提示词审计修复（2026-11-20）：规范 v8.6.0
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -58,7 +58,7 @@
 - [x] R2 F11：核心四行 HARD（§0 Hard-AUTH override、§10 Report shape、Honesty rules、Specificity）旁补理由，标题锚点不动（`hard-rules.json` 用它们） — 验证：整行钉住先红后绿
 - [x] R3 N9：`review.md` 两个同名 `## §12 PLUGINS`：构建脚本对同一模块、同一 `##` 段内的后续片段不再重复补标题 — 验证：`spec-modules.test.js` 新用例先红后绿
 - [x] R4 N10：核心第 48 行删掉"(spec self-edits: §EXT §13 META)"。上一轮汇报的剩余清单漏列了这一条，按"剩下的"一并处理；本仓库的 `.claude/rules/spec-edit.md` 已写明 spec 改动按 §13 META 走
-- [ ] R5 发版：plugin 0.121.0（minor，规范 minor 版本随之发出），按发版手册
+- [x] R5 发版：plugin 0.121.0（minor，规范 minor 版本随之发出），按发版手册。2026-11-21 发出，见 `tasks/specs/release-0.121.0-2026-11-20.md`
 
 不在本仓库：
 - [x] R6 converge 汇报格式：`~/.claude/skills/converge/SKILL.md`（用户级、不在任何仓库），汇报改成核心 §10 的三部分
