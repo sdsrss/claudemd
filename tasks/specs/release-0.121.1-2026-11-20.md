@@ -1,6 +1,6 @@
 # 0.121.1：clean-residue 不删含挂载点的目录；tmp-sweep 提示不再抄条件清单
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -21,10 +21,10 @@
 
 - [x] S1：从 `next-release` 切出 `release/v0.121.1`；五处版本号；CHANGELOG 条目单独扫描
 - [x] S2：`npm run check`、`npm run smoke`、bash 3.2 运行检查
-- [ ] S3：提交、推送、开 draft PR；PR CI 全绿
-- [ ] S4：发版前评审（新开的评审代理）
-- [ ] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
-- [ ] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支；本机 `/claudemd-refresh`
+- [x] S3：提交、推送、开 draft PR；PR CI 全绿
+- [x] S4：发版前评审（新开的评审代理）
+- [x] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
+- [x] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支；本机 `/claudemd-refresh`
 
 ## 决策与进展
 
@@ -44,6 +44,7 @@
   - L4（0.121.0 就有，不在本轮范围，D#925）：判断年龄的 `newestMtimeMs` 也用字符串名字遍历，非 UTF-8 目录下的新文件不会让条目变"新"。放进下一批。
 - 2026-11-20：a851e6e 的 PR CI（44854096744）在 macos-latest node 20 上失败：测试全过（1824 通过、0 失败、4 跳过），但 clean-residue 的测试留下了 5 个沙箱目录。原因：非 UTF-8 用例在 APFS 上 `mkdirSync` 报 EILSEQ，用例里调 `t.skip()` 跳过；Node 20 对自己跳过的用例不跑 `afterEach`（node:20 容器里复现：`beforeEach 1` 之后没有 `afterEach`；Node 26 会跑）。修法：跳过条件在用例开始前算好，用声明式 `{ skip }`。同一文件里另外两个按 root 跳过的用例（本轮新加的一个、原有的 unreadable memory/ 一个）同样改掉。
 - 2026-11-20：0f393d1 的 PR CI（44855668411）在 macos-latest node 24 上一条失败：不可读目录用例期望 `EACCES`，macOS 对同一棵树报 `ENOTEMPTY`（手册里已记的 macOS 差异）。用例要证明的三件事（不保护、删除在那里失败并报出、后面的内容还在）在 macOS 上都成立；改为两种 errno 都接受，只改测试。
+- 2026-11-20：PR CI（47e903b）7/7 绿后合入 `main`，打带注释的 tag v0.121.1（18:51 -08:00），发 GitHub Release；PR #37 随之合并，本地删分支，`next-release` 快进到 `main`。本机用 0.120.1 的 `refresh-plugin.sh` 装上 0.121.1（使用者已授权）；规范在下次开会话时同步到 v8.6.0。
 
 ## 验证记录
 
@@ -61,3 +62,14 @@
 - `node --test tests/scripts/clean-residue.test.js`，node:20-slim 容器：非 root → 通过（74/74，遗留目录 0）；root → 通过（72 通过、2 跳过，遗留目录 0；改声明式跳过之前 root 下遗留 5 个）
 - 第二轮修复后 `npm run check` → 通过（exit=0；node 1830 条，1827 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）；CHANGELOG 条目 2,365 字节，单独扫描通过
 - `node scripts/claim-drift.js --range=a851e6e..a8dfdab` → 通过（6 个名字、4 个在 diff 外被提到；README:133 的四个范围、CONTRIBUTING:50 的退出码 3 含义仍然成立，没有一处复述保护条件）
+- PR CI run 44856938130（47e903b）→ 通过（7/7）
+- npm-publish run 44858192258（tag v0.121.1）→ 通过（5 个测试任务 + publish；日志 `+ claudemd-cli@0.121.1`）
+- `main` 的 ci run 44858185006（47e903b）→ 通过（7/7）
+- `npm view claudemd-cli dist-tags.latest` → 通过（0.121.1；发布后第一次查还是 0.121.0，main CI 跑完后再查已更新）；`npm view claudemd-cli@0.121.1 _npmUser` → 通过（GitHub Actions <npm-oidc-no-reply@github.com>）
+- `bash ~/.claude/plugins/cache/claudemd/claudemd/0.120.1/scripts/refresh-plugin.sh` → 通过（exit 0；`installed_plugins.json`：0.121.1，2026-11-21T03:04:37.806Z，gitCommitSha 47e903b）
+
+## 遗留
+- D#923：核心 §8.V4 的摘要少两条条件（规范改动，下一批）。
+- D#924：挂载检查的遍历不设上限、可能卡在失联的 FUSE 上；同一 pass 先查后删。
+- D#925：年龄遍历用字符串名字，非 UTF-8 目录下的新文件不让条目变"新"（0.121.0 起就有）。
+- 使用者：重启 Claude Code，规范同步到 v8.6.0；之后记录 0.121.1 的 T0。
