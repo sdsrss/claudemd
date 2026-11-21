@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v8.6.0 — Extended
+# AI-CODING-SPEC v8.6.1 — Extended
 
 Loaded on demand; core §2.2 holds the one trigger list. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -371,9 +371,9 @@ Behavior-layer hooks ship default-OFF for FP signal collection (≥30d), then ad
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
 
-**v8.6.0 (minor, 2026-11-20)** — The L3 flow drops methods copied from retired skills: §4.FULL no longer sets 2-5 minute plan tasks, a CEO / design / eng self-critique, subagents for independent sub-tasks or a fresh-subagent review per sub-task (the one pre-ship review stays, §12 Author ≠ reviewer); §12 drops the L3 two-tier review bullet; §11-O drops the "L3 build" pointer, the impact-analysis / module-overview line and the Cross-session reference section; Iron Law #3 states its goal instead of four phases; §5-EXT names `tmp-sweep`'s mount-point condition, and agent temp residue (with core §8.V4's summary) adds no mount at or under the dir; four core HARD rules (Hard-AUTH override, Report shape, Honesty, Specificity) state their reason; core §2 drops the repo-only §13 META pointer and §11 the cross-session pointer; §4.FULL builds per slice, and a lite→FULL escalation re-runs plan and AUTH; `review.md` no longer repeats `## §12 PLUGINS`. No HARD rule added or removed. Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`.
+**v8.6.1 (patch, 2026-11-21)** — core §8.V4: agent temp residue is "an `agent-tmp-*` dir in a temp root or an ended session's scratchpad that meets every condition `auth.md` lists (read it first)"; the short copy of the list, which left out two conditions (the dir resolves inside its root; a scratchpad's session transcript idle 24 h), is gone. Design record `tasks/specs/spec-v8.6.1-residue-pointer-2026-11-21.md`. No HARD rule added or removed.
 
-**Sizing** (v8.6.0, 2026-11-20, single post-edit `wc -c`; ±20B self-rewrite envelope): core 23977 → 24218 bytes (Δ 241); extended 39113 → 38807 bytes (Δ -306); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24218/25000 (**782 bytes headroom**); extended 38807/50000 (**11193 bytes headroom**).
+**Sizing** (v8.6.1, 2026-11-21, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24218 → 24162 bytes (Δ -56); extended 38807 → 38196 bytes (Δ -611); OPERATOR.md 15423 → 15423 bytes (Δ 0). Size budget: core 24162/25000 (**838 bytes headroom**); extended 38196/50000 (**11804 bytes headroom**).
 
 <!-- module: session -->
 ## §1.5-EXT GLOSSARY

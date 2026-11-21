@@ -436,10 +436,10 @@ const PINS = [
     line: '**Soft**: delete within §5 safe-paths or of agent temp residue (`auth.md`) · deps dev-only · deps in `tmp/` or `scripts/`.',
   },
   {
-    what: 'core §8.V4 — the agent-tmp- name, what a .keep says, and only agent temp residue deleted without asking (v8.6.0)',
+    what: 'core §8.V4 — the agent-tmp- name, what a .keep says, and only agent temp residue deleted without asking; its conditions live in auth.md alone (v8.6.1)',
     file: CORE,
     anchor: '- **8.V4 Sandbox-artifact disposal**',
-    line: "- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `agent-tmp-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. An earlier task's or session's leftover outside §5 safe-paths is deleted without asking only as agent temp residue (`auth.md`; in short: an `agent-tmp-*` dir in a temp root or an ended session's scratchpad, yours, not a symlink, no mount at or under it, idle 24 h, no `.keep`, named by nothing open); anything else there stays §5 Hard.",
+    line: "- **8.V4 Sandbox-artifact disposal**: temporary files go in the harness's session scratchpad when it provides one. Anything written elsewhere (`mkdtempSync` dirs / scratch fixtures / test and probe leftovers in `/tmp` `/var/tmp` `~/.claude/projects/`) is named `agent-tmp-<task>-…` where you pick the name, and is deleted by the task that created it before it reports — creating-task responsibility, not timer-based. Exception: `.keep`-marked fixtures (the `.keep` says why and until when), or ones an in-progress spec file or `tasks/<slug>-paused.md` references. An earlier task's or session's leftover outside §5 safe-paths is deleted without asking only as agent temp residue: an `agent-tmp-*` dir in a temp root or an ended session's scratchpad that meets every condition `auth.md` lists (read it first); anything else there stays §5 Hard.",
   },
   {
     what: '§5-EXT Agent temp residue — delete without asking (named inline first), one report line each; NEVER-covers bounds the prefix list (v8.5.0)',
@@ -760,7 +760,7 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '574cf2328787636b' },
+  { file: CORE, heading: '', sha256: '80eeaa05dd38b986' },
   { file: CORE, heading: '## §0 SPINE', sha256: '3a96ad972f54ca2f' },
   { file: CORE, heading: '## §1 IDENTITY', sha256: 'f85ed215ca1e3fa5' },
   { file: CORE, heading: '## §1.5 GLOSSARY', sha256: '7e76d0dfa2112699' },
@@ -768,11 +768,11 @@ const PINNED_BLOCKS = [
   { file: CORE, heading: '## §3 TRUST', sha256: '4dbd6259a8286f62' },
   { file: CORE, heading: '## §5 AUTH', sha256: 'db0bba683fb8aad8' },
   { file: CORE, heading: '## §7 VALIDATE', sha256: '864012c4d0865675' },
-  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: 'bc39a0c0c3a29879' },
+  { file: CORE, heading: '## §8 SAFETY (immutable, never exempt)', sha256: '78968b5cca668f9c' },
   { file: CORE, heading: '## §9 QUALITY', sha256: '3923863eceba4c45' },
   { file: CORE, heading: '## §10 REPORT', sha256: '00ee8a0ef87b84c2' },
   { file: CORE, heading: '## §11 SESSION (universal)', sha256: 'aa45468edcef49fc' },
-  { file: EXT, heading: '', sha256: 'bc98e4755148331b' },
+  { file: EXT, heading: '', sha256: '52d9ef83b95d7eb0' },
   { file: EXT, heading: '## §3-EXT User relaxation (detail)', sha256: '18609ab31699f781' },
   { file: EXT, heading: '## §5-EXT Safe-paths whitelist (detail)', sha256: '02b485aff997ac0b' },
   {
@@ -793,7 +793,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §13.1 → `OPERATOR.md`', sha256: '782ca8de33a3d25a' },
   { file: EXT, heading: '## §13.2 HARD-rule budget (rolling, permanent)', sha256: '6b29d8ad82ccea56' },
   { file: EXT, heading: '## Appendix B — Canonical examples', sha256: 'bd6e21df70b6dbe6' },
-  { file: EXT, heading: '## Recent changes', sha256: '827738347fa97966' },
+  { file: EXT, heading: '## Recent changes', sha256: 'f4aaa0366f2672c8' },
   { file: EXT, heading: '## §1.5-EXT GLOSSARY', sha256: '33de059955088778' },
   { file: EXT, heading: '## §5.1-EXT AUTONOMY_LEVEL effects (full table)', sha256: '1dc829efcec0260a' },
   { file: EXT, heading: '## §7-EXT-TMP TMP_RETENTION policy', sha256: '408e7db996a99fbf' },
@@ -841,8 +841,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 18, sha256: '5fffeba41cf8fd60' },
-  { file: EXT, count: 52, sha256: '4a0cec95841deff8' },
+  { file: CORE, count: 18, sha256: '1e98f12e41218408' },
+  { file: EXT, count: 52, sha256: 'd02255ec4f2c08ad' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

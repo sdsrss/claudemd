@@ -6,6 +6,13 @@ Current version + sizing live in `CLAUDE-extended.md` (Recent changes section). 
 
 ---
 
+## v8.6.1 (patch, 2026-11-21) — §8.V4 names where agent temp residue lives and leaves its conditions to auth.md
+
+Design record `tasks/specs/spec-v8.6.1-residue-pointer-2026-11-21.md` (D#923). Patch: wording only; the conditions `auth.md` lists are unchanged. No HARD rule added or removed; every rule keeps its ID.
+
+- **Why**: core §8.V4 restated agent temp residue's conditions "in short" and left out two of them: the directory resolves inside its temp root, and a scratchpad's session counts as ended only once its transcript has had no write for 24 h. A session acting on the short list could delete the scratchpad of a session still running. Each new condition also had to be written twice (v8.6.0 added the mount condition in both places); `tmp-sweep`'s note stopped copying the list in claudemd 0.121.1 for the same reason.
+- **Core §8.V4** (HARD, requirement unchanged): "deleted without asking only as agent temp residue: an `agent-tmp-*` dir in a temp root or an ended session's scratchpad that meets every condition `auth.md` lists (read it first)". Was: "deleted without asking only as agent temp residue (`auth.md`; in short: an `agent-tmp-*` dir in a temp root or an ended session's scratchpad, yours, not a symlink, no mount at or under it, idle 24 h, no `.keep`, named by nothing open)".
+
 ## v8.6.0 (minor, 2026-11-20) — The L3 flow drops the methods copied from retired skills
 
 Design record `tasks/specs/prompt-audit-fixes-2026-11-20.md`; analysis `docs/prompt-audit-2026-11-20.md`. Minor, because two L3 requirements are removed and agent temp residue gains a condition (§13 META: a rule relaxed, a rule added). No HARD rule added or removed; every rule keeps its ID.
