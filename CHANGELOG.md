@@ -8,6 +8,20 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.121.1] - 2026-11-20
+
+**`/claudemd-clean-residue --apply` no longer deletes an entry with a mount point at or under it, and the `tmp-sweep` note points to the spec's list of conditions instead of copying it. Spec unchanged (v8.6.0).**
+
+**What changes for users.**
+- `/claudemd-clean-residue`: every pass that deletes recursively (the `claudemd-*` entries in `$TMPDIR`, the entries of `~/.claude/tmp`, the probe project dirs under `~/.claude/projects`) removed a stale entry with a recursive delete, which enters a filesystem mounted at or under it; FUSE mounts (sshfs, rclone) need no root. Such an entry is now kept, in a dry run and under `--apply`, and listed under `protected` with `"reason": "mount-point"`. An entry that contains the command's own working directory or `$TMPDIR` stays protected as before, now with `"reason": "contains-cwd-or-tmpdir"`; `protected` entries had no reason field until now. The stderr line counts each reason. A bind mount of the same filesystem is not detected, the same limit `tmp-sweep` has had since 0.120.0. The change only keeps entries: nothing kept before is deleted now.
+- `tmp-sweep`: when a temp root is 80% full, its note said an earlier session's `agent-tmp-*` dir or scratchpad is deleted without asking only when it meets every condition of the spec's Agent temp residue rule, and then listed them. The list left out two: the dir resolves inside its temp root, and a scratchpad's session transcript has had no write for 24 h. The note now says to read the list in `auth.md` first.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code; from 0.120.1 one refresh also brings 0.121.0 (spec v8.6.0). A script that reads `protected` from the command's JSON gets one more field per entry. To go back to 0.121.0, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- The command's flags, its exit codes and its other JSON fields; a protected entry still does not count as `remaining`.
+- The spec, and every hook other than `tmp-sweep`'s note.
+
 ## [0.121.0] - 2026-11-20
 
 **Spec v8.6.0: L3 work drops plan rules copied from skills the spec no longer uses, an agent asks before deleting a temp directory with a mount point at or under it, and four HARD rules state their reason.**
