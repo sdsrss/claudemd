@@ -77,6 +77,13 @@
 - 2026-11-03：S1–S4 完成。rebase 到 main 之后，`next-release` 上是 07737a3（回收脚本、hook 文字、README）和 1613b31（spec v8.5.0）；main 上是 5e2695f（release-reviewer 的 `cc-rrev-` 前缀）。S5 由使用者 11-03 要求的 0.119.0 发版完成（发版记录 `tasks/specs/release-0.119.0-2026-11-03.md`）。
 - 2026-11-03：auth.md 新段补了一句"NEVER-covers above bounds the prefix list; this class carries its own bounds"。原因：NEVER-covers 里有"解析后离开项目根目录的路径"，不补这一句，读者可能以为它也约束新这一类。
 - 2026-11-03：hook 回收门槛定为 72 小时，模型侧为 24 小时。理由是 hook 查不了引用，宁可晚删。
+- 2026-11-21：更正 S6 的时间。复测在 2026-12-01T16:07Z 之后做，即 0.119.0 T0 起满 28 天，不是 11-30。
+  - 会话记录在最后写入 30 天后自动删除（`cleanupPeriodDays` 未设置；11-21 本机最旧的主会话记录是 10-22T12:11Z 的），11-03 的会话从 12-03 起就会被删。
+  - 所以 11-02 起的会话记录和 `~/.claude/logs/claudemd.jsonl*` 已复制到 `tasks/transcript-snapshot-2026-11-21/home/.claude/`（本地，不进 git）：705 个文件，1,102.5 MiB。
+  - 复测步骤：
+    - 先跑 `python3 -I tasks/transcript-snapshot-2026-11-21/snap.py`，把之后的新会话和变长的记录补进副本。它只复制，从不删除。
+    - 再跑 `HOME=$PWD/tasks/transcript-snapshot-2026-11-21/home python3 -I tasks/temp-residue-audit-2026-11-03/openitems.py <out.json>`。
+  - 11-21 核对：`openitems.py` 在原记录和副本上各跑一次，11-02 起的报告行都是 225 行，逐行相同。
 
 ## 验证记录
 

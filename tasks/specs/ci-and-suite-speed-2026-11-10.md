@@ -46,4 +46,15 @@
 - AC4：run-all 串行 314.5 s（HEAD 0790ff6）→ 并行 161 / 163 / 163 / 166 / 200 s（中位 163 s）。`bash32-runtime.sh` 串行 305 s（`git archive` a0445a6）→ 并行 128 s。本机 12 核。
 - `npm run smoke` → `SMOKE: 2/2 suite(s) passed`；`npm run lint` exit 0；`shellcheck --severity=warning`（4 个改动的 shell 文件）exit 0；`bash32-constructs.sh` exit 0。
 - PR CI 上的效果（2026-11-10，draft PR #35 只为跑 CI 而开，读完后未合并关闭）：运行 42836192198 在 2414208 上 7/7 通过，无排队。对照最近 5 次成功的 PR CI（42766725085、42705744828、42697781748、41657087398、41647419898）：最慢任务 11.9 min（基线 17.2–20.6）；ubuntu node-20 8.1 min（12.7–18.6）；macOS 三条 10.2–11.9 min（14.4–20.6）；ubuntu node-22/24 6.4 / 4.8 min（6.7–10.3）。只有 1 次运行，托管机器速度有波动。
-- tag 推送后的效果（只跑 npm-publish、macOS 排队 0、总时长 < 20 min）要等下一次发版才能读到（D#767）。
+- 发版后的效果（D#767，2026-11-21 用 `gh run view <id> --json createdAt,jobs` 读 0.121.0 / 0.121.1 两次发版；排队 = 任务 startedAt − 运行 createdAt）：
+  - tag 推送：两次都只跑了 npm-publish，没有 `ci` 运行（a0445a6 的预期）。
+    - npm-publish 总时长 10.6 / 11.1 min（44842660173、44858192258）。基线 29.6–33.3 min，没排队的 v0.120.0 是 13.5 min。
+    - macOS 排队 0 / 0.1 min，基线 13.0–17.1 min。
+    - publish 任务等测试腿跑完约 10.4 / 10.9 min，这一段是测试本身的耗时。
+  - release PR CI 读了三次成功的运行：44841035075（release/v0.121.0），44852374038、44856938130（release/v0.121.1）。
+    - 对照上面那 5 次基线运行（按同一方法重算）：ubuntu node-20 12.8–18.6 min，中位 15.8；macOS 15 条 14.5–20.7 min，中位 17.3；最慢任务 17.2–20.7 min。
+    - 整体 13.4 / 13.5 / 13.7 min。
+    - ubuntu node-20 13.4 / 10.3 / 7.9 min，3 次里 2 次低于基线最小值。
+    - macOS 9 条 10.7–13.7 min，中位 12.2，全部低于基线最小值 14.5。
+  - D#767 记的 PR CI 基线（node-20 14.1–18.8、macOS 12.1–18.8 min）不是测试腿的运行时长。12.1 是 v0.120.1 tag `ci` 的 macOS 排队，18.8 是 main `ci` 的总时长。这里改用上面 5 次运行重算的数。
+  - D#767 关闭。CI 不再改：macOS 排队已经是 0，剩下的时间是测试本身；不减 macOS 腿的理由见"决策与进展"。
