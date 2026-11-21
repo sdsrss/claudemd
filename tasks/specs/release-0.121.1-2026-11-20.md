@@ -59,3 +59,4 @@
 - 第二轮修复：两条新用例在对应变异下各自失败（`NO_ACCESS` 置空 → 不可读目录用例失败；父目录失败返回 null → 父目录用例失败），恢复后 `clean-residue.test.js` → 通过（74/74）
 - `node --test tests/scripts/clean-residue.test.js`，node:20-slim 容器：非 root → 通过（74/74，遗留目录 0）；root → 通过（72 通过、2 跳过，遗留目录 0；改声明式跳过之前 root 下遗留 5 个）
 - 第二轮修复后 `npm run check` → 通过（exit=0；node 1830 条，1827 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）；CHANGELOG 条目 2,365 字节，单独扫描通过
+- `node scripts/claim-drift.js --range=a851e6e..a8dfdab` → 通过（6 个名字、4 个在 diff 外被提到；README:133 的四个范围、CONTRIBUTING:50 的退出码 3 含义仍然成立，没有一处复述保护条件）
