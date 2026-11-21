@@ -101,9 +101,9 @@ record_suite_rc() {
 #                            bash 3.2, 2026-11-10).
 #   spec-module-gate.test.sh cases 15 and 16 time one hook run against a fixed
 #                            2 s. In the parallel batch, macOS runners took
-#                            1.07-1.36 s for case 16 in four legs of 170b201's
-#                            runs and 2.050 s in one (ci run 44842643827,
-#                            macos-latest node 22).
+#                            0.87-1.60 s for case 16 in the seven other legs of
+#                            170b201's ci and npm-publish runs and 2.050 s in
+#                            one (ci run 44842643827, macos-latest node 22).
 #   session-end-check.test.sh case 33e needs the hook's whole 2 s SECONDS
 #                            budget; the rerun of that job failed it (kept
 #                            1000 of 1,000, want 1).

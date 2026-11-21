@@ -28,10 +28,11 @@ Options:
   --help, -h          Print this message and exit.
 
 Never deleted, whatever the window: any entry that contains this process's own
-working directory or its $TMPDIR, and any entry with a mount point at or under
-it (reported under \`protected\`, each with its reason). Under the Claude
-Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>, so a fixture
-placed there sits inside the retention scope's target tree.
+working directory or its $TMPDIR, any entry with a mount point at or under it,
+and any entry the check for one could not finish (reported under \`protected\`,
+each with its reason). A bind mount of the same filesystem is not detected.
+Under the Claude Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>,
+so a fixture placed there sits inside the retention scope's target tree.
 
 State-dir scope: only ext-read-*, vocab-scan-*, rework-*, xrepo-*, branch-prune-*, modinj-*,
 notice-*, failopen-*, mem-coverage-*,
@@ -176,47 +177,88 @@ function containsSelf(target, self = selfPaths()) {
   return self.some(s => s === real || s.startsWith(real + path.sep));
 }
 
-// True when a mount point is at or under `target` (D#921). A recursive rmSync
-// enters mount points, and a user mounts without root (FUSE: sshfs, rclone).
-// Path lookup crosses a mount point under lstat as under stat, so the mount
-// point carries the mounted filesystem's st.dev; the target itself can be the
-// mount point, so its top is compared with its parent too. Same test as
-// housekeeping.js agentResidue(); a bind mount of the same filesystem keeps
-// st.dev and is not caught. lstat throughout: rmSync removes a symlink without
-// following it, so a link to a mount is not one.
-function holdsMount(target) {
+// Why `target` must not be deleted recursively, or null (D#921): 'mount-point'
+// when a mount point is at or under it, 'mount-unchecked' when the walk could
+// not show there is none. A recursive rmSync enters mount points, and a user
+// mounts without root (FUSE: sshfs, rclone). Path lookup crosses a mount point
+// under lstat as under stat, so the mount point carries the mounted
+// filesystem's st.dev, as tmp-sweep's agentResidue() in housekeeping.js also
+// relies on. A bind mount of the same filesystem keeps st.dev and is not caught.
+//
+// - The top is compared with its parent, so a target that is itself the mount
+//   point is caught. The parent is read with stat, not lstat: $TMPDIR or the
+//   projects dir can be a symlink into another filesystem, and the link's own
+//   st.dev is not the directory's (0.121.1 review M1).
+// - Inside, lstat: rmSync removes a symlink without following it.
+// - Paths are Buffers: a name that is not UTF-8 decodes to U+FFFD, lstat on the
+//   decoded name fails, and rmSync, which keeps the raw bytes, would still
+//   delete what the walk skipped (review M2).
+// - An error means the walk has not seen all of what rmSync will delete, so the
+//   entry is kept, unless it is EACCES or EPERM: rmSync fails at that same
+//   directory and the entry is reported under `unreapable`. ENAMETOOLONG is not
+//   such a case: past PATH_MAX rmSync still deletes (Node 26, review M2).
+const SEP_BUF = Buffer.from(path.sep);
+const NO_ACCESS = new Set(['EACCES', 'EPERM']);
+function mountReason(target) {
   let top;
-  let parent;
   try {
     top = fs.lstatSync(target);
-    parent = fs.lstatSync(path.dirname(target));
   } catch {
-    return false; // gone, or the parent unreadable: rmSync reports why
+    return null; // gone: rmSync with force has nothing to delete
   }
-  if (top.dev !== parent.dev) return true;
-  if (!top.isDirectory()) return false;
-  const stack = [target];
+  let parent;
+  try {
+    parent = fs.statSync(path.dirname(target));
+  } catch {
+    return 'mount-unchecked';
+  }
+  if (top.dev !== parent.dev) return 'mount-point';
+  if (!top.isDirectory()) return null;
+  const stack = [Buffer.from(target)];
   while (stack.length > 0) {
     const d = stack.pop();
     let names;
     try {
-      names = fs.readdirSync(d);
-    } catch {
-      continue; // rmSync cannot list it either, so it cannot descend past it
+      names = fs.readdirSync(d, { encoding: 'buffer' });
+    } catch (e) {
+      if (NO_ACCESS.has(e.code)) continue;
+      return 'mount-unchecked';
     }
     for (const n of names) {
-      const p = path.join(d, n);
+      const p = Buffer.concat([d, SEP_BUF, n]);
       let s;
       try {
         s = fs.lstatSync(p);
-      } catch {
-        continue;
+      } catch (e) {
+        if (NO_ACCESS.has(e.code)) continue;
+        return 'mount-unchecked';
       }
-      if (s.dev !== top.dev) return true;
+      if (s.dev !== top.dev) return 'mount-point';
       if (s.isDirectory()) stack.push(p);
     }
   }
-  return false;
+  return null;
+}
+
+// The stderr line for the `protected` list: how many, and how many for each
+// reason. Empty when nothing was protected.
+export function protectedNote(entries) {
+  if (entries.length === 0) return '';
+  const n = reason => entries.filter(p => p.reason === reason).length;
+  const self = n('contains-cwd-or-tmpdir');
+  const mounts = n('mount-point');
+  const unchecked = n('mount-unchecked');
+  const why = [
+    self > 0 ? `${self} contain${self === 1 ? 's' : ''} this process's cwd or $TMPDIR` : '',
+    mounts > 0
+      ? `${mounts} ha${mounts === 1 ? 's a mount point at or under it' : 've mount points at or under them'}`
+      : '',
+    unchecked > 0 ? `${unchecked} could not be checked for a mount point` : '',
+  ].filter(Boolean);
+  return (
+    `${entries.length} stale entr${entries.length === 1 ? 'y' : 'ies'} skipped: ` +
+    `${why.join('; ')} (see \`protected\`).`
+  );
 }
 
 // Split a target list into what may be deleted and what must not, each kept
@@ -227,11 +269,7 @@ function partitionProtected(targets) {
   const allowed = [];
   const protectedTargets = [];
   for (const t of targets) {
-    const reason = containsSelf(t.path, self)
-      ? 'contains-cwd-or-tmpdir'
-      : holdsMount(t.path)
-        ? 'mount-point'
-        : null;
+    const reason = containsSelf(t.path, self) ? 'contains-cwd-or-tmpdir' : mountReason(t.path);
     if (reason) protectedTargets.push({ ...t, reason });
     else allowed.push(t);
   }
@@ -916,21 +954,7 @@ if (invokedAsMain(import.meta.url)) {
     ...agePath(t),
     reason: t.reason,
   }));
-  if (protectedPaths.length > 0) {
-    const n = reason => protectedPaths.filter(p => p.reason === reason).length;
-    const self = n('contains-cwd-or-tmpdir');
-    const mounts = n('mount-point');
-    const why = [
-      self > 0 ? `${self} contain${self === 1 ? 's' : ''} this process's cwd or $TMPDIR` : '',
-      mounts > 0
-        ? `${mounts} ha${mounts === 1 ? 's a mount point at or under it' : 've mount points at or under them'}`
-        : '',
-    ].filter(Boolean);
-    console.error(
-      `${protectedPaths.length} stale entr${protectedPaths.length === 1 ? 'y' : 'ies'} skipped: ` +
-        `${why.join('; ')} (see \`protected\`).`
-    );
-  }
+  if (protectedPaths.length > 0) console.error(protectedNote(protectedPaths));
   if (ctmp.skipped === 'symlink') {
     console.error(
       `${claudeTmpDir} is a symlink; not scanned. Its stale entries would be deleted in the link's ` +

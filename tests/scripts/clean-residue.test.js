@@ -14,6 +14,7 @@ import {
   cleanStateDir,
   scanProbeProjects,
   cleanProbeProjects,
+  protectedNote,
 } from '../../scripts/clean-residue.js';
 
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
@@ -623,7 +624,12 @@ test('CLI --apply never deletes a stale entry that contains its own $TMPDIR or c
 // skips the check deletes the "mounted" tree and the assertions below fail.
 const onOtherDevice = tops => {
   const real = fs.lstatSync;
-  const hit = p => tops.some(t => p === t || String(p).startsWith(t + path.sep));
+  // String(): the walk passes Buffer paths (review M2), so a name that is not
+  // UTF-8 reaches lstat unchanged.
+  const hit = p => {
+    const q = String(p);
+    return tops.some(t => q === t || q.startsWith(t + path.sep));
+  };
   return mock.method(fs, 'lstatSync', (p, ...rest) => {
     const st = real(p, ...rest);
     if (!hit(p)) return st;
@@ -701,6 +707,148 @@ test('D#921: a stale entry that is itself a mount point is protected', () => {
   assert.deepEqual(
     r.protected.map(t => [t.path, t.reason]),
     [[top, 'mount-point']]
+  );
+});
+
+const devPlusOne = st =>
+  new Proxy(st, {
+    get: (t, k) => (k === 'dev' ? t.dev + 1 : typeof t[k] === 'function' ? t[k].bind(t) : t[k]),
+  });
+
+test('D#921: a dry run lists an entry with a mount under it as protected and deletes nothing', () => {
+  const top = mkStale('claude-1000/sess-dry', 30);
+  const mnt = path.join(top, 'mnt');
+  fs.mkdirSync(mnt);
+  setMtime(top, 30);
+  const m = onOtherDevice([mnt]);
+  let r;
+  try {
+    r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, retentionDays: 7 });
+  } finally {
+    m.mock.restore();
+  }
+  assert.equal(r.dryRun, true);
+  assert.deepEqual(
+    r.protected.map(t => [t.path, t.reason]),
+    [[top, 'mount-point']]
+  );
+  assert.ok(!r.targets.some(t => t.path === top));
+  assert.ok(fs.existsSync(mnt));
+});
+
+// Review M1: $TMPDIR or ~/.claude/projects can be a symlink into another
+// filesystem. lstat on the link reports the link's own st.dev, not that of the
+// directory the entries live in, so every entry read as a mount point and was
+// kept for good. The link's st.dev is faked to stand for the other filesystem.
+test('D#921 review M1: a symlinked root on another filesystem is not read as a mount', () => {
+  const realRoot = path.join(tmpDir, 'real-root');
+  fs.mkdirSync(realRoot);
+  const link = path.join(tmpDir, 'link-root');
+  fs.symlinkSync(realRoot, link);
+  const box = path.join(realRoot, 'claudemd-work.vialink');
+  fs.mkdirSync(path.join(box, 'inner'), { recursive: true });
+  setMtime(box, 30);
+  const realLstat = fs.lstatSync;
+  const m = mock.method(fs, 'lstatSync', (p, ...rest) => {
+    const st = realLstat(p, ...rest);
+    return String(p) === link ? devPlusOne(st) : st;
+  });
+  let r;
+  try {
+    r = clean({ tmpDir: link, apply: true, ageDaysMin: 1 });
+  } finally {
+    m.mock.restore();
+  }
+  assert.deepEqual(r.protected, []);
+  assert.equal(r.deleted, 1);
+  assert.ok(!fs.existsSync(box));
+});
+
+// Review M2a: readdirSync decoded a name that is not UTF-8 into U+FFFD, lstat
+// on the decoded name failed, the walk skipped the subtree, and rmSync, which
+// keeps the raw bytes, deleted it with the mount inside.
+test('D#921 review M2: a directory whose name is not UTF-8 is walked, not skipped', t => {
+  const top = mkStale('claude-1000/sess-bad-name', 30);
+  const sep = Buffer.from(path.sep);
+  const bad = Buffer.concat([Buffer.from(top), sep, Buffer.from([0xff])]);
+  try {
+    fs.mkdirSync(bad);
+  } catch (e) {
+    t.skip(`this filesystem refuses a name that is not UTF-8 (${e.code})`);
+    return;
+  }
+  const mnt = Buffer.concat([bad, sep, Buffer.from('mnt')]);
+  const file = Buffer.concat([mnt, sep, Buffer.from('remote.txt')]);
+  fs.mkdirSync(mnt);
+  fs.writeFileSync(file, 'x');
+  const old = (Date.now() - 30 * 86400000) / 1000;
+  for (const p of [file, mnt, bad]) fs.utimesSync(p, old, old);
+  setMtime(top, 30);
+  const m = onOtherDevice([String(mnt)]);
+  let r;
+  try {
+    r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+  } finally {
+    m.mock.restore();
+  }
+  assert.ok(fs.existsSync(file), 'the mounted tree under a non-UTF-8 name was entered');
+  assert.deepEqual(
+    r.protected.map(x => [x.path, x.reason]),
+    [[top, 'mount-point']]
+  );
+});
+
+// Review M2b: past PATH_MAX, readdirSync fails with ENAMETOOLONG while
+// rmSync's fd-relative walk still deletes the tree (Node 26). A walk that cannot
+// list a directory for any reason but permission has not shown that no mount is
+// under it, so the entry is kept. Permission errors stay skips: rmSync fails at
+// the same directory and reports it under `unreapable`.
+for (const [label, method, code] of [
+  ['a directory it cannot list', 'readdirSync', 'ENAMETOOLONG'],
+  ['an entry it cannot stat', 'lstatSync', 'ENOENT'],
+]) {
+  test(`D#921 review M2: the walk keeps an entry with ${label} (${code})`, () => {
+    const top = mkStale('claude-1000/sess-unchecked', 30);
+    const deep = path.join(top, 'a', 'b');
+    fs.mkdirSync(deep, { recursive: true });
+    setMtime(top, 30);
+    const real = fs[method];
+    let armed = false;
+    const m = mock.method(fs, method, (p, ...rest) => {
+      if (armed && String(p) === deep) throw Object.assign(new Error(`${code}: ${deep}`), { code });
+      return real(p, ...rest);
+    });
+    let r;
+    try {
+      const scanned = scanClaudeTmp({ claudeTmpDir: claudeTmp });
+      assert.ok(
+        scanned.candidates.some(c => c.path === top),
+        'the fixture is a candidate before the fault'
+      );
+      armed = true;
+      r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    } finally {
+      m.mock.restore();
+    }
+    assert.ok(fs.existsSync(deep), `an entry the walk could not finish was deleted (${code})`);
+    assert.deepEqual(
+      r.protected.map(x => [x.path, x.reason]),
+      [[top, 'mount-unchecked']]
+    );
+  });
+}
+
+test('protectedNote names each reason and the count', () => {
+  const e = reason => ({ path: '/x', ageDays: 9, reason });
+  assert.equal(protectedNote([]), '');
+  assert.equal(
+    protectedNote([e('contains-cwd-or-tmpdir')]),
+    "1 stale entry skipped: 1 contains this process's cwd or $TMPDIR (see `protected`)."
+  );
+  assert.equal(
+    protectedNote([e('mount-point'), e('mount-point'), e('mount-unchecked'), e('contains-cwd-or-tmpdir')]),
+    "4 stale entries skipped: 1 contains this process's cwd or $TMPDIR; " +
+      '2 have mount points at or under them; 1 could not be checked for a mount point (see `protected`).'
   );
 });
 
