@@ -880,10 +880,14 @@ test(
       [],
       'a permission error is not a reason to protect: rmSync stops at the same directory'
     );
+    // The errno is the platform's: Linux reports EACCES for this tree, macOS
+    // ENOTEMPTY (PR CI 44855668411, macos-latest node 24). Either way the delete
+    // stopped there and the entry is reported.
     assert.deepEqual(
-      r.failures.map(f => [f.path, f.code]),
-      [[top, 'EACCES']]
+      r.failures.map(f => f.path),
+      [top]
     );
+    assert.ok(['EACCES', 'ENOTEMPTY'].includes(r.failures[0].code), `code ${r.failures[0].code}`);
     assert.ok(fs.existsSync(path.join(deep, 'f')), 'nothing past the unreadable directory was deleted');
   }
 );

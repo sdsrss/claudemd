@@ -43,6 +43,7 @@
   - L3：CHANGELOG 的"Not changed"写"退出码不变"，但同一输入下，原来因挂载里删除失败而退出 3 的，现在会保留并退出 0。"What to do"补一句，"Not changed"改为"每个退出码的含义不变"。
   - L4（0.121.0 就有，不在本轮范围，D#925）：判断年龄的 `newestMtimeMs` 也用字符串名字遍历，非 UTF-8 目录下的新文件不会让条目变"新"。放进下一批。
 - 2026-11-20：a851e6e 的 PR CI（44854096744）在 macos-latest node 20 上失败：测试全过（1824 通过、0 失败、4 跳过），但 clean-residue 的测试留下了 5 个沙箱目录。原因：非 UTF-8 用例在 APFS 上 `mkdirSync` 报 EILSEQ，用例里调 `t.skip()` 跳过；Node 20 对自己跳过的用例不跑 `afterEach`（node:20 容器里复现：`beforeEach 1` 之后没有 `afterEach`；Node 26 会跑）。修法：跳过条件在用例开始前算好，用声明式 `{ skip }`。同一文件里另外两个按 root 跳过的用例（本轮新加的一个、原有的 unreadable memory/ 一个）同样改掉。
+- 2026-11-20：0f393d1 的 PR CI（44855668411）在 macos-latest node 24 上一条失败：不可读目录用例期望 `EACCES`，macOS 对同一棵树报 `ENOTEMPTY`（手册里已记的 macOS 差异）。用例要证明的三件事（不保护、删除在那里失败并报出、后面的内容还在）在 macOS 上都成立；改为两种 errno 都接受，只改测试。
 
 ## 验证记录
 
