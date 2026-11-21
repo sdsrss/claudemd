@@ -382,6 +382,9 @@ const UID_DIR_PATTERN = /^claude-\d+$/;
 // answers FRESH — so the §7-EXT retention window silently stopped applying to
 // every directory that happened to be deep. The entry cap stays, because one
 // `node_modules` is 5000 entries and this runs per candidate.
+// Paths are Buffers, as in mountReason: a name that is not UTF-8 decodes to
+// U+FFFD, lstat on the decoded name fails, and the fresh files under it did not
+// count (D#925).
 const MTIME_WALK_MAX_DEPTH = 8;
 const MTIME_WALK_MAX_ENTRIES = 5000;
 function newestMtimeMs(full, stat, now) {
@@ -395,18 +398,18 @@ function newestMtimeMs(full, stat, now) {
       truncated = true;
       return;
     }
-    let entries;
+    let names;
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      names = fs.readdirSync(dir, { encoding: 'buffer' });
     } catch {
       return; // unreadable — the dir's own mtime is all we have
     }
-    for (const e of entries) {
+    for (const n of names) {
       if (budget-- <= 0) {
         truncated = true;
         return;
       }
-      const p = path.join(dir, e.name);
+      const p = Buffer.concat([dir, SEP_BUF, n]);
       let st;
       try {
         st = fs.lstatSync(p); // lstat: a symlink's target is not this dir's activity
@@ -417,7 +420,7 @@ function newestMtimeMs(full, stat, now) {
       if (st.isDirectory()) walk(p, depth + 1);
     }
   };
-  walk(full, 1);
+  walk(Buffer.from(full), 1);
   // Reported, not just applied: a caller that sees `ageTruncated` knows the
   // number is a floor rather than a measurement.
   return { mtimeMs: truncated ? now : newest, truncated };

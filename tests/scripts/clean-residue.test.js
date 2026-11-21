@@ -815,6 +815,32 @@ test(
   }
 );
 
+// D#925: the age walk had the same decode skip, so a file written today under a
+// directory whose name is not UTF-8 did not make the entry fresh, and a live
+// session's tree became a delete target.
+test(
+  'D#925: a fresh file under a directory whose name is not UTF-8 keeps the entry fresh',
+  {
+    skip: NON_UTF8_NAMES ? false : 'this filesystem refuses a name that is not UTF-8',
+  },
+  () => {
+    const top = mkStale('claude-1000/sess-live', 30);
+    const sep = Buffer.from(path.sep);
+    const bad = Buffer.concat([Buffer.from(top), sep, Buffer.from([0xff])]);
+    fs.mkdirSync(bad);
+    const live = Buffer.concat([bad, sep, Buffer.from('live.txt')]);
+    fs.writeFileSync(live, 'x');
+    setMtime(top, 30);
+    const old = (Date.now() - 30 * 86400000) / 1000;
+    fs.utimesSync(bad, old, old);
+    const entry = scanClaudeTmp({ claudeTmpDir: claudeTmp }).candidates.find(c => c.path === top);
+    assert.ok(entry && entry.ageDays < 1, `age read ${entry?.ageDays} days, not today`);
+    const r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    assert.ok(fs.existsSync(live), 'the live file was deleted');
+    assert.deepEqual(r.targets, []);
+  }
+);
+
 // Review M2b: past PATH_MAX, readdirSync fails with ENAMETOOLONG while
 // rmSync's fd-relative walk still deletes the tree (Node 26). A walk that cannot
 // list a directory for any reason but permission has not shown that no mount is
