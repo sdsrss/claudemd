@@ -29,8 +29,10 @@ Options:
 
 Never deleted, whatever the window: any entry that contains this process's own
 working directory or its $TMPDIR, any entry with a mount point at or under it,
-and any entry the check for one could not finish (reported under \`protected\`,
-each with its reason). A bind mount of the same filesystem is not detected.
+and any entry the check for one could not finish for a reason other than a
+permission error (reported under \`protected\`, each with its reason). On a
+permission error the delete stops at the same directory and the entry is
+listed under \`unreapable\`. A bind mount of the same filesystem is not detected.
 Under the Claude Code sandbox $TMPDIR IS a child of ~/.claude/tmp/claude-<uid>,
 so a fixture placed there sits inside the retention scope's target tree.
 

@@ -767,36 +767,53 @@ test('D#921 review M1: a symlinked root on another filesystem is not read as a m
 // Review M2a: readdirSync decoded a name that is not UTF-8 into U+FFFD, lstat
 // on the decoded name failed, the walk skipped the subtree, and rmSync, which
 // keeps the raw bytes, deleted it with the mount inside.
-test('D#921 review M2: a directory whose name is not UTF-8 is walked, not skipped', t => {
-  const top = mkStale('claude-1000/sess-bad-name', 30);
-  const sep = Buffer.from(path.sep);
-  const bad = Buffer.concat([Buffer.from(top), sep, Buffer.from([0xff])]);
+// Decided before the test runs, not by t.skip() inside it: Node 20 runs no
+// afterEach for a test that skips itself, so the sandboxes beforeEach made were
+// left behind on macOS, whose APFS refuses such a name (PR CI 44854096744,
+// macos-latest node 20).
+const NON_UTF8_NAMES = (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-clean-test-'));
   try {
-    fs.mkdirSync(bad);
-  } catch (e) {
-    t.skip(`this filesystem refuses a name that is not UTF-8 (${e.code})`);
-    return;
-  }
-  const mnt = Buffer.concat([bad, sep, Buffer.from('mnt')]);
-  const file = Buffer.concat([mnt, sep, Buffer.from('remote.txt')]);
-  fs.mkdirSync(mnt);
-  fs.writeFileSync(file, 'x');
-  const old = (Date.now() - 30 * 86400000) / 1000;
-  for (const p of [file, mnt, bad]) fs.utimesSync(p, old, old);
-  setMtime(top, 30);
-  const m = onOtherDevice([String(mnt)]);
-  let r;
-  try {
-    r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    fs.mkdirSync(Buffer.concat([Buffer.from(d + path.sep), Buffer.from([0xff])]));
+    return true;
+  } catch {
+    return false;
   } finally {
-    m.mock.restore();
+    fs.rmSync(d, { recursive: true, force: true });
   }
-  assert.ok(fs.existsSync(file), 'the mounted tree under a non-UTF-8 name was entered');
-  assert.deepEqual(
-    r.protected.map(x => [x.path, x.reason]),
-    [[top, 'mount-point']]
-  );
-});
+})();
+
+test(
+  'D#921 review M2: a directory whose name is not UTF-8 is walked, not skipped',
+  {
+    skip: NON_UTF8_NAMES ? false : 'this filesystem refuses a name that is not UTF-8',
+  },
+  () => {
+    const top = mkStale('claude-1000/sess-bad-name', 30);
+    const sep = Buffer.from(path.sep);
+    const bad = Buffer.concat([Buffer.from(top), sep, Buffer.from([0xff])]);
+    fs.mkdirSync(bad);
+    const mnt = Buffer.concat([bad, sep, Buffer.from('mnt')]);
+    const file = Buffer.concat([mnt, sep, Buffer.from('remote.txt')]);
+    fs.mkdirSync(mnt);
+    fs.writeFileSync(file, 'x');
+    const old = (Date.now() - 30 * 86400000) / 1000;
+    for (const p of [file, mnt, bad]) fs.utimesSync(p, old, old);
+    setMtime(top, 30);
+    const m = onOtherDevice([String(mnt)]);
+    let r;
+    try {
+      r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    } finally {
+      m.mock.restore();
+    }
+    assert.ok(fs.existsSync(file), 'the mounted tree under a non-UTF-8 name was entered');
+    assert.deepEqual(
+      r.protected.map(x => [x.path, x.reason]),
+      [[top, 'mount-point']]
+    );
+  }
+);
 
 // Review M2b: past PATH_MAX, readdirSync fails with ENAMETOOLONG while
 // rmSync's fd-relative walk still deletes the tree (Node 26). A walk that cannot
@@ -837,6 +854,61 @@ for (const [label, method, code] of [
     );
   });
 }
+
+// Review round 2 L2: the two branches the round-1 cases left untested.
+test(
+  'D#921: a directory the walk may not read is not protected; the delete fails there and reports it',
+  { skip: process.getuid?.() === 0 ? 'root reads a mode-000 directory' : false },
+  () => {
+    const top = mkStale('claude-1000/sess-locked', 30);
+    const sib = path.join(top, 'a', 'sib.txt');
+    const deep = path.join(top, 'a', 'locked', 'deep');
+    fs.mkdirSync(deep, { recursive: true });
+    fs.writeFileSync(sib, 'x');
+    fs.writeFileSync(path.join(deep, 'f'), 'x');
+    setMtime(top, 30);
+    const locked = path.join(top, 'a', 'locked');
+    fs.chmodSync(locked, 0o000);
+    let r;
+    try {
+      r = cleanClaudeTmp({ claudeTmpDir: claudeTmp, apply: true, retentionDays: 7 });
+    } finally {
+      fs.chmodSync(locked, 0o700);
+    }
+    assert.deepEqual(
+      r.protected,
+      [],
+      'a permission error is not a reason to protect: rmSync stops at the same directory'
+    );
+    assert.deepEqual(
+      r.failures.map(f => [f.path, f.code]),
+      [[top, 'EACCES']]
+    );
+    assert.ok(fs.existsSync(path.join(deep, 'f')), 'nothing past the unreadable directory was deleted');
+  }
+);
+
+test('D#921: a parent that cannot be stat-ed keeps the entry as mount-unchecked', () => {
+  const box = path.join(tmpDir, 'claudemd-work.noparent');
+  fs.mkdirSync(path.join(box, 'inner'), { recursive: true });
+  setMtime(box, 30);
+  const real = fs.statSync;
+  const m = mock.method(fs, 'statSync', (p, ...rest) => {
+    if (String(p) === tmpDir) throw Object.assign(new Error(`EIO: ${tmpDir}`), { code: 'EIO' });
+    return real(p, ...rest);
+  });
+  let r;
+  try {
+    r = clean({ tmpDir, apply: true, ageDaysMin: 1 });
+  } finally {
+    m.mock.restore();
+  }
+  assert.ok(fs.existsSync(box));
+  assert.deepEqual(
+    r.protected.map(x => [x.path, x.reason]),
+    [[box, 'mount-unchecked']]
+  );
+});
 
 test('protectedNote names each reason and the count', () => {
   const e = reason => ({ path: '/x', ageDays: 9, reason });
@@ -1591,18 +1663,24 @@ test('scanProbeProjects: only headless sessions are reaped — interactive or un
   assert.equal(kept[unknown], 'unknown-entrypoint');
 });
 
-test('scanProbeProjects: an unreadable memory/ keeps the dir (fail closed)', t => {
-  if (process.getuid && process.getuid() === 0) return t.skip('root reads through mode 000');
-  const d = mkProj('-tmp-locked-memory', 10);
-  fs.chmodSync(path.join(d, 'memory'), 0o000);
-  try {
-    const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
-    assert.equal(r.targets.length, 0);
-    assert.equal(r.kept.find(k => k.path === d)?.reason, 'memory-unreadable');
-  } finally {
-    fs.chmodSync(path.join(d, 'memory'), 0o700);
+test(
+  'scanProbeProjects: an unreadable memory/ keeps the dir (fail closed)',
+  {
+    // Declared, not t.skip() inside: under Node 20 a self-skipped test gets no afterEach.
+    skip: process.getuid?.() === 0 ? 'root reads through mode 000' : false,
+  },
+  () => {
+    const d = mkProj('-tmp-locked-memory', 10);
+    fs.chmodSync(path.join(d, 'memory'), 0o000);
+    try {
+      const r = cleanProbeProjects({ projectsDir: cliProjectsDir, retentionDays: 7, cwd: '/nowhere' });
+      assert.equal(r.targets.length, 0);
+      assert.equal(r.kept.find(k => k.path === d)?.reason, 'memory-unreadable');
+    } finally {
+      fs.chmodSync(path.join(d, 'memory'), 0o700);
+    }
   }
-});
+);
 
 test('scanProbeProjects: a temp-named SYMLINK is not followed or reaped', () => {
   const target = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-linktarget-'));

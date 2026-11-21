@@ -37,6 +37,12 @@
   - L5（不改，D#923）：核心 §8.V4 的 "in short" 摘要少两条条件。标明是摘要；改它要动规范版本，放进下一批规范改动。
   - L7（不改）：pre-bash-safety 的 1,600 段用例对 3 s 上限取三次最好值，macOS 最差 2.243 s；三次都慢才会失败，留在并行批次里。
   - L8、L9（不改，D#924）：dry run 遍历每个目标整棵树、不设上限（20,000 个文件 103 ms），目标里挂着卡住的 FUSE 时 lstat 可能卡住（`--apply` 的 rmSync 也会卡在那里）；同一 pass 里先查完所有目标再逐个删。
+- 2026-11-20：第二轮评审（新开的评审代理，只审修复 6bc1f8b..a851e6e；声明 1、2 用真实 FUSE 挂载验证）：Critical 0、High 0、Medium 0、Low 4。处理（都是文字和测试，按手册不再派评审，用 claim-drift 自查）：
+  - L1：`--help` 和命令页写"检查没走完的一律保留"，漏了"权限错误除外"（权限错误时删除停在同一目录、进 `unreapable`）。两处补上，与 CHANGELOG 一致。
+  - L2：补两个用例（不可读目录：不保护、删除在那里失败、后面的内容还在；父目录 stat 失败：保留为 `mount-unchecked`）。把 `NO_ACCESS` 改空、把父目录失败的返回改成 null，各自只让对应的一条失败。
+  - L3：CHANGELOG 的"Not changed"写"退出码不变"，但同一输入下，原来因挂载里删除失败而退出 3 的，现在会保留并退出 0。"What to do"补一句，"Not changed"改为"每个退出码的含义不变"。
+  - L4（0.121.0 就有，不在本轮范围，D#925）：判断年龄的 `newestMtimeMs` 也用字符串名字遍历，非 UTF-8 目录下的新文件不会让条目变"新"。放进下一批。
+- 2026-11-20：a851e6e 的 PR CI（44854096744）在 macos-latest node 20 上失败：测试全过（1824 通过、0 失败、4 跳过），但 clean-residue 的测试留下了 5 个沙箱目录。原因：非 UTF-8 用例在 APFS 上 `mkdirSync` 报 EILSEQ，用例里调 `t.skip()` 跳过；Node 20 对自己跳过的用例不跑 `afterEach`（node:20 容器里复现：`beforeEach 1` 之后没有 `afterEach`；Node 26 会跑）。修法：跳过条件在用例开始前算好，用声明式 `{ skip }`。同一文件里另外两个按 root 跳过的用例（本轮新加的一个、原有的 unreadable memory/ 一个）同样改掉。
 
 ## 验证记录
 
@@ -50,3 +56,6 @@
 - PR CI run 44852374038（6bc1f8b）→ 通过（7/7）
 - 第一轮修复：新用例四条（符号链接根、非 UTF-8 名字、ENAMETOOLONG、遍历中 ENOENT）在旧遍历上 → 失败（4 条，原因与评审所述一致），修后 `clean-residue.test.js` → 通过（72/72，0 跳过）
 - 第一轮修复：`npm run check` → 通过（exit=0；node 1828 条，1825 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）；CHANGELOG 条目 2,201 字节，单独扫描通过
+- 第二轮修复：两条新用例在对应变异下各自失败（`NO_ACCESS` 置空 → 不可读目录用例失败；父目录失败返回 null → 父目录用例失败），恢复后 `clean-residue.test.js` → 通过（74/74）
+- `node --test tests/scripts/clean-residue.test.js`，node:20-slim 容器：非 root → 通过（74/74，遗留目录 0）；root → 通过（72 通过、2 跳过，遗留目录 0；改声明式跳过之前 root 下遗留 5 个）
+- 第二轮修复后 `npm run check` → 通过（exit=0；node 1830 条，1827 通过、0 失败、3 跳过；shell 套件 OVERALL: all suites passed）；CHANGELOG 条目 2,365 字节，单独扫描通过
