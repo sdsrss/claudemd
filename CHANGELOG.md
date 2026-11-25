@@ -8,6 +8,24 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.122.0] - 2026-11-25
+
+**Spec v9.0.0: the core drops from 24 KB to 2.8 KB and the spec modules from nine to two. An A/B on coding tasks judged by hidden tests found that the v8 spec gave the same or lower correctness than no spec, at 1.8–2.4 times the cost. Also a new `memory-index-lines` hook and a `/claudemd-clean-residue` fix.**
+
+**What changes for users.**
+- `~/.claude/CLAUDE.md` becomes the v9 core: reply language, the operations to ask about first, one local commit per change, "done" only after a check ran, the safety lines, and the three-part report, whose open-items part now holds only what you must decide or know. Levels L0–L3, Iron Laws #1 and #3, spec files, the session rules and the banned-vocabulary list are gone from what the agent reads. On the A/B (Claude Opus 5.5 at xhigh, 9 tasks, 8 runs each) the v9 draft matched no-spec correctness (66/72 vs 65/72) at 1.2–1.3 times its cost, with a local commit and the report in 41 to 72 of 72 runs, depending on how the spec was delivered.
+- `~/.claude/spec-modules/` keeps `ship.md` and `review.md`; the refresh removes the other seven. The pre-tag review now runs only when a release changes a delete path, auth or secrets, install or publish scripts, a gate's decision, a data format, or a published default, or when you ask.
+- No hook blocks or allows anything differently. Six hooks' messages that cited removed sections now point at `~/.claude/CLAUDE-extended.md` §13 or `ship.md` (memory-read, banned-vocab, session-end checkpoint, ship-baseline) or cite nothing (rework note, memory hint). The opt-in `test-failure-debug` hook injects nothing, since there is no debug module.
+- New `memory-index-lines` hook (advisory): when the agent writes a MEMORY.md index line over 150 characters, it is told to shorten it. Off with `DISABLE_MEMORY_INDEX_LINES_HOOK=1`.
+- `/claudemd-clean-residue`: the age walk reads file names as bytes, so a fresh file under a non-UTF-8 directory name keeps its entry from being deleted.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To stay on spec v8, keep 0.121.1; to go back after updating, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
+
+**Not changed.**
+- Every existing hook's allow or deny decision, and every kill switch.
+- The `claudemd-cli` linter.
+- The commands and their flags.
+
 ## [0.121.1] - 2026-11-20
 
 **`/claudemd-clean-residue --apply` no longer deletes an entry with a mount point at or under it, and the `tmp-sweep` note points to the spec's list of conditions instead of copying it. Spec unchanged (v8.6.0).**
