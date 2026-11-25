@@ -16,20 +16,24 @@
 # count (same 750-tag fixture: 3.7s -> under 0.05s, tests/hooks/hook-budget.test.sh).
 #
 # Semantics are a byte-for-byte port of the loop it replaces, not a redesign,
-# with one deliberate change since: the entry's file is the FIRST `](….md)` on
+# with two deliberate changes since: the entry's file is the FIRST `](….md)` on
 # the line, where the loop took the last `(….md)` (backlog item 169; see
-# memtags_file). tests/hooks/memory-tags-parity.test.sh keeps the two in step by
-# running that shell loop, with its file extraction updated to match, as an
-# oracle over a corpus, and carries a control that breaks the awk deliberately
-# to prove the comparison can fail.
+# memtags_file), and a tag keeps its inner whitespace as a phrase instead of
+# losing every space (0.122.0; see the tag loop below).
+# tests/hooks/memory-tags-parity.test.sh keeps the two in step by running that
+# shell loop, with both changes applied to it, as an oracle over a corpus, and
+# carries a control that breaks the awk deliberately to prove the comparison
+# can fail.
 #
 # Two details of the old sed spellings that are load-bearing and easy to lose:
 #   * both `.*` prefixes were GREEDY, so the tag block anchors on the RIGHTMOST
 #     `.md)` whose remainder still matches the tag shape (sed backtracks). A
 #     description mentioning another memory file — `… — see also (other.md)` —
 #     reads differently under a leftmost-match rewrite.
-#   * tag whitespace was stripped with `tr -d ' '`, which removes SPACES
-#     ANYWHERE in the tag, not just around it, and leaves tabs alone.
+#   * tag whitespace was stripped with `tr -d ' '`, which removed SPACES
+#     ANYWHERE in the tag, not just around it, and left tabs alone. That one
+#     was a defect, not a detail: 0.122.0 trims the edges of `[ \t\r\v\f]`
+#     and matches an inner run of it as a run of whitespace.
 #
 # Interval quantifiers are avoided on purpose: macOS ships BWK awk, which does
 # not support `{0,2}`, so the declension tolerance is spelled

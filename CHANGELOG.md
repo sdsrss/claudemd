@@ -15,8 +15,8 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 **What changes for users.**
 - `~/.claude/CLAUDE.md` becomes the v9 core: reply language, the operations to ask about first, one local commit per change, "done" only after a check ran, the safety lines, and the three-part report, whose open-items part now holds only what you must decide or know. Levels L0–L3, Iron Laws #1 and #3, spec files, the session rules and the banned-vocabulary list are gone from what the agent reads. On the A/B (Claude Opus 5.5 at xhigh, 9 tasks, 8 runs each) the v9 draft matched no-spec correctness (66/72 vs 65/72) at 1.2–1.3 times its cost, with a local commit and the report in 41 to 72 of 72 runs, depending on how the spec was delivered.
 - `~/.claude/spec-modules/` keeps `ship.md` and `review.md`; the refresh removes the other seven. The pre-tag review now runs only when a release changes a delete path, auth or secrets, install or publish scripts, a gate's decision, a data format, or a published default, or when you ask.
-- Apart from the tag fix below, no hook blocks or allows anything differently. Eight hooks' messages that cited removed sections were reworded: memory-read, banned-vocab, the session-end checkpoint and ship-baseline point at `~/.claude/CLAUDE-extended.md` §13 or `ship.md`; the rework note and memory hint cite nothing; the npx deny quotes the v9 safety line and no longer suggests pinning a version; the temp-pressure note no longer points at the deleted `auth.md`. The opt-in `test-failure-debug` hook injects nothing, since there is no debug module.
-- A MEMORY.md tag with a space inside (`npm run lint`) now matches that phrase, in the memory hint and in the `memory-read-check` deny. Both removed every space, so such a tag never matched (131 of 1,269 tags on the maintainer's machine). Tags separated only by spaces still match nothing: use commas.
+- Apart from the tag fix below, no hook blocks or allows anything differently. Eight hooks' messages that cited removed sections were reworded: memory-read, banned-vocab, the session-end checkpoint and ship-baseline point at `~/.claude/CLAUDE-extended.md` §13 or `ship.md`; the rework note and memory hint cite nothing; the npx deny quotes the v9 safety line and says to ask first; the temp-pressure note drops the deleted `auth.md`. The opt-in `test-failure-debug` hook injects nothing (no debug module).
+- A MEMORY.md tag with a space inside (`npm run lint`) now matches that phrase in the memory hint and the `memory-read-check` deny, not its words run together (`npmrunlint`); 131 of the maintainer's 1,269 tags have one. Separate tags with commas: spaces make one phrase.
 - New `memory-index-lines` hook (advisory): when the agent writes a MEMORY.md index line over 150 characters, or a shell command quotes one whole, it is told to shorten it. Off with `DISABLE_MEMORY_INDEX_LINES_HOOK=1`.
 - `/claudemd-clean-residue`: the age walk reads file names as bytes, so a fresh file under a non-UTF-8 directory name keeps its entry from being deleted.
 
@@ -24,9 +24,9 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 **Not changed.**
 - Every kill switch, and every other allow or deny decision.
-- The `claudemd-cli` linter.
-- The commands and their flags.
-- Opt-in hooks' messages, some of which still name v8 sections.
+- The `claudemd-cli` linter, the commands and their flags.
+- Other hooks' messages, some of which still name v8 sections.
+- A pinned `npx pkg@1.2.3` still passes `pre-bash-safety`, though v9 says to ask first.
 
 ## [0.121.1] - 2026-11-20
 

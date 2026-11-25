@@ -294,8 +294,8 @@ fi
 # Code and the gate fails open at exactly the ship moment, with no telemetry row
 # to say so. Matching semantics are the old loop's, except that the entry's
 # file is the first `](….md)` on a line that has one, not the last `(….md)`
-# (backlog item 169), and a line without one is read as before; the parity test
-# holds them.
+# (backlog item 169; a line without one is read as before), and that a tag with
+# a space inside matches as a phrase (0.122.0); the parity test holds them.
 #
 # The verdict reads only the file column: this hook denies per FILE, and the old
 # loop `break`ed on the first matching tag. memtags_match reports every matched
