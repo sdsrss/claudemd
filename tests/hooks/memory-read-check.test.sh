@@ -1195,6 +1195,27 @@ else
   echo "FAIL: 74 (reason: ${REASON74:-<empty>})"; FAIL=$((FAIL+1))
 fi
 
+# Case 75 (0.122.0): a tag with a space inside matches its phrase. The matcher
+# removed every space (`gsub(/ /, "", t)`), so `gh release create` was matched
+# as `ghreleasecreate` and this gate never fired on it; 131 of 1,269 tags on
+# the maintainer machine had a space (2026-11-25). The second entry's words are
+# both in the command but not together, and must not match.
+S75_DIR="$HOME/.claude/projects/-work-s75"
+mkdir -p "$S75_DIR/memory"
+printf '%s\n' '- [Notes](notes.md) [gh release create] — desc' \
+  '- [Apart](apart.md) [release notes] — desc' > "$S75_DIR/memory/MEMORY.md"
+touch "$S75_DIR/memory/notes.md" "$S75_DIR/memory/apart.md"
+echo '{"tool":"Read","path":"/unrelated"}' > "$S75_DIR/sess75.jsonl"
+rm -f "$RULE_LOG"
+OUT75=$(jq -cn '{session_id:"sess75",tool_name:"Bash",tool_input:{command:"gh release create v1.2.3 --notes-file n.md"},cwd:"/work/s75"}' | bash "$HOOK" 2>/dev/null)
+LAST75=$(tail -n 1 "$RULE_LOG" 2>/dev/null)
+if [[ "$(echo "$OUT75" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)" == deny ]] \
+  && echo "$LAST75" | jq -e '.event == "deny" and .extra.missing == ["notes.md"] and .extra.tags == {"notes.md": ["gh release create"]}' >/dev/null; then
+  echo "PASS: 75 a tag with a space denies on its phrase, not on its words apart"
+else
+  echo "FAIL: 75 (out: ${OUT75:-<empty>}; row: ${LAST75:-<none>})"; FAIL=$((FAIL+1))
+fi
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

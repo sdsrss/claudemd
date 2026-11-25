@@ -146,9 +146,22 @@ function memtags_file(line,   best, rest) {
   hit = ""
   for (i = 1; i <= n; i++) {
     t = tags[i]
-    gsub(/ /, "", t)
+    # Edges trimmed, inner whitespace kept: a run of it inside a tag matches a
+    # run of within-line whitespace in the haystack, so the tag `npm run lint`
+    # matches "npm  run lint" and not "npmrunlint". Until 0.122.0 this was
+    # gsub(/ /, "", t), copied from the old loop (tr -d " "), which joined the
+    # words: a tag with a space matched only its words run together, so in
+    # practice never, and silently (131 of 1,269 tags on the maintainer
+    # machine, 2026-11-25). The words of a tag must still appear together and
+    # in order; a tag that is several tags separated by spaces does not match.
+    gsub(/^[ \t\r\v\f]+/, "", t)
+    gsub(/[ \t\r\v\f]+$/, "", t)
     if (t == "") continue
-    re = "(^|[^a-zA-Z0-9])" memtags_esc(tolower(t)) "([a-zA-Z]([a-zA-Z])?)?([^a-zA-Z0-9]|$)"
+    gsub(/[ \t\r\v\f]+/, " ", t)
+    nw = split(tolower(t), words, / /)
+    pat = memtags_esc(words[1])
+    for (j = 2; j <= nw; j++) pat = pat "[ \t\r\v\f]+" memtags_esc(words[j])
+    re = "(^|[^a-zA-Z0-9])" pat "([a-zA-Z]([a-zA-Z])?)?([^a-zA-Z0-9]|$)"
     if (HAY ~ re) hit = (hit == "" ? t : hit "," t)
   }
   if (hit != "") print file "\t" hit

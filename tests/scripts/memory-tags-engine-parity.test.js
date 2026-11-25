@@ -8,9 +8,11 @@
 //     from its tag block by NBSP or U+3000 parsed in JS and not in awk —
 //     doctor reported a tagged entry the deny could never match, which is the
 //     dangerous direction (a gate believed to cover something it does not).
-//   • awk removes EVERY space inside a tag (`gsub(/ /, "", t)`), JS trimmed
+//   • awk removed EVERY space inside a tag (`gsub(/ /, "", t)`), JS trimmed
 //     only the edges — so `spec gate` was a live tag in doctor's output and a
-//     dead one in the matcher.
+//     dead one in the matcher. JS then copied the removal; from 0.122.0 both
+//     trim the edges and keep an inner whitespace run as one space, and the
+//     matcher matches it as a phrase.
 //
 // tests/hooks/memory-tags-parity.test.sh joins awk against the shell loop it
 // replaced. This file joins the JS against awk, which is the axis that was
@@ -52,9 +54,14 @@ const CORPUS = [
   ['- [B](feedback_b.md) [gamma] — ordinary plain form', 'feedback_b.md', ['gamma']],
   ['- [C](feedback_c.md) `[ delta ]` — padded tag', 'feedback_c.md', ['delta']],
   [
-    '- [D](feedback_d.md) `[spec gate, solo]` — a space INSIDE a tag is removed, not trimmed',
+    '- [D](feedback_d.md) `[spec gate, solo]` — a space INSIDE a tag is kept, the edges trimmed',
     'feedback_d.md',
-    ['specgate', 'solo'],
+    ['spec gate', 'solo'],
+  ],
+  [
+    '- [H](feedback_h.md) `[npm  run\tlint]` — an inner whitespace run becomes one space',
+    'feedback_h.md',
+    ['npm run lint'],
   ],
   [`- [E](feedback_e.md)${NBSP}\`[epsilon]\` — NBSP separator: untagged in both`, 'feedback_e.md', []],
   [
@@ -78,8 +85,8 @@ test('ALG-M6: the doctor parser and the §11 matcher agree on every whitespace s
     // A haystack carrying every tag either engine could plausibly produce, so
     // the matcher's answer is "which tags does it HAVE", not "which matched".
     const haystack = [
-      'alpha beta gamma delta specgate solo epsilon zeta',
-      'spec gate', // the multi-word spelling, so a trim-only engine would hit too
+      'alpha beta gamma delta specgate solo epsilon zeta npm run lint',
+      'spec gate', // both spellings, so an engine that joins the words hits too
     ].join(' ');
 
     const divergences = [];

@@ -59,7 +59,8 @@ cat > "$INDEX" <<'EOF'
 - [Regex meta](feedback_meta.md) `[v6.9, printf-%b, c++build]` — metachars must be literal
 - [Leading dash](feedback_dash.md) `[--file, -h]` — tags that look like grep flags
 - [CJK tags](feedback_cjk.md) `[全面审核, 发版, 门存在但没盖住]` — chinese tags
-- [Internal space](feedback_space.md) `[two words, normal]` — tr -d ' ' removes inner spaces
+- [Internal space](feedback_space.md) `[two words, normal]` — an inner space matches a whitespace run
+- [Phrase tags](feedback_phrase.md) `[ npm run lint ,claude -p]` — edges trimmed, phrase kept
 - [Declension](feedback_decl.md) `[audit, ship]` — 0-2 trailing letters tolerated
 - [Empty tag](feedback_empty.md) `[, alpha, ]` — empty members are skipped
 - [Upper case](feedback_case.md) `[MixedCase, UPPER]` — matching is case-insensitive
@@ -83,6 +84,11 @@ HAYSTACKS=(
   "pass --file and -h to the cli"
   "全面审核 发版 门存在但没盖住"
   "twowords and normal"
+  "two words and normal"
+  "two   words, spaced"
+  "先跑 npm run lint 再提交"
+  "npmrunlint joined"
+  "claude -p --effort xhigh"
   "audits and ships plural"
   "alpha member"
   "mixedcase and upper"
@@ -134,9 +140,12 @@ oracle_match() {
     IFS=',' read -ra TAGS <<<"$TAG_BLOCK"
     MATCHED_TAGS=""
     for t in "${TAGS[@]}"; do
-      t=$(echo "$t" | tr -d ' ')
+      # Amended in 0.122.0 with the matcher: edges trimmed, an inner whitespace
+      # run kept as one space and matched as a run of whitespace. The loop had
+      # `tr -d ' '`, which joined the words, so a tag with a space never fired.
+      t=$(printf '%s' "$t" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')
       [[ -z "$t" ]] && continue
-      ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g')
+      ESC_TAG=$(printf '%s' "$t" | sed 's|[][\\.*^$+?{}()|]|\\&|g; s| |[[:space:]]+|g')
       if echo "$hay" | grep -qiE -- "(^|[^a-zA-Z0-9])${ESC_TAG}[a-zA-Z]{0,2}([^a-zA-Z0-9]|$)"; then
         if [[ -z "$MATCHED_TAGS" ]]; then MATCHED_TAGS="$t"; else MATCHED_TAGS="$MATCHED_TAGS,$t"; fi
       fi
@@ -184,6 +193,18 @@ for size in 131000 131072 300000; do
 done
 unset BIGPAD BIGHAY
 
+# A tag with a space inside matches the phrase, and not its words run together
+# (0.122.0; measured in daagu 2026-11-25: 131 of 1,269 tags on the maintainer
+# machine had a space and none of them could match). Asserted on the shipped
+# function directly, so an oracle amended the wrong way cannot hide it.
+PHRASE_ROW=$(memtags_match "$INDEX" "先跑 npm run lint 再提交")
+JOINED_ROW=$(memtags_match "$INDEX" "npmrunlint joined")
+if [[ "$PHRASE_ROW" == "feedback_phrase.md"$'\t'"npm run lint" && -z "$JOINED_ROW" ]]; then
+  pass "a tag with a space matches its phrase and not the joined words"
+else
+  fail "phrase tag: phrase=[${PHRASE_ROW}] joined=[${JOINED_ROW}]"
+fi
+
 # A corpus that matches nothing anywhere would make every comparison trivially
 # equal. Assert the oracle actually produced rows.
 if (( TOTAL_ROWS >= 12 )); then
@@ -196,8 +217,8 @@ fi
 # Break the awk on purpose and require the SAME comparison to notice. The break
 # removes the 0-2 char declension tolerance, which `audits`/`ships` exercises.
 BROKEN="$SANDBOX/memory-tags-broken.sh"
-ORIG_RE='memtags_esc(tolower(t)) "([a-zA-Z]([a-zA-Z])?)?([^a-zA-Z0-9]|$)"'
-BREAK_RE='memtags_esc(tolower(t)) "([^a-zA-Z0-9]|$)"'
+ORIG_RE='"(^|[^a-zA-Z0-9])" pat "([a-zA-Z]([a-zA-Z])?)?([^a-zA-Z0-9]|$)"'
+BREAK_RE='"(^|[^a-zA-Z0-9])" pat "([^a-zA-Z0-9]|$)"'
 if ! grep -qF -- "$ORIG_RE" "$LIB"; then
   fail "control: the anchor line for the injected break is gone from $LIB — the control below would be vacuous"
 else

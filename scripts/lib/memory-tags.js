@@ -259,13 +259,12 @@ export function parseMemoryIndex(content) {
     if (!tagBlock) continue;
     const tags = tagBlock[1]
       .split(',')
-      // The awk matcher does `gsub(/ /, "", t)` — it removes EVERY space, not
-      // just the edges — so a tag written `spec gate` is matched as `specgate`
-      // and can never fire. `.trim()` here kept the space (and stripped NBSP,
-      // which awk does not), so doctor listed a tag the hook does not have.
-      // Same normalisation, same answer; the multi-word footgun is now visible
-      // in doctor's output instead of hidden behind a prettier copy of it.
-      .map(t => t.replace(/ /g, ''))
+      // Same normalisation as the awk matcher (hooks/lib/memory-tags.sh): the
+      // edges trimmed of `[ \t\r\v\f]`, an inner run of it kept as one space.
+      // Not `.trim()`: it strips NBSP, which awk does not, so doctor would list
+      // a tag the hook does not have. Until 0.122.0 both engines removed every
+      // space, and a tag written `spec gate` was matched as `specgate`.
+      .map(t => t.replace(/^[ \t\r\v\f]+|[ \t\r\v\f]+$/g, '').replace(/[ \t\r\v\f]+/g, ' '))
       .filter(Boolean);
     entries.push({ line, file, tags });
   }
