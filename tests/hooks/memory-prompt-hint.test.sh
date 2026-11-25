@@ -48,6 +48,13 @@ else
   ng "1 (out: $OUT)"
 fi
 
+# Case 1b (spec v9.0.0): the hint cites no removed spec section (core §11 is gone).
+if [[ "$CTX" == "[claudemd] memory-hint: "* ]] && [[ "$CTX" != *"§11"* ]]; then
+  ok "1b hint cites no removed spec section"
+else
+  ng "1b (ctx: $CTX)"
+fi
+
 # Case 2: prompt has no tag match → silent (no stdout)
 SESS="sess2"
 OUT=$(mkevent "tell me a joke" "$SESS" | bash "$HOOK" 2>/dev/null)
@@ -505,7 +512,7 @@ else
 fi
 
 if (( FAIL > 0 )); then
-  echo "Tests: $((29 - FAIL))/29 passed"
+  echo "Tests: $((30 - FAIL))/30 passed"
   exit 1
 fi
-echo "Tests: 29/29 passed"
+echo "Tests: 30/30 passed"

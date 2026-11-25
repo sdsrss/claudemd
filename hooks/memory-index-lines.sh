@@ -145,7 +145,7 @@ CTX=$(printf '%s' "$ALL" | jq -r --arg home "$HOME" --argjson max "$MAX" '
   length as $n
   | (map(.file) | unique | map(if startswith($home + "/") then "~" + .[($home | length):] else . end) | join(", ")) as $where
   | (.[:5] | map("\(.len): \"\(.title)\"") | join("; ")) as $named
-  | "[claudemd] §11 memory index: \($n) \(if $n == 1 then "line you just wrote to \($where) is" else "lines you just wrote to \($where) are" end) over \($max) characters — \($named)\(if $n > 5 then "; +\($n - 5) more" else "" end). An index line is a title, tags and a one-line hook: move the rest into the memory file and shorten the line now. Lines that were already there are not flagged. The user can turn this off with DISABLE_MEMORY_INDEX_LINES_HOOK=1."' 2>/dev/null)
+  | "[claudemd] memory index: \($n) \(if $n == 1 then "line you just wrote to \($where) is" else "lines you just wrote to \($where) are" end) over \($max) characters — \($named)\(if $n > 5 then "; +\($n - 5) more" else "" end). An index line is a title, tags and a one-line hook: move the rest into the memory file and shorten the line now. Lines that were already there are not flagged. The user can turn this off with DISABLE_MEMORY_INDEX_LINES_HOOK=1."' 2>/dev/null)
 [[ -n "$CTX" ]] || exit 0
 
 jq -cn --arg m "$CTX" \

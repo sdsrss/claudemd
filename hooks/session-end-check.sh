@@ -416,9 +416,9 @@ $SETTLE_NOTE
 A validation earlier in the session does not count here, and this checkpoint is
 written even if you ran one: it could not have covered a change made after it.
 
-Per spec §11 "Session-exit mid-SPINE" HARD: un-VALIDATE'd items MUST NOT be
-reported as Done. Re-run the work's verify command before treating any of
-these as complete.
+Per the session-exit checkpoint rule (HARD, hook-enforced; ~/.claude/CLAUDE-extended.md
+§13): un-VALIDATE'd items MUST NOT be reported as Done. Re-run the work's verify
+command before treating any of these as complete.
 
 ## Unvalidated change(s)
 

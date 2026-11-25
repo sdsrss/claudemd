@@ -334,7 +334,7 @@ done
 
 (( ${#MISSING[@]} == 0 )) && exit 0
 
-REASON="§11 MEMORY.md read-the-file (HARD): matched memory file(s) not Read this session:"
+REASON="MEMORY.md read-the-file (HARD, hook-enforced): matched memory file(s) not Read this session:"
 for m in "${MISSING[@]}"; do
   REASON+=$'\n'"  - $m"
 done
@@ -347,7 +347,7 @@ REASON+=$'\n\n'"Options:
       §8 Escape tokens: the bypass is the user's to authorize; an agent
       reaching for it on its own has skipped the rule, not satisfied it.
 
-Spec: ~/.claude/CLAUDE.md §11 SESSION — MEMORY.md read-the-file."
+Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — MEMORY.md read-the-file."
 
 MISS_JSON=$(printf '%s\n' "${MISSING[@]}" | jq -R . | jq -s .)
 # v0.9.36: emit match_count = total MATCHES (triggered files), not just

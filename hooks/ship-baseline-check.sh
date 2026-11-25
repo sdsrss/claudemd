@@ -340,7 +340,7 @@ Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE 
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
-Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
+Spec: ~/.claude/spec-modules/ship.md §12 Ship — CI baseline."
   hook_record ship-baseline deny-repeat "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
 else
   REASON="§7 Ship-baseline: this branch's CI is RED — $RUN_TITLE
@@ -356,7 +356,7 @@ Options:
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
-Spec: ~/.claude/CLAUDE.md §7 Ship-baseline check."
+Spec: ~/.claude/spec-modules/ship.md §12 Ship — CI baseline."
   hook_record ship-baseline deny "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
 fi
 hook_deny ship-baseline "$REASON"

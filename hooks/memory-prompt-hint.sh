@@ -276,7 +276,7 @@ done < <(printf '%s\n' "${SORT_ROWS[@]}" | sort -t$'\t' -k1,1nr -k2,2nr)
 COUNT=${#SORTED_FILES[@]}
 EMIT_COUNT=$(( COUNT < MAX ? COUNT : MAX ))
 
-CONTEXT="[claudemd] §11 memory-hint: your prompt matches MEMORY.md tags. Consider Reading these before answering:"
+CONTEXT="[claudemd] memory-hint: your prompt matches MEMORY.md tags. Consider Reading these before answering:"
 for i in $(seq 0 $((EMIT_COUNT - 1))); do
   CONTEXT+=$'\n'"  - $MEM_DIR/${SORTED_FILES[$i]} (tag: ${SORTED_TAGS[$i]})"
 done

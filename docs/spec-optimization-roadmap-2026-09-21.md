@@ -477,6 +477,11 @@ CI 侧由 `tests/scripts/doc-check.test.js` 带 `--allow-untracked-missing` 运�
 `tasks/sampling-audit-2026-09-07.md` 是 local-only 分析件,不在 git 里,CI 机器上不存在。
 
 ```doc-check
+spec-source: spec/CLAUDE.md
+spec-source: spec/CLAUDE-extended.md
+spec-source: spec/hard-rules.json
+spec-source: scripts/sampling-audit.js
+spec-source: spec/CLAUDE-changelog.md
 stale-section-exempt: 修正记录|附 A
 stale-line-exempt: 撤回|第一版|口头
 stale: 核心.{0,12}零命中

@@ -294,7 +294,7 @@ if (( ${#HITS[@]} != 0 )); then
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
-Spec: ~/.claude/CLAUDE.md §10 Honesty rules — Specificity (HARD)."
+Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — Banned vocabulary; fix recipes in §10-V."
 
   HITS_JSON=$(printf '%s\n' "${HITS[@]}" | jq -R . | jq -s .)
   if (( BYPASS_VOCAB == 1 )); then
@@ -488,7 +488,7 @@ REASON_TEXT="§10-V prose scan: ship-flow command blocked because the preceding 
 for i in "${!PROSE_HITS[@]}"; do
   REASON_TEXT+=$'\n'"  - \"${PROSE_HITS[$i]}\"  (${PROSE_REASONS[$i]})"
 done
-REASON_TEXT+=$'\n\n'"Why this fires: §10-V (Specificity HARD) bans vague-positive vocab in agent prose, not just commit messages. Ship-flow verbs (commit/push/pr-create/release-create/publish) are the highest-stakes moments — the preceding analysis turn should already be calibrated with numbers + baselines.
+REASON_TEXT+=$'\n\n'"Why this fires: the banned-vocabulary gate (extended §13, Hook-enforced rules) reads the assistant turn before a ship-flow command, not just commit messages. Ship-flow verbs (commit/push/pr-create/release-create/publish) are the highest-stakes moments — the preceding analysis turn should already be calibrated with numbers + baselines.
 
 Bypass options:
   (a) Add [allow-banned-vocab] to the current command (acknowledges the slip).
@@ -501,7 +501,7 @@ Bypass options:
       §8 Escape tokens: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
-Spec: ~/.claude/CLAUDE.md §10 — Specificity (HARD)."
+Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — Banned vocabulary; fix recipes in §10-V."
 
 PROSE_HITS_JSON=$(printf '%s\n' "${PROSE_HITS[@]}" | jq -R . | jq -s .)
 if (( BYPASS_VOCAB == 1 )); then

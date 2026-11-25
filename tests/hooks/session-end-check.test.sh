@@ -92,6 +92,18 @@ else
   ng "Case 2: missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
 fi
 
+# --- Case 2c (spec v9.0.0): the checkpoint names where the rule lives now ----
+# v9.0.0 removed core §11; the session-exit rule is documented in extended §13
+# "Hook-enforced rules". A checkpoint citing the removed section points the next
+# session at text it cannot find. Reads Case 2's file.
+P2C=$(compgen -G "$TMP_CWD/tasks/*-paused.md" | head -1)
+if [[ -n "$P2C" ]] && grep -q 'Per the session-exit checkpoint rule (HARD, hook-enforced; ~/.claude/CLAUDE-extended.md' "$P2C" \
+  && ! grep -q 'Per spec §11' "$P2C"; then
+  ok "Case 2c: checkpoint cites extended §13, not the removed core §11"
+else
+  ng "Case 2c: checkpoint text (file=${P2C:-<none>}: $(grep -n 'Per ' "${P2C:-/dev/null}" 2>/dev/null))"
+fi
+
 # --- Case 2b: STRING-content user msg + Edit only → warn + paused.md ---------
 # Regression: the real-CC string-content prompt shape must still find the last
 # user message, slice forward, and detect the unvalidated mutation. Pre-fix

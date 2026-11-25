@@ -34,6 +34,16 @@ OUT=$(run_hook fail-red "$EVENT_PUSH")
 DEC=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecision 2>/dev/null)
 [[ "$DEC" == "deny" ]] && echo "PASS: 2 red → deny" || { echo "FAIL: 2 (got: $OUT)"; FAIL=$((FAIL + 1)); }
 
+# Case 2v9 (spec v9.0.0): the deny points at the ship module, where v9 keeps the
+# CI-baseline rule; core §7 no longer carries it.
+R2V9=$(echo "$OUT" | jq -r .hookSpecificOutput.permissionDecisionReason 2>/dev/null)
+if [[ "$R2V9" == *"Spec: ~/.claude/spec-modules/ship.md §12 Ship — CI baseline."* ]] && [[ "$R2V9" != *"CLAUDE.md §7"* ]] \
+  && ! grep -q 'CLAUDE\.md §7' "$HOOK"; then
+  echo "PASS: 216 red deny cites the ship module, not the removed core §7 (both deny texts)"
+else
+  echo "FAIL: 216 (reason: ${R2V9:-<empty>})"; FAIL=$((FAIL + 1))
+fi
+
 # Case 3: red CI + known-red commit body → pass
 cd "$TMP_HOME" && git -c user.email=t@t -c user.name=t commit --allow-empty -q -m "feat: x" -m "known-red baseline: flaky test quarantined"
 OUT=$(run_hook fail-red "$EVENT_PUSH")

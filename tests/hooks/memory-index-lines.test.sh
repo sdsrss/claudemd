@@ -77,6 +77,14 @@ else
   ng "1 (out: $OUT)"
 fi
 
+# 1b. Spec v9.0.0 removed core §11, so the note cites no spec section; the
+# 150-character limit it applies is stated in the note itself.
+if [[ "$C" == "[claudemd] memory index: "* ]] && [[ "$C" != *"§11"* ]]; then
+  ok "1b the note cites no removed spec section"
+else
+  ng "1b (ctx: $C)"
+fi
+
 # 2. Edit adds a short line, or a line of exactly 150 → silent.
 OUT=$(ev_edit "$INDEX" "$SHORT" "$SHORT"$'\n'"$EXACT" | run)
 [[ -z "$OUT" ]] && ok "2 line of exactly 150 characters → silent" || ng "2 (out: $OUT)"

@@ -138,7 +138,11 @@ test('the check is wired into auditSpecCoherence and FAILS the suite on real dri
   const r = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: REPO_ROOT });
   const c = r.checks.find(x => x.name === 'banned-vocab-spec-drift');
   assert.ok(c, `check not wired in; got ${r.checks.map(x => x.name).join(', ')}`);
-  assert.ok(c.stats.termCount > 0, 'real spec must yield at least one quick-check term');
+  // Spec v9.0.0 dropped the core §10 quick-check line: the term list lives only
+  // in hooks/banned-vocab.patterns. Pin that state, so a quick-check line added
+  // back to the core makes this test name it (and the uncovered assertion below
+  // then gates its terms) instead of passing on an empty parse.
+  assert.equal(c.stats.status, 'no-quick-check-line', 'v9.0.0 core carries no quick-check line');
   assert.equal(
     c.stats.uncoveredCount,
     0,

@@ -43,16 +43,18 @@ test('ext-cross-refs: every §EXT ref in shipped core resolves in extended', () 
   const check = r.checks.find(c => c.name === 'ext-cross-refs');
   assert.ok(check, 'ext-cross-refs check should exist');
   assert.equal(check.ok, true, `unresolved §EXT refs in shipped spec: ${JSON.stringify(check.findings)}`);
-  // v7.1.0 moved core's pointers from `§EXT §N` to module file names, so most
-  // cross-refs are now `name.md` tokens resolved against spec-modules.json.
-  assert.ok(
-    check.stats.refsFound + check.stats.moduleRefsFound >= 5,
-    `expected ≥5 refs in core, got ${check.stats.refsFound} + ${check.stats.moduleRefsFound}`
+  // v7.1.0 moved core's pointers from `§EXT §N` to module file names; v9.0.0's
+  // core keeps one, the §12 pointer to `~/.claude/spec-modules/ship.md` (ship.md
+  // in turn names review.md). Exactly 1, so a pointer added or lost is noticed.
+  assert.equal(
+    check.stats.moduleRefsFound,
+    1,
+    `expected the one ship.md pointer, got ${check.stats.moduleRefsFound}`
   );
-  assert.ok(check.stats.moduleRefsFound >= 5, `expected ≥5 module refs, got ${check.stats.moduleRefsFound}`);
+  assert.equal(check.stats.refsFound, 0, `v9.0.0 core has no §EXT §N refs, got ${check.stats.refsFound}`);
   assert.ok(
-    check.stats.sectionsFound >= 5,
-    `expected ≥5 sections in extended, got ${check.stats.sectionsFound}`
+    check.stats.sectionsFound >= 4,
+    `expected ≥4 sections in extended, got ${check.stats.sectionsFound}`
   );
 });
 
@@ -61,7 +63,12 @@ test('ext-cross-refs: a core pointer to a module that does not exist is CRITICAL
   try {
     fs.cpSync(path.join(REPO_ROOT, 'spec'), path.join(root, 'spec'), { recursive: true });
     const core = path.join(root, 'spec', 'CLAUDE.md');
-    fs.writeFileSync(core, fs.readFileSync(core, 'utf8').replace('- `session.md` —', '- `sesion.md` —'));
+    const text = fs.readFileSync(core, 'utf8');
+    assert.ok(text.includes('`~/.claude/spec-modules/ship.md`'), 'fixture lost its mutation target');
+    fs.writeFileSync(
+      core,
+      text.replace('`~/.claude/spec-modules/ship.md`', '`~/.claude/spec-modules/sesion.md`')
+    );
     const r = auditSpecCoherence({ pluginRoot: root, projectCwd: '/nonexistent-cwd-for-test' });
     const check = r.checks.find(c => c.name === 'ext-cross-refs');
     assert.equal(check.ok, false);
@@ -107,10 +114,10 @@ test('sizing-headroom: shipped core/extended within HARD caps (no HIGH breach)',
   );
 });
 
-test('sizing-headroom: HIGH when core exceeds the 25K HARD cap (--strict-blocking)', () => {
+test('sizing-headroom: HIGH when core exceeds the 4,000 B HARD cap (--strict-blocking)', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-hr-'));
   try {
-    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(25001), extendedContent: 'y'.repeat(100) });
+    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(4001), extendedContent: 'y'.repeat(100) });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'sizing-headroom');
     assert.equal(check.ok, false);
@@ -127,8 +134,8 @@ test('sizing-headroom: HIGH when core exceeds the 25K HARD cap (--strict-blockin
 test('sizing-headroom: LOW advisory in the 97–100% danger band (not --strict-blocking)', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specco-hr-'));
   try {
-    // 24600B = 98.4% of 25000 — past the 0.97 danger ratio, under the cap.
-    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(24600), extendedContent: 'y'.repeat(100) });
+    // 3950B = 98.75% of 4000 — past the 0.97 danger ratio, under the cap.
+    makeSpecFixture(tmpDir, { coreContent: 'x'.repeat(3950), extendedContent: 'y'.repeat(100) });
     const r = auditSpecCoherence({ pluginRoot: tmpDir, projectCwd: '/nonexistent' });
     const check = r.checks.find(c => c.name === 'sizing-headroom');
     assert.equal(check.ok, false);

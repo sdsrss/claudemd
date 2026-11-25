@@ -165,17 +165,15 @@ test('spec-modules: every module fits the injection budget alone, and the budget
   }
 });
 
-test('spec-modules: core §2.2 lists every registered module once, and each named § ID is in its module', () => {
+test('spec-modules: core §12 points at ship.md, ship.md at review.md, and those two are the registry', () => {
+  // v9.0.0: the core has no module table (§2.2 is gone). It reaches the ship
+  // module by one pointer; the review module is reached from ship.md and by its
+  // own prompt triggers. Every registered module must be reachable that way.
   const core = fs.readFileSync(path.join(REPO, 'spec', 'CLAUDE.md'), 'utf8');
-  const sec = core.slice(core.indexOf('### §2.2 MODULES'), core.indexOf('\n## §3 TRUST'));
-  const rows = [...sec.matchAll(/^- `([a-z-]+)\.md` — .*\(([^)]*)\)$/gm)];
-  assert.deepEqual(rows.map(r => r[1]).sort(), Object.keys(REGISTRY).sort());
-  for (const [, name, ids] of rows) {
-    const text = fs.readFileSync(path.join(MOD_DIR, `${name}.md`), 'utf8');
-    for (const id of ids.match(/§[0-9][0-9A-Za-z.-]*/g) || []) {
-      assert.ok(text.includes(id), `core §2.2 says ${name}.md holds ${id}; it does not`);
-    }
-  }
+  assert.deepEqual(Object.keys(REGISTRY).sort(), ['review', 'ship']);
+  assert.ok(core.includes('Read `~/.claude/spec-modules/ship.md`'), 'core §12 lost its ship.md pointer');
+  const ship = fs.readFileSync(path.join(MOD_DIR, 'ship.md'), 'utf8');
+  assert.ok(ship.includes('(`review.md`)'), 'ship.md no longer names review.md');
 });
 
 test('spec-modules: every module frontmatter carries its registry metadata', () => {

@@ -333,22 +333,25 @@ fi
 # this comment, instead of leaving the banner free to drift back silently.
 # What this does NOT assert: that the banner's wording is *good* — only that it
 # names the plan and not the spec. Prose quality is not gate-able here.
-SPEC_PC_LINE=$(grep -h 'Post-compaction' "$PLUGIN_ROOT/spec/CLAUDE.md" | head -1)
+# Spec v9.0.0 removed core §11 and its post-compaction rule: the banner is now
+# the only post-compaction guidance, so the spec arms below assert that core
+# still says nothing about it (and nothing that tells the model to re-read
+# core). If a post-compaction rule comes back to core, these go red: reconcile
+# the banner with it then.
+SPEC_PC_LINE=$(grep -hi 'compaction' "$PLUGIN_ROOT/spec/CLAUDE.md" | head -1)
 if echo "$OUT15" | grep -qiE 'spec state|re-read the spec'; then
   echo "FAIL: 15b banner still tells the model to re-read spec state (out: $OUT15)"; FAIL=$((FAIL+1))
 elif ! echo "$OUT15" | grep -q 'active plan'; then
   echo "FAIL: 15b banner no longer names the plan as the re-read target (out: $OUT15)"; FAIL=$((FAIL+1))
-elif ! printf '%s' "$SPEC_PC_LINE" | grep -q 'never re-Read it'; then
-  echo "FAIL: 15b spec §11 no longer says core is never re-Read — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
+elif [[ -n "$SPEC_PC_LINE" ]] || grep -qi 're-read' "$PLUGIN_ROOT/spec/CLAUDE.md"; then
+  echo "FAIL: 15b core gained a compaction or re-read rule — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
 # Spec v8 made the task's spec file the hand-over, and §11 re-reads it after a
 # compaction; the banner named only "the active plan" (0.109.0 pre-tag review
 # L10). Same two-sided shape: banner arm, spec arm.
 elif ! echo "$OUT15" | grep -q "the task's spec file"; then
   echo "FAIL: 15b banner does not name the task's spec file (out: $OUT15)"; FAIL=$((FAIL+1))
-elif ! printf '%s' "$SPEC_PC_LINE" | grep -q "re-read the task's spec file"; then
-  echo "FAIL: 15b spec §11 no longer re-reads the task's spec file — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
 else
-  echo "PASS: 15b compact banner matches §11 (spec file and plan yes, core no)"
+  echo "PASS: 15b compact banner names the spec file and plan, not core; v9 core has no compaction rule to contradict it"
 fi
 
 # Case 15c (0.101.0 pre-tag review M5): since spec v7.0.0 the extended spec is
@@ -360,8 +363,8 @@ if echo "$OUT15" | grep -qi 'extended spec'; then
   echo "FAIL: 15c banner still tells the model to re-read the extended spec (out: $OUT15)"; FAIL=$((FAIL+1))
 elif ! echo "$OUT15" | grep -q 'spec module'; then
   echo "FAIL: 15c banner does not name the spec modules as the re-read target (out: $OUT15)"; FAIL=$((FAIL+1))
-elif ! printf '%s' "$SPEC_PC_LINE" | grep -q 'module'; then
-  echo "FAIL: 15c spec §11 no longer names modules — revisit this banner (line: $SPEC_PC_LINE)"; FAIL=$((FAIL+1))
+elif ! compgen -G "$PLUGIN_ROOT/spec/spec-modules/*.md" >/dev/null; then
+  echo "FAIL: 15c the plugin ships no spec module — the banner's ~/.claude/spec-modules/ pointer is dangling"; FAIL=$((FAIL+1))
 else
   echo "PASS: 15c compact banner names the modules, not the extended spec"
 fi

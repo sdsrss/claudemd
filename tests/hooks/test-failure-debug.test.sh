@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # test-failure-debug.test.sh — debug.md injected when a test run fails
-# (tasks/specs/test-failure-debug.md). Runs against the repo's built modules in a
-# sandbox HOME, so the module under test is the shipped one.
+# (tasks/specs/test-failure-debug.md). Spec v9.0.0 ships no debug module, so the
+# hook is inert on a v9 install (case 16); the mechanism runs against the v8
+# fixture of debug.md (tests/fixtures/spec-modules-v8/) beside the shipped modules.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 
 set -uo pipefail
@@ -14,7 +15,7 @@ TMP_HOME=$(mktemp -d -t claudemd-tfd-XXXXXX)
 trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/spec-modules" "$HOME/.claude/logs"
-cp "$REPO"/spec/spec-modules/*.md "$HOME/.claude/spec-modules/"
+cp "$REPO"/spec/spec-modules/*.md "$REPO"/tests/fixtures/spec-modules-v8/*.md "$HOME/.claude/spec-modules/"
 LOG="$HOME/.claude/logs/claudemd.jsonl"
 
 # shellcheck source=tests/lib/assert.sh
@@ -145,5 +146,14 @@ touch "$HOME/.claude/.claudemd-state/modinj-s15.debug-lock"
 touch -t 200001010000 "$HOME/.claude/.claudemd-state/modinj-s15.debug-lock"
 O15=$(fail_event 'npm test' s15 | run | ctx)
 [[ -n "$O15" ]] && ok "15 a lock older than a minute does not block the injection" || ng "15 stale lock blocked debug.md"
+
+# 16. a v9 install (shipped modules only, no debug.md): opted in, a failing test
+# run injects nothing.
+H16=$(mktemp -d -t claudemd-tfd16-XXXXXX)
+mkdir -p "$H16/.claude/spec-modules" "$H16/.claude/logs"
+cp "$REPO"/spec/spec-modules/*.md "$H16/.claude/spec-modules/"
+O16=$(fail_event 'npm test' s16 | HOME="$H16" DEBUG_ON_TEST_FAILURE=1 bash "$HOOK" 2>/dev/null)
+rm -rf "$H16"
+[[ -z "$O16" ]] && ok "16 v9 shipped modules (no debug.md): a failing test run injects nothing" || ng "16 injected on v9: ${O16:0:80}"
 
 claudemd_assert_summary

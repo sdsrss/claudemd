@@ -1,5 +1,5 @@
 {
-  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits; these are the two that matter for the triggers, not a complete list: write [0-9], and bound an English word with (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]) instead of \\b, which is JS's ASCII \\b written out, so both engines agree next to CJK, _ and digits), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2, whose prompt counts r6 corrects.",
+  "_doc": "Per-phase spec modules built from marked sections of spec/CLAUDE-extended.md by scripts/build-spec-modules.js. loadsOn is the index line in core; triggers is the tier-2 regex (case-insensitive; written for Oniguruma, the engine jq and so the hook uses; JS, used only for calibration, differs on \\b next to CJK, where Oniguruma counts the CJK character as a word character, and on \\d, which in Oniguruma also matches full-width digits; these are the two that matter for the triggers, not a complete list: write [0-9], and bound an English word with (?<![A-Za-z0-9_]) … (?![A-Za-z0-9_]) instead of \\b, which is JS's ASCII \\b written out, so both engines agree next to CJK, _ and digits), matched against the whole prompt (window whole) or its first 300 characters (window head). Calibration: tasks/specs/spec-modules.md r2, whose prompt counts r6 corrects. v9.0.0 keeps only ship and review (tasks/specs/spec-v9-lean-2026-11-25.md).",
   "modules": {
     "ship": {
       "loadsOn": "before tagging, releasing, publishing or deploying",
@@ -7,43 +7,8 @@
       "window": "whole"
     },
     "review": {
-      "loadsOn": "when reviewing work or spawning a reviewer, including the pre-ship review",
+      "loadsOn": "when reviewing work or spawning a reviewer, including the pre-tag review",
       "triggers": "评审|审查|审核一下|code review|(?<![A-Za-z0-9_])review (the|this|my|it)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])PR review(?![A-Za-z0-9_])",
-      "window": "head"
-    },
-    "debug": {
-      "loadsOn": "when a bug, a failing test or an error is the task",
-      "triggers": "报错|修复(?!(一下)?(错别字|拼写))|修一下|(?<![A-Za-z0-9_])bug(?![A-Za-z0-9_])|崩溃|不工作|(?<![A-Za-z0-9_])fix (the|this|a)(?![A-Za-z0-9_])(?! (typos?|spelling)(?![A-Za-z0-9_]))|(?<![A-Za-z0-9_])failing(?![A-Za-z0-9_])|stack ?trace|(?<![A-Za-z0-9_])exception(?![A-Za-z0-9_])",
-      "window": "head"
-    },
-    "verify": {
-      "loadsOn": "when validating an L2+ change: evidence tiers, test scope, report shape",
-      "triggers": "",
-      "window": "head"
-    },
-    "plan": {
-      "loadsOn": "for L3 work, specs and plans, or a change crossing modules",
-      "triggers": "架构|重构|规划|实施方案|设计方案|(?<![A-Za-z0-9_])refactor(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])migration(?![A-Za-z0-9_])|迁移|(?<![A-Za-z0-9_])L3(?![A-Za-z0-9_])",
-      "window": "head"
-    },
-    "orchestrate": {
-      "loadsOn": "before spawning subagents or running work in parallel",
-      "triggers": "并行|子代理|(?<![A-Za-z0-9_])subagents?(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])in parallel(?![A-Za-z0-9_])|fan out",
-      "window": "head"
-    },
-    "memory": {
-      "loadsOn": "when saving, recalling or tagging memory",
-      "triggers": "记住|记下来|(?<![A-Za-z0-9_])remember (this|that)(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])mem_save(?![A-Za-z0-9_])",
-      "window": "head"
-    },
-    "auth": {
-      "loadsOn": "before deleting files, and for AUTONOMY_LEVEL, public-API or user-relaxation questions",
-      "triggers": "",
-      "window": "head"
-    },
-    "session": {
-      "loadsOn": "in long sessions: context pressure, re-reads, temp retention, macOS shells",
-      "triggers": "",
       "window": "head"
     }
   }

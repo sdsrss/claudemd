@@ -319,9 +319,9 @@ test('trigger-calibrate: ship reads the whole prompt, other modules only its hea
   const { windowFor, measure } = await import('../../scripts/offline-eval/trigger-calibrate.mjs');
   const long = 'x'.repeat(400) + ' please fix the bug and ship it';
   assert.equal(windowFor('ship', long, 300), long);
-  assert.equal(windowFor('debug', long, 300).length, 300);
+  assert.equal(windowFor('review', long, 300).length, 300);
   const m = measure([{ prompts: [{ idx: 1, text: long }], firstRelease: 2 }], 300);
-  assert.deepEqual([m.perModule.ship, m.perModule.debug, m.shipRecall], [1, 0, '1/1']);
+  assert.deepEqual([m.perModule.ship, m.perModule.review, m.shipRecall], [1, 0, '1/1']);
 });
 
 test('offline-eval: parseStream counts tier-2 injections from UserPromptSubmit hook output', async () => {

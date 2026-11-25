@@ -273,7 +273,7 @@ export function parseMemoryIndex(content) {
 }
 
 // v0.35.0 R2 — Tier-2 index soft size budget. MEMORY.md loads into context
-// every session of its project; spec §0.1 caps core (25K) / extended (50K)
+// every session of its project; spec §0.1 caps core (4,000 B) / extended (12,000 B)
 // but the Tier-2 index had no budget at all — the 2026-07-11 spec audit
 // measured this repo's own index at 19788B = 80% of core (51 entries), the
 // largest unmanaged per-session attention item. 12KB ≈ 3k tokens is the soft

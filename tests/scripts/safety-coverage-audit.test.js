@@ -48,15 +48,16 @@ test('§8.V4-sandbox-disposal rule is implemented in sandbox-disposal-check.sh',
   );
 });
 
-test('§7-user-global-state rule is implemented in residue-audit.sh', async () => {
+test('§7-user-global-state is no longer a HARD rule (spec v9.0.0), so the audit does not list it', async () => {
+  // v9.0.0 removed the rule; residue-audit.sh still emits advisory rows under
+  // the section (frozen hook), which hard-rules-drift lists as non-rule.
   const r = await auditSafetyCoverage({ pluginRoot: REPO_ROOT });
-  const ug = r.ruleEnforcement.find(x => x.id === '§7-user-global-state');
-  assert.ok(ug, 'expected §7-user-global-state in ruleEnforcement');
-  assert.equal(ug.status, 'implemented');
-  assert.ok(
-    ug.implementingHooks.some(h => h.endsWith('residue-audit.sh')),
-    `residue-audit.sh should implement §7-user-global-state; got: ${JSON.stringify(ug.implementingHooks)}`
+  assert.equal(
+    r.ruleEnforcement.find(x => x.id === '§7-user-global-state'),
+    undefined,
+    'a removed HARD rule came back into the coverage audit'
   );
+  assert.ok(r.ruleEnforcement.length > 0, 'vacuity guard: the audit lists no rules at all');
 });
 
 test('multi-clause arrow claim in pre-bash-safety-check.sh is detected', async () => {

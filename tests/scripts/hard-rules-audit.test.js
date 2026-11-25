@@ -33,7 +33,8 @@ afterEach(() => {
 test('hardRulesAudit on real spec/hard-rules.json — byte-exact production fixture', async () => {
   const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
   assert.match(r.spec_version, /^v\d+\.\d+\.\d+$/, `spec_version sanity: ${r.spec_version}`);
-  assert.ok(r.totalRules >= 16, `expected ≥16 HARD rules, got ${r.totalRules}`);
+  // v9.0.0 cut the manifest from 26 rules to 15 (spec/CLAUDE-changelog.md).
+  assert.ok(r.totalRules >= 15, `expected ≥15 HARD rules, got ${r.totalRules}`);
   // Categories partition exactly — sum equals totalRules.
   const sum = r.byEnforcement.hook + r.byEnforcement.self + r.byEnforcement.external + r.byEnforcement.both;
   assert.equal(sum, r.totalRules, 'byEnforcement must partition rules exactly');
@@ -108,7 +109,7 @@ test('hardRulesAudit cross-refs rule_hits_section to real log', async () => {
   const r = await hardRulesAudit({ days: 30, pluginRoot: REPO_ROOT });
   const specificity = r.rules.find(rl => rl.id === '§10-specificity');
   assert.ok(specificity, 'expected §10-specificity in manifest');
-  assert.ok(specificity.hits, '§10-specificity is enforcement="both" — hits must be present');
+  assert.ok(specificity.hits, '§10-specificity is enforcement="hook" — hits must be present');
   assert.equal(specificity.hits.deny, 2, '§10-V deny rows must reach §10-specificity');
   const shipBaseline = r.rules.find(rl => rl.id === '§7-ship-baseline');
   assert.ok(shipBaseline.hits);
@@ -120,7 +121,7 @@ test('hardRulesAudit cross-refs rule_hits_section to real log', async () => {
   // construction. null is now reserved for rules with no section at all.
   const ironLaw2 = r.rules.find(rl => rl.id === '§iron-law-2');
   assert.ok(ironLaw2.hits, 'self-enforced rule with a declared section must report hits');
-  const noSurface = r.rules.find(rl => rl.id === '§9-parallel-path');
+  const noSurface = r.rules.find(rl => rl.id === '§5-hard-auth');
   assert.equal(noSurface.hits, null, 'a rule with no rule_hits_section must surface hits=null');
 });
 

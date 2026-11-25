@@ -141,9 +141,9 @@ const hookEmittedSections = () => sharedEmittedSections(HOOKS_DIR);
 // entry for them would mean inventing rules to satisfy a test.
 const NON_RULE_SECTIONS = new Set([
   '§11-memory-hint', // memory-prompt-hint suggestion instrument
-  // memory-index-lines' advisory: core §11's "≤150 characters" index-line
-  // length is part of the Memory bullet, not one of the HARD rules, and the
-  // hook never denies.
+  // memory-index-lines' advisory: the "≤150 characters" index-line length was
+  // part of v8 core §11's Memory bullet, never a HARD rule (v9.0.0 removed §11;
+  // the hook states the limit itself), and the hook never denies.
   '§11-memory-index',
   '§11-EXT-mem-audit', // §11-EXT durable-memory body-structure scan
   '§13.1-extended-read', // observability for extended loading, not a rule
@@ -181,6 +181,15 @@ const NON_RULE_SECTIONS = new Set([
   // mechanism, not a HARD rule; its rows must not enter a HARD rule's §13.1
   // demote accounting.
   '§2.2-modules',
+  // Spec v9.0.0 removed these three rules from the spec (CLAUDE-changelog.md
+  // v9.0.0); the hooks that emitted advisory rows under them are frozen and
+  // still do. Each is advisory-only (residue-audit `warn`, session-start
+  // `compact-reminder` / `ledger-inject`, transcript-structure-scan's Stop-time
+  // scan) and never denies, so the rows are observability, not a HARD rule's
+  // §13.1 demote accounting.
+  '§7-user-global-state',
+  '§10-honesty',
+  '§11-post-compaction',
 ]);
 
 test('hard-rules-4: a rule with hook-emitted rows declares the section they land in', () => {

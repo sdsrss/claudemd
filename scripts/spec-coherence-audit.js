@@ -81,11 +81,11 @@ Exit codes: 0 success | 1 bad flag value or runtime error, or --strict with CRIT
   runtime failure prints '[claudemd] spec-coherence-audit failed: …', and
   neither emits a report.`;
 
-// v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤25K / extended
-// ≤50K. The danger ratio (0.97) is the standing-advisory band: once a file
+// v0.23.8 — §0.1 HARD char caps, mechanized (CHECK 4). core ≤4,000 / extended
+// ≤12,000 bytes since spec v9.0.0 (were 25K / 50K). The danger ratio (0.97) is the standing-advisory band: once a file
 // crosses it, §0.1 says the next addition must pair with a net-delete.
-const CORE_CAP_BYTES = 25000;
-const EXT_CAP_BYTES = 50000;
+const CORE_CAP_BYTES = 4000;
+const EXT_CAP_BYTES = 12000;
 const HEADROOM_DANGER_RATIO = 0.97;
 
 // CHECK 1 — §EXT cross-ref resolution -----------------------------------------
@@ -175,7 +175,10 @@ function checkExtCrossRefs(specDir) {
   // must name a module registered in spec/spec-modules.json.
   const registryPath = path.join(specDir, 'spec-modules.json');
   const modules = new Set(fs.existsSync(registryPath) ? Object.keys(readRegistry(specDir) || {}) : []);
-  const moduleRefs = new Set([...coreText.matchAll(/`([a-z][a-z0-9-]*)\.md`/g)].map(m => m[1]));
+  // v9.0.0's core writes the pointer as a full path (`~/.claude/spec-modules/ship.md`).
+  const moduleRefs = new Set(
+    [...coreText.matchAll(/`(?:~\/\.claude\/spec-modules\/)?([a-z][a-z0-9-]*)\.md`/g)].map(m => m[1])
+  );
   for (const name of [...moduleRefs].sort()) {
     if (!modules.has(name)) {
       findings.push({

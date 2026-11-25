@@ -1180,6 +1180,19 @@ else
   echo "FAIL: 73 (out: ${OUT73:-<empty>}; row: ${LAST73:-<none>})"; FAIL=$((FAIL+1))
 fi
 
+# Case 74 (spec v9.0.0): the deny names where the rule lives now. v9.0.0 cut
+# core §11; the rule is documented in extended §13 "Hook-enforced rules", and a
+# deny pointing the agent at a core section that no longer exists sends it to
+# read nothing.
+REASON74=$(echo "$OUT73" | jq -r .hookSpecificOutput.permissionDecisionReason 2>/dev/null)
+if [[ "$REASON74" == "MEMORY.md read-the-file (HARD, hook-enforced):"* ]] \
+  && [[ "$REASON74" == *"Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — MEMORY.md read-the-file."* ]] \
+  && [[ "$REASON74" != *"CLAUDE.md §11"* ]]; then
+  echo "PASS: 74 the deny cites extended §13, not the removed core §11"
+else
+  echo "FAIL: 74 (reason: ${REASON74:-<empty>})"; FAIL=$((FAIL+1))
+fi
+
 # Total is DERIVED, not hand-maintained (2026-07-27 audit, L5). The literal said
 # 44 while the file asserts 41 distinct case IDs (1-37, 41-44) — the number a
 # human reads to judge whether coverage grew overstated it by three. Gating was

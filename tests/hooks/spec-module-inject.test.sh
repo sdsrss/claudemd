@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# spec-module-inject.test.sh — tier-2 spec-module injection (core §2.2;
-# tasks/specs/spec-modules.md). Runs against the repo's built modules installed
-# into a sandbox HOME, so the triggers under test are the shipped ones.
+# spec-module-inject.test.sh — tier-2 spec-module injection (tasks/specs/spec-modules.md).
+# Runs against the repo's built modules (ship, review) installed into a sandbox
+# HOME, beside fixtures carrying the frontmatter of the seven modules spec v9.0.0
+# deleted (tests/fixtures/spec-modules-v8/): the hook is generic, and those
+# triggers are what exercise its matching (CJK gluing, head window, cap, order).
+# Case 22 checks the shipped v9 set alone.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/env-hygiene.sh" && claudemd_reset_test_env
 
 set -uo pipefail
@@ -14,7 +17,7 @@ TMP_HOME=$(mktemp -d -t claudemd-modinj-XXXXXX)
 trap 'rm -rf "$TMP_HOME"' EXIT
 export HOME="$TMP_HOME"
 mkdir -p "$HOME/.claude/spec-modules" "$HOME/.claude/logs"
-cp "$REPO"/spec/spec-modules/*.md "$HOME/.claude/spec-modules/"
+cp "$REPO"/spec/spec-modules/*.md "$REPO"/tests/fixtures/spec-modules-v8/*.md "$HOME/.claude/spec-modules/"
 LOG="$HOME/.claude/logs/claudemd.jsonl"
 
 # shellcheck source=tests/lib/assert.sh
@@ -28,7 +31,7 @@ mods() { grep -oE '<spec-module name="[a-z-]+">' <<<"$1" | sed -E 's/.*name="([a
 
 # 1. a release prompt injects ship, wrapped, with the module's own rules.
 C1=$(inject 'Please ship v1.2.3 to npm today' s1)
-if [[ "$(mods "$C1")" == "ship " ]] && grep -q '^</spec-module>$' <<<"$C1" && grep -q 'Ship-pipeline hardening' <<<"$C1" \
+if [[ "$(mods "$C1")" == "ship " ]] && grep -q '^</spec-module>$' <<<"$C1" && grep -q 'Pre-tag review: only when the release carries risk' <<<"$C1" \
    && ! grep -q '^trigger-window:' <<<"$C1"; then
   ok "1 a release prompt injects ship.md's body, wrapped, without its frontmatter"
 else ng "1 ship injection wrong: $(mods "$C1") / ${C1:0:200}"; fi
@@ -168,12 +171,13 @@ done
 
 # 16. size (tasks/specs/spec-modules.md r7). Claude Code swaps an
 # additionalContext string over 10,000 characters for a file path and a preview.
-# memory + plan is the longest pair a natural prompt draws (9,929 before r7):
-# both still go in, without the build comment, under the 9,800 budget.
-C16=$(inject '记住这个架构决定' s16)
+# Spec v9.0.0 ships two modules, so ship + review is the longest pair a prompt
+# can draw from shipped text: both go in, without the build comment, under the
+# 9,800 budget.
+C16=$(inject '评审一下这个版本，然后发版' s16)
 L16=$(jq -n --arg c "$C16" '$c | length')
-if [[ "$(mods "$C16")" == "memory plan " ]] && (( L16 <= 9800 )) && ! grep -q '<!-- generated from' <<<"$C16"; then
-  ok "16 memory + plan inject together in $L16 characters, build comment stripped"
+if [[ "$(mods "$C16")" == "ship review " ]] && (( L16 <= 9800 )) && ! grep -q '<!-- generated from' <<<"$C16"; then
+  ok "16 ship + review inject together in $L16 characters, build comment stripped"
 else ng "16 pair wrong: mods=$(mods "$C16") len=$L16 comment=$(grep -c '<!-- generated from' <<<"$C16")"; fi
 
 # 17. a second module that would cross the budget is deferred, not dropped: it is
@@ -269,5 +273,17 @@ for p in '这个tag名字不对' '打个招呼' '发个链接给我' '测试通�
   N21=$((N21+1)); [[ -z "$(inject "$p" "s21n$N21")" ]] || { ng "21 drew a module: $p -> $(mods "$(inject "$p" "s21m$N21")")"; BAD21=1; }
 done
 [[ $BAD21 == 0 ]] && ok "21 打个tag injects ship; 发个版 / 测试挂了 stay residual misses; their neighbours draw nothing"
+
+# 22. the shipped v9 set alone (ship, review): a bug prompt draws nothing, since
+# spec v9.0.0 ships no debug module; a release prompt still draws ship.
+H22=$(mktemp -d -t claudemd-modinj22-XXXXXX)
+mkdir -p "$H22/.claude/spec-modules" "$H22/.claude/logs"
+cp "$REPO"/spec/spec-modules/*.md "$H22/.claude/spec-modules/"
+C22A=$(HOME="$H22" inject 'fix the bug in parser.js please' s22a)
+C22B=$(HOME="$H22" inject 'Please ship v1.2.3 to npm today' s22b)
+rm -rf "$H22"
+if [[ -z "$C22A" && "$(mods "$C22B")" == "ship " ]]; then
+  ok "22 v9 shipped modules: a bug prompt injects nothing, a release prompt injects ship"
+else ng "22 v9 set: bug=$(mods "$C22A") release=$(mods "$C22B")"; fi
 
 claudemd_assert_summary

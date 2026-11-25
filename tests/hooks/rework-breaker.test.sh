@@ -87,15 +87,17 @@ if [[ "$EVENT_NAME" == "PostToolUse" ]] && [[ "$CTX" == *"/p/src/a.js"* ]] && [[
 else
   ng "2: 8th edit did not inject the expected context (event: $EVENT_NAME, ctx: $CTX)"
 fi
-# The note names the core §1 principle it applies, and that name must exist in
-# core: spec v8.0.0 renamed "Root cause over patch" to "Fix at the root" and
-# 0.109.0 shipped the old name (found after release). Two-sided: the text arm
-# and the spec arm, so a later rename on either side goes red here.
+# The note used to cite core §1 "Fix at the root"; spec v9.0.0 removed that
+# principle from the core, so the note carries its advice itself and cites no
+# spec section. Two-sided, as before: the text arm (no citation, advice intact)
+# and the spec arm (core still has no such principle; if one comes back, decide
+# whether the note should cite it again).
 CORE="$HERE/../../spec/CLAUDE.md"
-if [[ "$CTX" == *"Spec §1 Fix at the root"* ]] && grep -q '^- \*\*Fix at the root\.\*\*' "$CORE"; then
-  ok "2-name: the note cites core §1's 'Fix at the root', which core still names"
+if [[ "$CTX" != *"Spec §"* ]] && [[ "$CTX" == *"reproduce the failure, name the cause, then make one edit"* ]] \
+  && ! grep -q 'Fix at the root' "$CORE"; then
+  ok "2-name: the note cites no spec section (v9 core has no 'Fix at the root') and keeps its advice"
 else
-  ng "2-name: principle name drifted (ctx: $CTX; core line: $(grep -m1 'Fix at the root' "$CORE"))"
+  ng "2-name: citation drift (ctx: $CTX; core line: $(grep -m1 'Fix at the root' "$CORE"))"
 fi
 # The envelope must be exactly one JSON object, or Claude Code drops the whole
 # payload silently (docs/HOOK-PROTOCOL.md).
