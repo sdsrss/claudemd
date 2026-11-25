@@ -196,6 +196,14 @@ export const HOOK_REGISTRY = [
     optIn: { env: 'REWORK_BREAKER', values: ['1'] },
   },
   {
+    basename: 'memory-index-lines.sh',
+    displayName: 'memory-index-lines',
+    envVarSuffix: 'MEMORY_INDEX_LINES',
+    hookEvent: 'PostToolUse',
+    matcher: 'Edit|Write|Bash',
+    timeout: 3,
+  },
+  {
     basename: 'cross-repo-write-check.sh',
     displayName: 'cross-repo-write',
     envVarSuffix: 'CROSS_REPO_WRITE',

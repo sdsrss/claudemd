@@ -1,7 +1,9 @@
 # 记忆索引行写入时检查 + 核心头注释（2026-11-25）
-状态：草稿（等用户授权进入实现）
+状态：已完成
 
 ## 背景与目标
+
+发布：未发版，随下一个插件版本发布（`next-release`）。
 
 来源：2026-11-25 在 daagu 跑的 `/doctor prompt-audit`，它给本仓库写的提示词在 `/home/ai/dev/daagu/docs/prompt-audit-2026-11-25/claudemd-prompt.md`，报告在 `/home/ai/dev/daagu/docs/prompt-audit-2026-11-25.md`。提示词三项：
 
@@ -37,6 +39,22 @@
 - 截短用的是现在的索引行，不是提示当时的；15 对的标签已经改过，排除在外。
 - "截短"测的是从尾部机械截断。实际压缩由作者改写，丢的应当更少，所以 94.8% 是保留率的下限。
 
+## 授权后的核实（2026-11-25，用户："可以，你也要先验证分析一下，有问题的才优化"）
+
+**第 1 项的问题是真的，不只是不合规：**
+- Claude Code 2.1.332 加载 MEMORY.md 有硬上限 200 行、25,000 字节（CLI 源码 `var sy="MEMORY.md",eV=200,zye=25000`），超出的部分被截掉，只给一句 "Only part of it was loaded … Keep index entries to one line under ~200 chars"。它自己给 agent 的记忆说明写的是 "each entry should be one line, under ~150 characters"，所以 150 不是本仓库自定的数，(c) 改上限更没有依据。
+- 现状：claude-mem-lite 21,470 字节（上限的 86%）、code-graph-mcp 16,671（67%）、daagu 15,700（63%）。超过 150 的部分 daagu 约 3,500 字符（每行截到 150 后文件 9,503 字节，即 40% 的字节是超出部分），code-graph-mcp 3,427，claude-mem-lite 2,054。每个会话都加载这些字节。
+- 写法没有变：10-01 以来新写的 52 行里 39 行超长。
+
+**检测方法回放到真实调用上**（`tasks/memory-index-write-check-2026-11-25/replay.py`、`replay_current.py`，本地）：
+- 命令里出现 `MEMORY.md` 的 276 次 Bash 调用：会被标记、但不是写入的 0 次。回放里标出的 2 次 "非写入" 实际是 `echo '…' >> "$M"`（脚本的写入正则没认出变量形式的目标），是写入。
+- 现存 220 条超长行里 163 条早于留存的 transcript。其余 57 条，最后一次写入能被检测到的 34 条（Bash 原样出现 25、Edit/Write 9）；23 条最后一次是 `sed -i` 或 Python 只改了一部分（Python 13、sed 5、其他 5），检测不到。这类改动多在已有行上，行最初被整行追加时会被检测到。为覆盖它们要给每个会话存快照，不做，作为已知缺口。
+- 提示频率：10-01 以来按回放约 40 行（Edit 15、Write 1、Bash 约 25），所有项目合计每周约 5 次。
+
+**第 3 项没有出过问题，不改：** 日志（10-22 起）spec-drift 行 0 条；`~/.claude/spec-backup-*` 5 份都与对应发布版本逐字节相同，也就是从没有本地改动被覆盖；所有留存 transcript 里对 `~/.claude/CLAUDE.md` 的 Edit/Write 0 次；daagu 那次审计比了 sha256，结论正确。注释措辞不准，但没有造成过任何后果，而已有的 drift 横幅和更新前备份已经防住了丢数据。
+
+**extended §11-EXT 那句不改：** "`/claudemd-doctor` flags longer lines" 加了 hook 之后仍然成立；写超长行的 agent 直接收到 hook 的提示，不靠这句规范。不改规范就不需要动版本号。
+
 ## 决定（第 1 项）：选 (a)
 
 - 截短丢的命中少（19/363 = 5.2%），而且丢掉的那部分本来就很少被读（3/19，对比保留部分的 190/344）。提示词给 (a) 的适用条件是"截短丢掉的命中很少"，符合。
@@ -49,24 +67,21 @@
   - 新 hook `hooks/memory-index-lines.sh`（PostToolUse，matcher `Edit|Write|Bash`），见"方案"。
   - 注册与清单：`hooks/hooks.json`、`scripts/lib/hook-registry.js`、`scripts/lib/doctor-hook-tests.js`、`commands/claudemd-toggle.md`、`tests/hooks/hook-budget.test.sh`、`docs/RULE-HITS-SCHEMA.md`、README 的 hook 表；其他按 `grep -rl memory-prompt-hint` 找到、列出全部 hook 的地方。
   - 测试 `tests/hooks/memory-index-lines.test.sh`。
-  - 规范 extended §11-EXT 一句（:442，"`/claudemd-doctor` flags longer lines"）改成写入时由 hook 提示、doctor 列出已有的超长行；重建 `spec/spec-modules/memory.md`。
-  - 第 3 项：`spec/CLAUDE.md` 第 3 行注释。
-  - 两项都并入尚未发布的 v8.6.1（措辞，规则不增不删，ID 不变）：`spec/CLAUDE-changelog.md` v8.6.1 条目、extended Recent changes、Sizing 不动点、`spec-structure.test.js` 的钉住哈希。插件 `CHANGELOG.md` 记在下一个版本（新 hook，minor）。
+  - 插件 `CHANGELOG.md`：发版时写（新 hook，minor，README 里暂标 v0.122.0+）。
 - 不做：
   - 核心 §11 的规则本身（≤150 不变）、read-the-file 那句。
   - 已有的超长行：不自动截短，由各项目自己压缩；doctor 的 advisory 检查保留。
-  - 第 2 项（用户决定不做）；F9 / D#328。
+  - 第 2 项（用户决定不做）；第 3 项和 extended §11-EXT 那句（核实后不改，见上）；F9 / D#328。
   - 发版（v8.6.1 按原计划等 D#719 复测之后，约 11-30）。
 
 ## 验收标准
-- [ ] AC1：Edit 写入一行 >150 字符的新索引行 → hook 输出一个 JSON，`additionalContext` 点名该行的字符数和标题 — 验证：`bash tests/hooks/memory-index-lines.test.sh`（先红后绿）
-- [ ] AC2：Bash 用 `echo '…' >> MEMORY.md` / `printf` / heredoc 追加的超长行同样提示；只读命令（`grep … MEMORY.md`）不提示 — 验证：同上
-- [ ] AC3：不提示的情况：行 ≤150；超长行原本就在文件里、这次没改（Edit 的 old_string 里已有，Write 的 originalFile 里已有）；文件不是 `~/.claude/projects/*/memory/MEMORY.md`；关闭开关 `DISABLE_MEMORY_INDEX_LINES_HOOK=1` — 验证：同上
-- [ ] AC4：命令里不含 `MEMORY.md` 时在调用 jq 之前退出；预算测试覆盖它 — 验证：`bash tests/hooks/hook-budget.test.sh`
-- [ ] AC5：字符数和 doctor 一致（按码点，行以 `- [` 开头）— 验证：测试里用一行含中文、151 个码点、超过 150 字节的行
-- [ ] AC6：核心第 3 行注释说明它是安装副本、要改哪里；注释不进上下文（CC 加载时剥掉）— 验证：`node --test tests/scripts/spec-structure.test.js`
-- [ ] AC7：规范树一致 — 验证：`node scripts/version-cascade-check.js`；`node scripts/spec-coherence-audit.js --strict` 无漂移；`node scripts/build-spec-modules.js` 后 diff 只在 memory.md 的那一句
-- [ ] AC8：`npm run check` 退出码 0；`npm run smoke` 通过
+- [x] AC1：Edit 写入一行 >150 字符的新索引行 → hook 输出一个 JSON，`additionalContext` 点名该行的字符数和标题 — 验证：`bash tests/hooks/memory-index-lines.test.sh`（先红后绿）
+- [x] AC2：Bash 用 `echo '…' >> MEMORY.md` / `printf` / heredoc 追加的超长行同样提示；只读命令（`grep … MEMORY.md`）不提示 — 验证：同上
+- [x] AC3：不提示的情况：行 ≤150；超长行原本就在文件里、这次没改（Edit 的 old_string 里已有，Write 的 originalFile 里已有）；文件不是 `~/.claude/projects/*/memory/MEMORY.md`；关闭开关 `DISABLE_MEMORY_INDEX_LINES_HOOK=1` — 验证：同上
+- [x] AC4：命令里不含 `MEMORY.md` 时在调用 jq 之前退出；预算测试覆盖它 — 验证：`bash tests/hooks/hook-budget.test.sh`
+- [x] AC5：字符数和 doctor 一致（按码点，行以 `- [` 开头）— 验证：测试里用一行含中文、151 个码点、超过 150 字节的行
+- [x] AC6：Bash 命令写到别的项目的记忆目录（命令里写明 `~/.claude/projects/<x>/memory`）时读那个目录的 MEMORY.md — 验证：同 AC1
+- [x] AC7：`npm run check` 退出码 0；`npm run smoke` 通过
 
 ## 方案
 
@@ -80,7 +95,7 @@
    - Bash：命令含 `MEMORY.md`。要读的索引 = 本项目的 MEMORY.md（与 `memory-prompt-hint.sh` 同一算法：`hook_memory_root` + `hook_encode_project`），加上命令里出现的 `~/.claude/projects/<x>/memory` 或 `$HOME/.claude/projects/<x>/memory` 目录。候选行 = 这些索引里**原样出现在命令文本中**的行。`echo` / `printf` / heredoc / `L='…'; echo "$L" >>` 都把整行写在命令里；`sed -i` 只改一部分，不会命中（漏报，可接受：这类改动多半是在缩短）；只读命令不改文件，但如果整行原样出现在命令里（例如 `grep -F '<整行>'`），会误报一次，可接受。
 4. 判定：候选行以 `- [` 开头，并且码点数 > 150（用 jq `length`，与 doctor 的 `[...l].length` 一致）。
 5. 输出（只在有超长行时）：一个 JSON，`hookSpecificOutput.additionalContext`，大意：`[claudemd] §11 memory index: 1 line you just wrote to MEMORY.md is over 150 characters (212: "<title>"). An index line is a title, tags and a one-line hook; move the rest into the memory file and shorten the line now. Lines that were already there are not flagged. The user can turn this off with DISABLE_MEMORY_INDEX_LINES_HOOK=1.`
-6. 记录：`hook_record memory-index-lines long-line {"lines":N,"max":L,"tool":"Edit|Write|Bash"}`，用于事后测效果。
+6. 记录：`hook_record memory-index-lines index-line-advisory {"lines":N,"max":L,"tool":"Edit|Write|Bash"}`（`-advisory` 后缀，`isSignalEvent` 按后缀计入趋势），用于事后测效果。
 7. 任何一步失败都静默退出 0（只做提示，从不阻断）。
 
 比较过的做法：
@@ -89,17 +104,9 @@
 - PreToolUse 拒绝写入：会挡住记忆保存，代价大于收益。不选。
 - 写会话快照比对（覆盖 `sed -i`）：要给每个会话存状态文件，还要清理。不选。
 
-### extended §11-EXT（:442）
+### 第 3 项（核实后不改）：曾提议的写法和另外查过的 `<!-- -->`
 
-旧：`- **Index line ≤150 characters**: title, tags, one-line hook. `MEMORY.md` loads every session; the detail belongs in the file, and `/claudemd-doctor` flags longer lines.`
-新：`- **Index line ≤150 characters**: title, tags, one-line hook. `MEMORY.md` loads every session; the detail belongs in the file. A hook flags a longer line as it is written; `/claudemd-doctor` lists the ones already there.`
-
-### 第 3 项：`spec/CLAUDE.md` 第 3 行
-
-旧：`<!-- Canonical: `~/.claude/CLAUDE.md` | Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->`
-新：`<!-- Source: `spec/CLAUDE.md` in the claudemd plugin repo; `~/.claude/CLAUDE.md` is the installed copy and `/claudemd-update` overwrites edits made there. Modules: `~/.claude/spec-modules/` (§2.2) | History: `~/.claude/CLAUDE-changelog.md`. -->`
-
-上下文成本为零：CC 加载 CLAUDE.md 时剥掉 HTML 注释（daagu 会话加载的副本里没有第 3、37 行）。
+曾提议：`<!-- Source: `spec/CLAUDE.md` in the claudemd plugin repo; `~/.claude/CLAUDE.md` is the installed copy and `/claudemd-update` overwrites edits made there. … -->`。不改的理由见"授权后的核实"。
 
 另外查过的 `<!-- -->`：
 - 第 37 行 `<!-- Extended-only terms (**Assumption**): session.md §1.5-EXT. -->`：指针，准确，不改。
@@ -108,14 +115,25 @@
 - `spec/CLAUDE-changelog.md` 第 3 行 "Canonical history for …" 不是注释，说的是"版本历史以此为准"，不涉及该改哪个文件。不改。
 
 ## 计划
-- [ ] S1：hook 测试先写，跑红 — 覆盖 AC1–AC5 — 依赖：授权
-- [ ] S2：实现 hook 与注册、清单 — 覆盖 AC1–AC5 — 依赖：S1
-- [ ] S3：extended :442 + 核心第 3 行 + v8.6.1 条目 + 钉住哈希 + 重建模块 — 覆盖 AC6、AC7
-- [ ] S4：`npm run check`、`npm run smoke` — 覆盖 AC8
-- [ ] S5：插件 `CHANGELOG.md` 条目；提交在 `next-release`
+- [x] S1：hook 测试先写，跑红 — 覆盖 AC1–AC5 — 依赖：授权
+- [x] S2：实现 hook 与注册、清单 — 覆盖 AC1–AC5 — 依赖：S1
+- [x] S3：预算测试探针、注册清单、README / RULE-HITS-SCHEMA — 覆盖 AC4
+- [x] S4：`npm run check`、`npm run smoke` — 覆盖 AC7
+- [x] S5：提交在 `next-release`。插件 `CHANGELOG.md` 不在这次写：`next-release` 上的提交都不写它，发版时按 runbook 第 3 步写（见"决策与进展"）
 
 ## 决策与进展
-- 2026-11-25：测量完成，选 (a)，理由见"决定"。第 2 项按用户决定不做。等用户授权进入实现（L3：新 hook 输出 agent 可见的文字，并且改规范文本）。
+- 2026-11-25：测量完成，选 (a)，理由见"决定"。第 2 项按用户决定不做。
+- 2026-11-25：用户授权（"可以，你也要先验证分析一下，有问题的才优化"）。核实后范围收窄为只改插件：第 3 项和 extended 那句不改（见"授权后的核实"）。
+- 2026-11-25：实现中的两处调整。(1) 快速退出放在 source 库之前：先 source 再判断时每次调用 5.8 ms（空 bash 1.3 ms），挪前后 1.2 ms。(2) 事件名用 `index-line-advisory`，不用 `long-line`：本仓库的提示类事件统一叫 `<x>-advisory`，`isSignalEvent` 按后缀计入趋势；section `§11-memory-index` 加进 `NON_RULE_SECTIONS`（≤150 不是 HARD 规则，hook 不拒绝）。
+- 发版时 CHANGELOG 要写：新 hook `memory-index-lines`（PostToolUse Edit|Write|Bash），写入超 150 字符的索引行时提示 agent 当场缩短，已有的行不提示；关闭：`DISABLE_MEMORY_INDEX_LINES_HOOK=1`。版本号若不是 0.122.0，改 README 两处 "v0.122.0+" 和 docs/ARCHITECTURE.md 一处 "0.122.0+"。
+- 发版后测效果：T0 = 第一条带新 `hook_version` 的日志行；看 `index-line-advisory` 行数，以及 T0 后新写索引行的超长比例（基线：10-01 起 52 行里 39 行）。
 
 ## 验证记录
 - `python3 -I tasks/memory-index-write-check-2026-11-25/measure_hint.py` → 133 次提示、378 对；被读 197/378；截到 150 后命中仍在 344/363
+- `python3 -I tasks/memory-index-write-check-2026-11-25/replay.py` → 276 次命名 MEMORY.md 的 Bash 调用，非写入误报 0
+- `python3 -I tasks/memory-index-write-check-2026-11-25/replay_current.py` → 220 条现存超长行，可追溯 57 条，最后一次写入可检测 34 条
+- `bash tests/hooks/memory-index-lines.test.sh` → 实现前 10 个失败（hook 不存在）；实现后 21/21 通过
+- 变异检验（7 处，每处只改一个判断）→ 每处都被对应用例抓到：M1→3、7；M2→10；M3→2、14；M4→5b；M5→15；M6→12；M7→11
+- `bash tests/hooks/hook-budget.test.sh` → memory-index-lines 最坏情况（200 行全超长）0.040 s，预算 3 s 的一半为 1.5 s；数据源区分通过
+- `npm run check` → 第一次 6 个失败（全是新 hook 的登记清单：ARCHITECTURE 套件计数、HOOK-PROTOCOL 提及、共享断言库、事件分类、规则外 section、README 第二处计数），修后退出码 0，"OVERALL: all suites passed"，node 1828 通过 / 0 失败 / 3 跳过（平台相关）
+- `npm run smoke` → SMOKE: 2/2 suite(s) passed

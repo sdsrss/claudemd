@@ -68,7 +68,8 @@
       {
         "matcher": "Edit|Write|Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rework-breaker.sh\"", "timeout": 3 }
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rework-breaker.sh\"", "timeout": 3 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/memory-index-lines.sh\"", "timeout": 3 }
         ]
       },
       {

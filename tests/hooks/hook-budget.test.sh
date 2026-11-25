@@ -322,6 +322,22 @@ probe_event() {
         '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c,
           tool_use_id:"tu_probe",
           tool_input:{command:"git push origin main budgettag7"}}' ;;
+    memory-index-lines)
+      # A Bash append to an index at Claude Code's 200-line load cap, every
+      # entry over 150 characters: the hook reads the whole index and tests each
+      # entry against the command, so this is its worst case. Its own project
+      # dir keeps the shared 150-entry fixture as the other probes see it.
+      _mil_cwd="$SANDBOX/milproj"
+      _mil_dir="$FIX_HOME/.claude/projects/$(printf '%s' "$_mil_cwd" | tr -c 'a-zA-Z0-9-' '-')/memory"
+      mkdir -p "$_mil_dir"
+      awk 'BEGIN { pad = ""; for (j = 0; j < 160; j++) pad = pad "y"
+                   for (i = 1; i <= 200; i++) printf "- [Long %d](long_%d.md) [t%d] - %s\n", i, i, i, pad }' \
+        > "$_mil_dir/MEMORY.md"
+      _mil_line=$(tail -n 1 "$_mil_dir/MEMORY.md")
+      jq -cn --arg s "$SESSION_ID" --arg c "$_mil_cwd" \
+        --arg x "cd $_mil_dir && printf '%s\n' '$_mil_line' >> MEMORY.md" \
+        '{hook_event_name:"PostToolUse", tool_name:"Bash", session_id:$s, cwd:$c,
+          tool_use_id:"tu_probe", tool_input:{command:$x}}' ;;
     banned-vocab-check)
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c,

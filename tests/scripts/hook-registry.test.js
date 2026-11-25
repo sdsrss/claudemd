@@ -19,13 +19,13 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('registry has 27 entries and 28 hooks.json registrations', () => {
+test('registry has 28 entries and 29 hooks.json registrations', () => {
   // The install manifest holds one entry per registration (MCOUNT in
   // tests/integration/full-lifecycle.test.sh, manifest.entries.length in
   // tests/scripts/install.test.js), which is HOOK_REGISTRATION_COUNT: one per
   // hook plus its `alsoOn` events (branch-prune: PostToolUseFailure, 0.116.0).
-  assert.equal(HOOK_REGISTRY.length, 27);
-  assert.equal(HOOK_REGISTRATION_COUNT, 28);
+  assert.equal(HOOK_REGISTRY.length, 28);
+  assert.equal(HOOK_REGISTRATION_COUNT, 29);
 });
 
 test('R15: optIn names exactly the hooks whose source exits at an opt-in variable', () => {

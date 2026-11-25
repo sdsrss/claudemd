@@ -141,6 +141,10 @@ const hookEmittedSections = () => sharedEmittedSections(HOOKS_DIR);
 // entry for them would mean inventing rules to satisfy a test.
 const NON_RULE_SECTIONS = new Set([
   '§11-memory-hint', // memory-prompt-hint suggestion instrument
+  // memory-index-lines' advisory: core §11's "≤150 characters" index-line
+  // length is part of the Memory bullet, not one of the HARD rules, and the
+  // hook never denies.
+  '§11-memory-index',
   '§11-EXT-mem-audit', // §11-EXT durable-memory body-structure scan
   '§13.1-extended-read', // observability for extended loading, not a rule
   '§13.2-batch-review', // operator cadence advisory (§13.2 is META, not HARD)

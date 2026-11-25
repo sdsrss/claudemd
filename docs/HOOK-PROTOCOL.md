@@ -97,7 +97,7 @@ A hook can also return text for the model to read instead of a decision. Same
   as a closed set of the first three, which was this file asserting a limit it
   had never tested: on 2026-09-21 a probe registered a PostToolUse hook emitting
   a unique token and the model quoted the token back, on Claude Code 2.1.278
-  (`rework-breaker.sh` ships on that path). `Stop` and `SubagentStop` accept it
+  (`rework-breaker.sh` and `memory-index-lines.sh` ship on that path). `Stop` and `SubagentStop` accept it
   too, since Claude Code 2.1.163, but on those two events it is not a passive
   channel: the turn keeps going so the model can respond — see below. This
   file said the opposite until 2026-09-29, which was the same mistake again.

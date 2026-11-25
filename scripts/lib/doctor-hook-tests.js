@@ -377,6 +377,18 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
     { hook: 'sandbox-disposal-check.sh', ks: ksFor('sandbox-disposal-check.sh'), event: stopEvt },
     { hook: 'transcript-structure-scan.sh', ks: ksFor('transcript-structure-scan.sh'), event: stopEvt },
     {
+      hook: 'memory-index-lines.sh',
+      ks: ksFor('memory-index-lines.sh'),
+      event: {
+        session_id: 'doctor-selftest',
+        hook_event_name: 'PostToolUse',
+        cwd: '/tmp',
+        tool_name: 'Bash',
+        tool_input: { command: 'tail -1 MEMORY.md' },
+        tool_response: {},
+      },
+    },
+    {
       hook: 'memory-prompt-hint.sh',
       ks: ksFor('memory-prompt-hint.sh'),
       event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
