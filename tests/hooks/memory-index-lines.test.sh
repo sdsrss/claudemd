@@ -110,7 +110,10 @@ OUT=$(ev_write "$INDEX" "$SHORT"$'\n'"$LONG_NEW"$'\n' "-" | run)
 # 7. Write rewriting the file: the long line it already had is not flagged, the new one is.
 OUT=$(ev_write "$INDEX" "$SHORT"$'\n'"$LONG_OLD"$'\n'"$LONG_NEW"$'\n' "$SHORT"$'\n'"$LONG_OLD"$'\n' | run)
 C=$(ctx "$OUT")
-if [[ "$C" == *"1 line you just wrote"* && "$C" == *"New long entry"* && "$C" != *"Legacy long entry"* ]]; then
+# 0.122.0 review L10: the Bash path flags any long line a command quotes whole,
+# a read-only grep included, so the message no longer says "you just wrote".
+if [[ "$C" == *"1 line this call wrote or quoted"* && "$C" == *"New long entry"* && "$C" != *"Legacy long entry"* &&
+  "$C" == *"Lines the call neither wrote nor quoted are not flagged."* ]]; then
   ok "7 Write update → only the new long line"
 else
   ng "7 (out: $OUT)"
@@ -172,7 +175,7 @@ OUT=$(ev_edit "$INDEX" "" "$(pad '# Heading that runs on and on ' 200)" | run)
 L2=$(pad '- [Second long](second.md) [b] — ' 155)
 OUT=$(ev_edit "$INDEX" "" "$LONG_NEW"$'\n'"$L2" | run)
 C=$(ctx "$OUT")
-if [[ "$C" == *"2 lines you just wrote"* && "$C" == *"are over 150"* && "$C" == *'155: "Second long"'* ]]; then
+if [[ "$C" == *"2 lines this call wrote or quoted"* && "$C" == *"are over 150"* && "$C" == *'155: "Second long"'* ]]; then
   ok "16 two long lines → counted and both named"
 else
   ng "16 (out: $OUT)"

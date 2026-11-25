@@ -282,16 +282,16 @@ done < "$PATTERNS_FILE"
 
 if (( ${#HITS[@]} != 0 )); then
   # Path 1 (existing): commit-message banned vocab found. Deny.
-  REASON_TEXT="§10-V Specificity: banned terms detected:"
+  REASON_TEXT="Banned vocabulary: banned terms detected:"
   for i in "${!HITS[@]}"; do
     REASON_TEXT+=$'\n'"  - ${HITS[$i]}  (${REASONS[$i]})"
   done
   REASON_TEXT+=$'\n\n'"Bypass options:
   (a) Rewrite with absolute numbers (preferred).
   (b) Per-commit escape: include [allow-banned-vocab] in the commit message.
-      §8 Escape tokens: this is the user's call, not the agent's.
+      Core §8: this is the user's call, not the agent's.
   (c) Disable the hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
-      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      Core §8: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — Banned vocabulary; fix recipes in §10-V."
@@ -492,13 +492,13 @@ REASON_TEXT+=$'\n\n'"Why this fires: the banned-vocabulary gate (extended §13, 
 
 Bypass options:
   (a) Add [allow-banned-vocab] to the current command (acknowledges the slip).
-      §8 Escape tokens: ask the user first — the token records a bypass, it
+      Core §8: ask the user first — the token records a bypass, it
       does not answer the finding.
   (b) Per-flag opt-out: BANNED_VOCAB_PROSE_SCAN=0 (keeps Path 1 commit-msg scan active).
-      §8 Escape tokens covers a hook feature flag too, not only DISABLE_*:
-      it is the user's to set and it records nothing.
+      A flag that turns part of a gate off is a bypass like a DISABLE_*
+      switch: it is the user's to set, and it records nothing.
   (c) Disable the whole hook: DISABLE_BANNED_VOCAB_HOOK=1 (discouraged).
-      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      Core §8: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — Banned vocabulary; fix recipes in §10-V."

@@ -344,7 +344,7 @@ REASON+=$'\n\n'"Options:
       [skip-memory-check: <reason>] in the command. The reason is
       logged, so an audit can tell 'rule too strict' from 'task
       doesn't need this rule'.
-      §8 Escape tokens: the bypass is the user's to authorize; an agent
+      Core §8: the bypass is the user's to authorize; an agent
       reaching for it on its own has skipped the rule, not satisfied it.
 
 Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — MEMORY.md read-the-file."

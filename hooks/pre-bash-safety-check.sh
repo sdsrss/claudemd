@@ -2697,24 +2697,23 @@ The [allow-rm-rf-var] token and DISABLE_PRE_BASH_SAFETY_HOOK are the user's to g
 else
 REASON_TEXT="§8 SAFETY (immutable): denied dangerous Bash invocation:${REASONS}
 
-Spec: ~/.claude/CLAUDE.md §8 SAFETY —
-  • \"rm -rf \$VAR without validating VAR\" (forbidden)
-  • NPX: \"lockfile → local → pinned whitelist; none → [AUTH REQUIRED]\"
-    (covers npx / bunx / bun x / npm exec / npm x / pnpm dlx / yarn dlx, plus runners
-     whose argument is itself remote: deno run <URL|npm:|jsr:>, pip install
-     git+…/<artifact URL>, cargo install --git, go run|install …@latest,
-     nix run github:…)
-  • \"execute scripts of unknown origin\" (forbidden) — a fetch or transport
-    (curl/wget/nc/socat/scp/base64 …) whose bytes reach a shell or interpreter,
-    incl. sh -c \"\$(curl …)\", socat EXEC:, /dev/tcp, and interpreter one-liners
-    that open a socket AND exec
+Spec: ~/.claude/CLAUDE.md §8 Safety — never:
+  • \"\`rm -rf\`, \`rm -f\` or \`find -delete\` on a variable that could be empty\"
+  • \"run scripts of unknown origin: \`curl\` / \`wget\` piped into a shell, or \`npx\` of a package with no lockfile or local install (ask first)\"
+    This gate reads npx as npx / bunx / bun x / npm exec / npm x / pnpm dlx /
+    yarn dlx, plus runners whose argument is itself remote: deno run
+    <URL|npm:|jsr:>, pip install git+…/<artifact URL>, cargo install --git,
+    go run|install …@latest, nix run github:…; and the fetch as any fetch or
+    transport (curl/wget/nc/socat/scp/base64 …) whose bytes reach a shell or
+    interpreter, incl. sh -c \"\$(curl …)\", socat EXEC:, /dev/tcp, and
+    interpreter one-liners that open a socket AND exec.
 
 Bypass options:
   (a) Fix the invocation:
       • Validate the var inline:  : \"\${VAR:?must be set}\" && rm -rf \"\$VAR\"
       • Scratch cleanup: create it with mktemp in the SAME command:
         D=\$(mktemp -d) … rm -rf \"\$D\"
-      • Pin the package:          npx pkg@1.2.3   /   npx @scope/pkg@1.2.3
+      • A package with no lockfile or local install: ask the user first.
       • Use a literal path:       rm -rf /tmp/work-dir
       • Download then inspect:    curl -o s.sh URL && less s.sh && sh s.sh
       • Writing ABOUT one of these shapes — documentation, a commit or tag
@@ -2726,11 +2725,11 @@ Bypass options:
         token.
   (b) Per-command escape token: include [allow-rm-rf-var], [allow-npx-unpinned],
       or [allow-curl-sh] in the command (records as bypass in rule-hits log).
-      The token is an AUTH artifact (§8 Escape tokens): the USER authorizes it
+      The token is an AUTH artifact (core §8): the USER authorizes it
       for this command. An agent self-issuing one to clear its own deny has
       not satisfied §8 — it has logged that it went around it.
   (c) Disable the hook: DISABLE_PRE_BASH_SAFETY_HOOK=1 (discouraged).
-      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      Core §8: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session."
 fi
 

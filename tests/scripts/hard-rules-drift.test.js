@@ -139,6 +139,10 @@ const hookEmittedSections = () => sharedEmittedSections(HOOKS_DIR);
 // the memory-prompt-hint suggestion instrument and the §11-EXT mem-audit body
 // scan. Both exist to MEASURE, not to enforce, so requiring a spec/hard-rules.json
 // entry for them would mean inventing rules to satisfy a test.
+// The labels are telemetry names kept from v8. Several comments below cite v8.6.0
+// text that spec v9.0.0 removed (§1's principles, §3, §5 "Files outside grant",
+// core §2.2, §11, OPERATOR §13.2, "26 HARD rules"); what each one argues, that an
+// advisory's rows stay out of a HARD rule's demote accounting, holds without it.
 const NON_RULE_SECTIONS = new Set([
   '§11-memory-hint', // memory-prompt-hint suggestion instrument
   // memory-index-lines' advisory: the "≤150 characters" index-line length was

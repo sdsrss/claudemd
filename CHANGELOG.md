@@ -15,8 +15,8 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 **What changes for users.**
 - `~/.claude/CLAUDE.md` becomes the v9 core: reply language, the operations to ask about first, one local commit per change, "done" only after a check ran, the safety lines, and the three-part report, whose open-items part now holds only what you must decide or know. Levels L0–L3, Iron Laws #1 and #3, spec files, the session rules and the banned-vocabulary list are gone from what the agent reads. On the A/B (Claude Opus 5.5 at xhigh, 9 tasks, 8 runs each) the v9 draft matched no-spec correctness (66/72 vs 65/72) at 1.2–1.3 times its cost, with a local commit and the report in 41 to 72 of 72 runs, depending on how the spec was delivered.
 - `~/.claude/spec-modules/` keeps `ship.md` and `review.md`; the refresh removes the other seven. The pre-tag review now runs only when a release changes a delete path, auth or secrets, install or publish scripts, a gate's decision, a data format, or a published default, or when you ask.
-- No hook blocks or allows anything differently. Six hooks' messages that cited removed sections now point at `~/.claude/CLAUDE-extended.md` §13 or `ship.md` (memory-read, banned-vocab, session-end checkpoint, ship-baseline) or cite nothing (rework note, memory hint). The opt-in `test-failure-debug` hook injects nothing, since there is no debug module.
-- New `memory-index-lines` hook (advisory): when the agent writes a MEMORY.md index line over 150 characters, it is told to shorten it. Off with `DISABLE_MEMORY_INDEX_LINES_HOOK=1`.
+- No hook blocks or allows anything differently. Eight hooks' messages that cited removed sections were reworded: memory-read, banned-vocab, the session-end checkpoint and ship-baseline point at `~/.claude/CLAUDE-extended.md` §13 or `ship.md`; the rework note and memory hint cite nothing; the npx deny quotes the v9 safety line and no longer suggests pinning a version; the temp-pressure note no longer points at the deleted `auth.md`. The opt-in `test-failure-debug` hook injects nothing, since there is no debug module.
+- New `memory-index-lines` hook (advisory): when the agent writes a MEMORY.md index line over 150 characters, or a shell command quotes one whole, it is told to shorten it. Off with `DISABLE_MEMORY_INDEX_LINES_HOOK=1`.
 - `/claudemd-clean-residue`: the age walk reads file names as bytes, so a fresh file under a non-UTF-8 directory name keeps its entry from being deleted.
 
 **What to do.** Run `/claudemd-refresh` and restart Claude Code. To stay on spec v8, keep 0.121.1; to go back after updating, follow `docs/ROLLBACK.md` ("Local machine needs the previous version back").
@@ -25,6 +25,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - Every existing hook's allow or deny decision, and every kill switch.
 - The `claudemd-cli` linter.
 - The commands and their flags.
+- Opt-in hooks' messages, some of which still name v8 sections.
 
 ## [0.121.1] - 2026-11-20
 

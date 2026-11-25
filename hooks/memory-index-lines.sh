@@ -5,8 +5,8 @@
 # (~/.claude/projects/<p>/memory/MEMORY.md), which of the index lines it just
 # wrote are over 150 characters, so it shortens them in the same turn.
 #
-# Why (tasks/specs/memory-index-write-check-2026-11-25.md): core §11 and Claude
-# Code's own memory instructions both say an index entry is one line under
+# Why (tasks/specs/memory-index-write-check-2026-11-25.md): Claude Code's own
+# memory instructions (and spec v8's core §11) say an index entry is one line under
 # ~150 characters, and Claude Code loads MEMORY.md only up to 200 lines and
 # 25,000 bytes. On 2026-11-25, 220 of 368 index lines across ten projects were
 # over 150, one index stood at 86% of the byte cap, and 39 of the 52 lines
@@ -23,9 +23,12 @@
 #           plus every ~/.claude/projects/<p>/memory the command names.
 # Known gap: `sed -i` or a script that rewrites part of a line carries no whole
 # line, so it is not seen (23 of 57 traced long lines were last touched that
-# way; most were first appended whole, which is seen). Lines already in the
-# file are never flagged — the backlog is each project's to shorten, and
-# /claudemd-doctor lists it.
+# way; most were first appended whole, which is seen), nor is a line whose
+# characters the command escapes (`echo "…\`x\`…" >>`). The Bash path cannot
+# tell a write from a read, so a read-only command that quotes a long line
+# whole (`grep -F '<line>' MEMORY.md`) is flagged too, and the message says
+# "wrote or quoted". Lines the call does not carry are never flagged — the
+# backlog is each project's to shorten, and /claudemd-doctor lists it.
 #
 # Cost: every Edit/Write/Bash call pays a bash start, one read of stdin and one
 # glob test on the raw event, which come BEFORE the libraries are sourced
@@ -145,7 +148,7 @@ CTX=$(printf '%s' "$ALL" | jq -r --arg home "$HOME" --argjson max "$MAX" '
   length as $n
   | (map(.file) | unique | map(if startswith($home + "/") then "~" + .[($home | length):] else . end) | join(", ")) as $where
   | (.[:5] | map("\(.len): \"\(.title)\"") | join("; ")) as $named
-  | "[claudemd] memory index: \($n) \(if $n == 1 then "line you just wrote to \($where) is" else "lines you just wrote to \($where) are" end) over \($max) characters — \($named)\(if $n > 5 then "; +\($n - 5) more" else "" end). An index line is a title, tags and a one-line hook: move the rest into the memory file and shorten the line now. Lines that were already there are not flagged. The user can turn this off with DISABLE_MEMORY_INDEX_LINES_HOOK=1."' 2>/dev/null)
+  | "[claudemd] memory index: \($n) \(if $n == 1 then "line this call wrote or quoted in \($where) is" else "lines this call wrote or quoted in \($where) are" end) over \($max) characters — \($named)\(if $n > 5 then "; +\($n - 5) more" else "" end). An index line is a title, tags and a one-line hook: move the rest into the memory file and shorten the line now. Lines the call neither wrote nor quoted are not flagged. The user can turn this off with DISABLE_MEMORY_INDEX_LINES_HOOK=1."' 2>/dev/null)
 [[ -n "$CTX" ]] || exit 0
 
 jq -cn --arg m "$CTX" \

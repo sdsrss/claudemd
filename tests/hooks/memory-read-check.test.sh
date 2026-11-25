@@ -1187,7 +1187,9 @@ fi
 REASON74=$(echo "$OUT73" | jq -r .hookSpecificOutput.permissionDecisionReason 2>/dev/null)
 if [[ "$REASON74" == "MEMORY.md read-the-file (HARD, hook-enforced):"* ]] \
   && [[ "$REASON74" == *"Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — MEMORY.md read-the-file."* ]] \
-  && [[ "$REASON74" != *"CLAUDE.md §11"* ]]; then
+  && [[ "$REASON74" != *"CLAUDE.md §11"* ]] \
+  && [[ "$REASON74" == *"Core §8: the bypass is the user's to authorize"* ]] \
+  && [[ "$REASON74" != *"§8 Escape tokens"* ]]; then
   echo "PASS: 74 the deny cites extended §13, not the removed core §11"
 else
   echo "FAIL: 74 (reason: ${REASON74:-<empty>})"; FAIL=$((FAIL+1))

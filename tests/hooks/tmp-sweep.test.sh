@@ -278,13 +278,19 @@ fi
 # AUTH request. It now names the agent-tmp-* sweep and states the conditions
 # under which an earlier session's residue is deleted without asking (review L4).
 # It no longer copies those conditions: its copy said "every condition" and
-# missed two of them (0.121.0 review round 2 L5, D#922). auth.md holds them.
+# missed two of them (0.121.0 review round 2 L5, D#922).
+# Spec v9.0.0 deleted auth.md and the residue rule with it; core §5 asks before
+# deleting anything this task did not create. The advisory pointed at the
+# deleted file and let an earlier session's leftover go without asking
+# (0.122.0 review M1): it now leaves everything not created this session to
+# the user, beside the hook's own sweep.
 rm -f "$STAMP"
 OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
 CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
 if [[ "$CTX" == *"agent-tmp-* dirs without a .keep (idle 72 h) are swept automatically"* &&
-  "$CTX" == *"what this session created is yours to clean up; an agent-tmp-* dir or an ended session's scratchpad that an earlier session left is deleted without asking only when it meets every condition of the spec's Agent temp residue rule (read the list in auth.md first); one report line each; anything else is the user's call."* ]]; then
-  ok "13 the advisory names the agent-tmp-* sweep and points to the Agent temp residue conditions"
+  "$CTX" == *"what this session created is yours to clean up; anything an earlier session left, an agent-tmp-* dir or an ended session's scratchpad included, is the user's call: ask first, one report line each."* &&
+  "$CTX" != *"auth.md"* ]]; then
+  ok "13 the advisory names the agent-tmp-* sweep and leaves an earlier session's leftovers to the user"
 else
   ng "13 (ctx: $CTX)"
 fi

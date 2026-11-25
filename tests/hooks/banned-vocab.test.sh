@@ -717,13 +717,19 @@ else
 fi
 # Case 65 (spec v9.0.0): the deny points at extended §13 "Hook-enforced rules",
 # where v9 documents this rule; core §10 no longer carries it. The static half
-# covers the prose-scan path's copy of the same line.
+# covers the prose-scan path's copy of the same line. 0.122.0 review L2/L3: the
+# heading and the bypass lines no longer name removed v8 sections, and the
+# prose path's flag line no longer credits §8 with a clause v9 does not have.
 mk_cmd_event 'git commit -q -m "feat: a robust change"'
 out65=$(bash "$HOOK" < "$TMP_FIX" 2>&1)
 reason65=$(printf '%s' "$out65" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [[ "$reason65" == *"Spec: ~/.claude/CLAUDE-extended.md §13, Hook-enforced rules — Banned vocabulary; fix recipes in §10-V."* ]] \
   && [[ "$reason65" != *"CLAUDE.md §10"* ]] && ! grep -q 'CLAUDE\.md §10' "$HOOK" \
-  && ! grep -q 'Specificity HARD' "$HOOK"; then
+  && ! grep -q 'Specificity HARD' "$HOOK" \
+  && [[ "$reason65" == "Banned vocabulary: banned terms detected:"* ]] \
+  && [[ "$reason65" == *"Core §8: this is the user's call, not the agent's."* ]] \
+  && ! grep -q '§8 Escape tokens' "$HOOK" \
+  && grep -qF 'A flag that turns part of a gate off is a bypass like a DISABLE_*' "$HOOK"; then
   echo "PASS: 65: deny cites extended §13, not the removed core §10 (both paths)"
 else
   echo "FAIL: 65: deny cites extended §13, not the removed core §10 (got: ${reason65:-$out65})"

@@ -328,7 +328,7 @@ fi
 [[ -d "$STATE_DIR" ]] && find "$STATE_DIR" -maxdepth 1 -type f -name '*.sentinel' -mmin +1440 -delete 2>/dev/null
 
 if [[ "$REPEAT" -eq 1 ]]; then
-  REASON="§7 Ship-baseline: SECOND deny on same red CI run within 5 minutes — $RUN_TITLE
+  REASON="Ship CI baseline: SECOND deny on same red CI run within 5 minutes — $RUN_TITLE
 $RUN_URL
 
 Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE the next retry:
@@ -337,13 +337,13 @@ Your prior retry did NOT change the CI conclusion. Pick (a), (b), or (c) BEFORE 
       (the -m payload or HEAD message). Chained commit+push in one bash
       call works — marker is detected in CMD itself, no separate amend.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
-      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      Core §8: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/spec-modules/ship.md §12 Ship — CI baseline."
   hook_record ship-baseline deny-repeat "{\"run_url\":\"$RUN_URL\"}" '§7-ship-baseline' "$SESSION_ID" "$TOOL_USE_ID"
 else
-  REASON="§7 Ship-baseline: this branch's CI is RED — $RUN_TITLE
+  REASON="Ship CI baseline: this branch's CI is RED — $RUN_TITLE
 $RUN_URL
 
 Options:
@@ -353,7 +353,7 @@ Options:
       so chained 'git commit -m \"...known-red baseline: x\" && git push'
       passes in one shot — no need to amend separately.
   (c) Bypass: DISABLE_SHIP_BASELINE_HOOK=1 (discouraged).
-      §8 Escape tokens: a switch is the user's to set, and unlike a token it
+      Core §8: a switch is the user's to set, and unlike a token it
       records nothing — the gate is simply off for the session.
 
 Spec: ~/.claude/spec-modules/ship.md §12 Ship — CI baseline."

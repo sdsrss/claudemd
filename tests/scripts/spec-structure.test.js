@@ -328,9 +328,9 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '', sha256: 'b1663b6a33229ed3' },
   { file: EXT, heading: '## §12 Ship', sha256: 'd486479b17aa5bd6' },
   { file: EXT, heading: '## §12-R Review', sha256: 'd4e07537d967abdc' },
-  { file: EXT, heading: '## §13 META', sha256: 'd99784205193e66d' },
+  { file: EXT, heading: '## §13 META', sha256: '7c714d9c7de3fb34' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: 'a83549d78ed73f7f' },
-  { file: EXT, heading: '## Recent changes', sha256: 'a27a833f5a04b2d3' },
+  { file: EXT, heading: '## Recent changes', sha256: 'cef7470ad0dcdc03' },
 ];
 
 const headingLevel = line => {
