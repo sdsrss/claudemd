@@ -13,12 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseArgvLintHits } from '../../scripts/baseline-metrics.js';
 import { isAdvisoryCheck } from '../../scripts/doctor.js';
-import {
-  IMMUTABLE_SECTION_RE,
-  isImmutableSection,
-  isSignalEvent,
-  isBlockingDeny,
-} from '../../scripts/lib/rule-hits-parse.js';
+import { IMMUTABLE_SECTION_RE, isImmutableSection } from '../../scripts/lib/rule-hits-parse.js';
 import { claudeHome, homeSpec, backupRoot } from '../../scripts/lib/paths.js';
 import { resolveDaysFlag, resolveDaysListFlag } from '../../scripts/lib/argv.js';
 
@@ -173,92 +168,6 @@ test('R11-22: an unknown CLAUDEMD_SPEC_ACTION is refused, not silently downgrade
 // rule, the other a list, no join: a new `deny-*` event would be counted as a
 // real block by isBlockingDeny and silently dropped from the release-header
 // trend.
-
-test('R11-13b: the trend event set derives its deny half from isBlockingDeny', () => {
-  for (const e of ['deny', 'deny-repeat', 'deny-prose', 'warn', 'advisory', 'bypass-escape-hatch']) {
-    assert.equal(isSignalEvent(e), true, e);
-  }
-  // The one deny-family event that must stay OUT: it exits 0, so it is an
-  // observation rather than a block.
-  assert.equal(isSignalEvent('deny-prose-dry-run'), false);
-  assert.equal(isBlockingDeny('deny-prose-dry-run'), false);
-  // The whole point: an event nobody has written down yet.
-  assert.equal(
-    isSignalEvent('deny-future-shape'),
-    true,
-    'a new deny-* event must reach the trend without anyone editing a second list'
-  );
-  assert.equal(isBlockingDeny('deny-future-shape'), true);
-  // sandbox-disposal's Stop `block` is the stronger form of its counted `warn`
-  // (D#77): a trend that counts the warn must count the block.
-  assert.equal(isSignalEvent('block'), true, 'block');
-  // And non-signal events stay out.
-  for (const e of ['fail-open', 'suggest', 'rm-rf-allow-provenance', '', null]) {
-    assert.equal(isSignalEvent(e), false, String(e));
-  }
-});
-
-test('R15: every event a hook records is classified, and the per-hook advisories count', () => {
-  // The non-deny half was an exact-name set, so eight `*-advisory` events and
-  // reply-language's Stop block (`reply-language-restate`) — all carrying a
-  // spec_section — never reached the trend: 230 rework-advisory rows in 30 days
-  // were invisible. The emitted set is derived from the hook sources; an event
-  // nobody has classified yet is red here.
-  const NOT_SIGNAL = new Set([
-    'bootstrap',
-    'bootstrap-fail-banner',
-    'bootstrap-stand-down',
-    'bootstrap-sync',
-    'claim-wtree',
-    'compact-reminder',
-    'deny-prose-dry-run',
-    'ledger-inject',
-    'module-inject',
-    'module-unread',
-    'notice-delivered',
-    'npx-allow-local',
-    'npx-allow-no-install',
-    'pass',
-    'pass-known-red',
-    'pass-known-red-incmd',
-    'paused-banner',
-    'pending-no-baseline',
-    'read',
-    'reply-language-logged',
-    'rm-rf-allow-provenance',
-    'rm-rf-allow-validated',
-    'spec-drift',
-    'spec-missing',
-    'stale-root',
-    'suggest',
-    'suppress-source',
-    'upstream-banner',
-    'user-content-banner',
-    'user-content-banner-interrupted',
-    'verify-run',
-    'version-sync',
-  ]);
-  const hooksDir = path.join(REPO_ROOT, 'hooks');
-  const emitted = new Set();
-  for (const f of fs.readdirSync(hooksDir).filter(n => n.endsWith('.sh'))) {
-    for (const m of fs
-      .readFileSync(path.join(hooksDir, f), 'utf8')
-      // A call after `&&`, `||`, `;`, `(`, `then`, `do` or `else` records too:
-      // `[[ … ]] && hook_record session-start ledger-inject …` was invisible to
-      // a line-start anchor, as were both rm-rf-allow-* rows.
-      .matchAll(/(?:^|[;&|(]|\bthen|\bdo|\belse)\s*hook_record [a-z-]+ ([a-z][a-z0-9-]*) /gm)) {
-      emitted.add(m[1]);
-    }
-  }
-  assert.ok(
-    emitted.has('index-line-advisory') && emitted.has('deny'),
-    'control: the derivation finds known events'
-  );
-  assert.ok(emitted.has('rm-rf-allow-validated'), 'control: a hook_record after && is found');
-  for (const e of emitted) {
-    assert.equal(isSignalEvent(e), !NOT_SIGNAL.has(e), `${e}: classify it as signal or add it to NOT_SIGNAL`);
-  }
-});
 
 // --- R11-13d ------------------------------------------------------------------
 // paths.js#projectsRoot exists, and its own comment recorded that the

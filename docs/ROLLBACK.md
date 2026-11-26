@@ -20,16 +20,18 @@ rule from the list is the half-updated shape that join exists to catch.
 Both are ref-integrity rules. Neither requires a status check, because GitHub applies
 required checks to direct pushes as well, a just-written commit has no check run yet, and
 the only account with write access here is the maintainer's — so that rule would not stop
-an outside contributor (there are none with push rights), it would end the atomic ship
-pipeline and replace it with a PR round-trip.
+an outside contributor (there are none with push rights). Since 0.123.0 every release goes
+through a pull request by the runbook's own rule (the PR's `ci` run is the test gate, and
+`npm-publish.yml` refuses a tag without it), but nothing in GitHub enforces that route for a
+push to `main`.
 Nothing stands between a red tag and marketplace consumers, and no release-time step could: pushing the tag IS the marketplace publish.
 `hooks/session-start-check.sh` polls `git ls-remote` for the newest upstream tag and banners
 it, so a consumer sees the new version the moment the ref lands, whatever `gh release create`
 does afterwards. Measured over the last 8 releases: each was published 15-89 s after its own
 tag object, while that tag's `ci` run took 10-13 minutes (v0.91.0 — tag 06:54:45Z, release
-06:55:14Z, `ci` green 07:07:07Z). The gates that do exist are the runbook's own and both sit
-BEFORE the tag: the main-branch CI wait and the pre-tag review, each self-imposed and neither
-mechanically enforced. That nothing enforces anything AFTER the tag is not hypothetical:
+06:55:14Z, `ci` green 07:07:07Z). The gates that do exist sit BEFORE the tag: the release
+PR's CI run and, for a risky release, the pre-tag review; neither stops a direct push to
+`main`, and only the first one gates npm. That nothing enforces anything AFTER the tag is not hypothetical:
 v0.73.0, v0.74.0 and v0.75.0 all published with their own tag's `ci` run red on the macOS leg
 (Round-14 audit REL-H2). What the tag ruleset does buy: a
 pushed release tag can no longer be moved or deleted, so the same version string cannot
@@ -37,8 +39,10 @@ later serve different code to marketplace consumers. Per failure point:
 
 ## Push landed, CI red, tag NOT pushed
 Forward-fix (hotfix commit), or revert **and bump**: `git revert <sha>`, raise the patch
-version through every version site (`npm run version-check` lists and verifies them), commit, tag, push
-the tag.
+version through every version site (`npm run version-check` lists and verifies them), commit,
+then ship it like any release — a `release/vX.Y.Z` pull request whose `ci` run goes green,
+`main` fast-forwarded to it, tag, push the tag. A tag on a commit no pull request tested
+publishes nothing to npm.
 
 **A bare `git revert <sha> && git push` does not reach anyone who already synced**, which
 is what this section claimed until the Round-14 audit (REL-H1). Three mechanisms have to

@@ -49,8 +49,8 @@ import { printHelpAndExit, parsePositiveInt, invokedAsMain, parseStrictOrExit } 
 const USAGE = `Usage: node scripts/doctor.js [--prune-backups=N] [--ack-fail-open]
 
 Run health checks on claudemd installation. Flags missing deps, spec drift,
-settings.json issues, hook drift, backup inventory, rule-usage health, and
-the review cadence of the project's tasks/ deferred-work docs.
+settings.json issues, hook drift, backup inventory, hook fail-opens, and
+MEMORY.md index size, line length and links, and runs the hooks' self-tests.
 
 Options:
   --prune-backups=N   Keep the N newest backup dirs per namespace (positive
@@ -1254,9 +1254,21 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   );
 
   // MEMORY.md ↔ memory files for the project doctor runs in (moved from the
-  // retired /claudemd-analyze in 0.123.0). Advisory.
+  // retired /claudemd-analyze in 0.123.0). Advisory. An index that cannot be
+  // read (EACCES, a directory at the path) is reported on the row; it must not
+  // abort the whole health check.
   {
-    const links = checkMemoryIndexLinks(process.cwd());
+    let links;
+    try {
+      links = checkMemoryIndexLinks(process.cwd());
+    } catch (err) {
+      links = { status: 'unreadable', error: err && err.code ? err.code : String(err) };
+      push(
+        'memory-index-links',
+        false,
+        `could not read the project's MEMORY.md or memory dir (${links.error})`
+      );
+    }
     if (links.status === 'ok') {
       const bad = links.dangling.length + links.orphans.length;
       push(

@@ -22,7 +22,8 @@ name: ci
 # `next-release`; the pull_request run is the whole gate (static + the three
 # test legs), and npm-publish.yml publishes a tag only when its commit carries
 # that green run. A push to main is the fast-forward to a commit that run
-# already tested, so it gets `static` alone. No tag trigger (removed
+# already tested, so it gets `static` alone: lint, metrics, and the check that
+# a spec/ edit since the last tag bumped the version. No tag trigger (removed
 # 2026-11-10). tests/scripts/workflow-step-exec.test.js pins this block.
 on:
   push:
@@ -66,10 +67,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Tags for the spec-bump gate below (git describe).
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           # 24 = the maintainer's runtime.
           node-version: 24
+      - name: Spec edits require a version bump (post-tag drift gate)
+        run: |
+          # 2026-08-16 audit F2/PROC-2: commit 34f73e4 edited spec/*.md AFTER
+          # tag v0.66.0 without a bump — installed ~/.claude then forked from
+          # the marketplace clone at the SAME version, and the SessionStart
+          # drift banner fired 713 times over 4 days. version-cascade-check
+          # cannot see this class (all its checks are intra-tree; the
+          # offending commit even satisfied its Sizing check), and no
+          # pre-commit layer exists. This gate relates tree state to tag
+          # state, which only CI (with tags fetched) can do — it must NOT
+          # move into tests/: the suite stays runnable from an npm tarball
+          # with no git history. In `static` since 0.123.0, so it also runs on
+          # a push to main, where the test job no longer does.
+          set -eu
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$LAST_TAG" ]; then
+            echo "no tag reachable (fork/shallow clone) — skipping"
+            exit 0
+          fi
+          if git diff --quiet "$LAST_TAG"..HEAD -- spec/; then
+            echo "OK: spec/ unchanged since $LAST_TAG"
+            exit 0
+          fi
+          PKG_VER="v$(node -p "require('./package.json').version")"
+          if [ "$PKG_VER" = "$LAST_TAG" ]; then
+            echo "::error::spec/ changed since $LAST_TAG but package.json is still $PKG_VER — a post-tag spec edit without a bump forks installed vs marketplace content at the same version (the v0.66.0 713-banner incident). Bump the version in the same change."
+            exit 1
+          fi
+          echo "OK: spec/ changed and version bumped ($LAST_TAG -> $PKG_VER)"
       # `npm install`, not `npm ci`, and no `cache: npm`: the repo tracks no
       # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
       # devDependencies from one), and setup-node's npm cache keys on it.
@@ -129,8 +163,8 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          # Tags are needed by the spec-bump gate below (git describe).
-          # npm-publish.yml sets the same pair for its tag/version guard.
+          # Full history: tests/integration/upgrade-lifecycle.test.sh needs an
+          # old tag reachable.
           fetch-depth: 0
           fetch-tags: true
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -303,34 +337,5 @@ jobs:
             3.2.*) echo "OK: bash on PATH is $BASH_VERSION" ;;
             *) echo "::error::bash on PATH is $BASH_VERSION, not 3.2: the macOS legs no longer run the hooks under the bash macOS users have"; exit 1 ;;
           esac'
-      - name: Spec edits require a version bump (post-tag drift gate)
-        if: runner.os == 'Linux' && matrix.node == 20
-        run: |
-          # 2026-08-16 audit F2/PROC-2: commit 34f73e4 edited spec/*.md AFTER
-          # tag v0.66.0 without a bump — installed ~/.claude then forked from
-          # the marketplace clone at the SAME version, and the SessionStart
-          # drift banner fired 713 times over 4 days. version-cascade-check
-          # cannot see this class (all its checks are intra-tree; the
-          # offending commit even satisfied its Sizing check), and no
-          # pre-commit layer exists. This gate relates tree state to tag
-          # state, which only CI (with tags fetched) can do — it must NOT
-          # move into tests/: the suite stays runnable from an npm tarball
-          # with no git history.
-          set -eu
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -z "$LAST_TAG" ]; then
-            echo "no tag reachable (fork/shallow clone) — skipping"
-            exit 0
-          fi
-          if git diff --quiet "$LAST_TAG"..HEAD -- spec/; then
-            echo "OK: spec/ unchanged since $LAST_TAG"
-            exit 0
-          fi
-          PKG_VER="v$(node -p "require('./package.json').version")"
-          if [ "$PKG_VER" = "$LAST_TAG" ]; then
-            echo "::error::spec/ changed since $LAST_TAG but package.json is still $PKG_VER — a post-tag spec edit without a bump forks installed vs marketplace content at the same version (the v0.66.0 713-banner incident). Bump the version in the same change."
-            exit 1
-          fi
-          echo "OK: spec/ changed and version bumped ($LAST_TAG -> $PKG_VER)"
       - name: Run test suite
         run: bash tests/run-all.sh

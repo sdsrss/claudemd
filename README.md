@@ -297,7 +297,7 @@ Hooks are frozen: bug fixes and removals only (`spec/OPERATOR.md` §13.3). `docs
 
 ## Changelog
 
-Every release is in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) and on the GitHub Releases page. It is not shipped in the npm tarball.
+Releases from 0.100.0 are in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md); every release, older ones included, has its notes on the GitHub Releases page. The file is not shipped in the npm tarball.
 
 ## License
 

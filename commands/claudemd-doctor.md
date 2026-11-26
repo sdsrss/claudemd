@@ -1,6 +1,6 @@
 ---
 name: claudemd-doctor
-description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, rule usage and memory hygiene. Supports --prune-backups=N and --ack-fail-open.
+description: Health check of the claudemd install — dependencies, spec and hook drift, settings.json, backups, hook fail-opens and memory hygiene. Supports --prune-backups=N and --ack-fail-open.
 disable-model-invocation: true
 ---
 

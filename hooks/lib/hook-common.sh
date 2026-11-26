@@ -1113,10 +1113,8 @@ HOOK_GIT_GLOBAL_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:
 # HOOK_USER_TURN_JQ — a jq `def is_user_turn:` prelude, prepended to any jq
 # program that needs the last REAL typed user turn (a turn boundary).
 #
-# SINGLE SOURCE with scripts/lib/transcript-user-turn.js#isUserTurn; the pair is
-# held together by tests/scripts/user-turn-parity.test.js over the shared corpus
-# tests/fixtures/user-turn-shapes.jsonl. Rationale for each clause lives in the
-# JS module's header — keep the two in step, the parity test will say if not.
+# Its JS twin (scripts/lib/transcript-user-turn.js) and their parity test went
+# with sampling-audit in 0.123.0; this is now the only definition.
 #
 # 2026-07-27 audit (H2): three consumers (banned-vocab Path 2, session-end
 # §11 net, sampling-audit denominators) each spelled this differently while all

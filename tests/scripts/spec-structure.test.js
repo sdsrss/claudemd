@@ -223,7 +223,7 @@ const PINS = [
     what: '§EXT §0.1 caps — core 4,000 / extended 12,000 bytes, and an outcome run before a new rule (v9.0.0)',
     file: EXT,
     anchor: 'Core ≤ 4,000 bytes, extended ≤ 12,000 bytes.',
-    why: "The guard against regrowth: v8 reached 24 KB of core with no outcome evidence for its rules. spec-coherence-audit enforces the caps; the outcome-run clause is the operator's gate (OPERATOR.md §13.1).",
+    why: "The guard against regrowth: v8 reached 24 KB of core with no outcome evidence for its rules. the cap test at the end of this file enforces the caps; the outcome-run clause is the operator's gate (OPERATOR.md §13.1).",
     line: 'Core ≤ 4,000 bytes, extended ≤ 12,000 bytes. A new or stricter rule ships only after an outcome run (hidden tests, vanilla arm included; `OPERATOR.md` §13.1) shows it changes results enough to pay for its cost; "the spec is more complete" is not a reason. Removing a rule needs the same evidence or none.',
   },
 ];
@@ -287,7 +287,7 @@ const PINNED_BLOCKS = [
   { file: EXT, heading: '## §12-R Review', sha256: 'd4e07537d967abdc' },
   { file: EXT, heading: '## §13 META', sha256: '7c714d9c7de3fb34' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: 'a83549d78ed73f7f' },
-  { file: EXT, heading: '## Recent changes', sha256: '96efb10d99b4c7f1' },
+  { file: EXT, heading: '## Recent changes', sha256: 'c17a04526dba5dcc' },
 ];
 
 const headingLevel = line => {

@@ -726,9 +726,10 @@ function deleteBlocker(dir) {
 // v0.23.12 and left no migration), and 1 `failopen-*` rate-limit marker.
 //
 // Deletion is ALLOWLIST-by-pattern, not "everything old". The dir also holds
-// live singleton state (tmp-baseline.txt, session-start.ref, l2-task-counter,
-// last-session-summary.json, bootstrap-failed.json, …) whose age says nothing
-// about whether it is still in use. A pattern this list does not name is never
+// singleton state (session-start.ref, bootstrap-failed.json, …) whose age says
+// nothing about whether it is still in use; tmp-baseline.txt, l2-task-counter
+// and last-session-summary.json are singletons of hooks 0.123.0 removed, left
+// for a CLAUDEMD_PURGE=1 uninstall rather than added to this list. A pattern this list does not name is never
 // touched, so a future state file is safe by default rather than by memory.
 const STATE_EPHEMERAL = [
   // Per-session extended-read sentinel. Self-reaping is best-effort by design.

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { doctor as doctorFull, isAdvisoryCheck, countsTowardExit } from '../../scripts/doctor.js';
-import { runningPluginRoot } from '../../scripts/lib/paths.js';
+import { runningPluginRoot, encodeProjectCwd, memoryRoot } from '../../scripts/lib/paths.js';
 import { adopt as adoptStatusline } from '../../scripts/lib/statusline.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 import {
@@ -2957,4 +2957,36 @@ test('hook-drift names what it compared, and advice that can clear it', async ()
   assert.equal(drift.ok, false, 'the fixture must actually produce drift');
   assert.doesNotMatch(drift.detail, /marketplace clone/, 'the clone is on neither side of this comparison');
   assert.match(drift.detail, /SessionStart/, 'the advice must name what rewrites the record');
+});
+
+// 0.123.0 review L1/L2: memory-index-links, the MEMORY.md <-> files row moved
+// here from the retired /claudemd-analyze. It is advisory, it names both kinds
+// of drift, and an index doctor cannot read is a red row, not a crashed doctor.
+test('memory-index-links: names a missing file and an unindexed one, and is advisory', async () => {
+  const mem = box.claude('projects', encodeProjectCwd(memoryRoot(process.cwd())), 'memory');
+  fs.mkdirSync(mem, { recursive: true });
+  fs.writeFileSync(path.join(mem, 'MEMORY.md'), '- [Gone](gone.md) — x\n- [Here](here.md) — y\n');
+  fs.writeFileSync(path.join(mem, 'here.md'), 'h\n');
+  fs.writeFileSync(path.join(mem, 'stray.md'), 's\n');
+  const row = (await doctor()).checks.find(c => c.name === 'memory-index-links');
+  assert.ok(row, 'doctor has no memory-index-links row');
+  assert.equal(row.ok, false);
+  assert.match(row.detail, /MEMORY\.md names missing file\(s\): gone\.md/);
+  assert.match(row.detail, /memory file\(s\) no index line names: stray\.md/);
+  assert.equal(isAdvisoryCheck('memory-index-links'), true, 'the row must not count toward exit 3');
+  fs.rmSync(path.join(mem, 'stray.md'));
+  fs.writeFileSync(path.join(mem, 'gone.md'), 'g\n');
+  const clean = (await doctor()).checks.find(c => c.name === 'memory-index-links');
+  assert.equal(clean.ok, true, clean.detail);
+});
+
+test('memory-index-links: an unreadable MEMORY.md is a red row, not a doctor crash', async () => {
+  const mem = box.claude('projects', encodeProjectCwd(memoryRoot(process.cwd())), 'memory');
+  fs.mkdirSync(path.join(mem, 'MEMORY.md'), { recursive: true }); // a directory where the index goes
+  const r = await doctor();
+  const row = r.checks.find(c => c.name === 'memory-index-links');
+  assert.ok(row, 'doctor has no memory-index-links row');
+  assert.equal(row.ok, false);
+  assert.match(row.detail, /could not read the project's MEMORY\.md or memory dir \(EISDIR\)/);
+  assert.ok(r.checks.length > 10, 'doctor stopped early');
 });

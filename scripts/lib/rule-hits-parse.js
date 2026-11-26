@@ -320,58 +320,6 @@ export function isBlockingDeny(event) {
   return typeof event === 'string' && event.startsWith('deny') && !NON_BLOCKING_DENY.has(event);
 }
 
-// The non-deny half of the signal set: events that mean the spec spoke, outside
-// the PreToolUse deny family. Kept as an explicit set because there is no prefix
-// that describes them. `block` is sandbox-disposal's opt-in Stop block, the
-// stronger form of its `warn` (D#77).
-// `reply-language-restate` is reply-language-check's Stop block. Hooks name
-// their own advisories `<x>-advisory` (evidence, rework, ledger-stale, …); those
-// are matched by suffix in isSignalEvent, because the exact set left all eight
-// out of the trend (R15).
-const SIGNAL_NON_DENY = new Set([
-  'warn',
-  'advisory',
-  'bypass-escape-hatch',
-  'block',
-  'reply-language-restate',
-]);
-
-// isSignalEvent(event) — everything a usage trend should count.
-//
-// scripts/sparkline.js enumerated this as a literal six-name Set while the deny
-// half of it is a PREFIX rule here, so a new `deny-*` event would be counted by
-// isBlockingDeny and silently dropped from the release-header trend — one side a
-// rule, the other a list, with no join (2026-09-02 audit R11-13b). The deny half
-// is now derived; only the non-deny names are written down (SIGNAL_NON_DENY).
-export function isSignalEvent(event) {
-  return (
-    isBlockingDeny(event) ||
-    SIGNAL_NON_DENY.has(event) ||
-    (typeof event === 'string' && event.endsWith('-advisory'))
-  );
-}
-
-// Rows where a gate found the condition its rule governs and the agent had
-// already satisfied the rule: ship-baseline on a red baseline whose commit or
-// command carries the `known-red baseline:` marker, and an `rm -rf` on a var
-// the agent guarded or made with mktemp in the same command (R23 L4). Nothing
-// was said to the agent, so they are not signal; but the rule did its work.
-const COMPLIANCE_EVENTS = new Set([
-  'pass-known-red',
-  'pass-known-red-incmd',
-  'rm-rf-allow-validated',
-  'rm-rf-allow-provenance',
-]);
-
-// isFiredEvent(event) — what §13.1 demote review counts as the rule firing.
-// A check that found nothing (`pass`, `pending-no-baseline`, `npx-allow-local`)
-// and a banner repeating an earlier checkpoint (`paused-banner`) do not count:
-// counting them kept §7-ship-baseline and §11-session-exit out of the demote
-// loop for as long as pushes or banners continued (converge D9).
-export function isFiredEvent(event) {
-  return isSignalEvent(event) || COMPLIANCE_EVENTS.has(event);
-}
-
 // blockingDenyCount(byEvent) — sum every blocking-deny-family event in a
 // groupBySection `byEvent` map (deny + deny-repeat + deny-prose, excluding the
 // advisory deny-prose-dry-run). Callers that hardcoded `byEvent.deny` undercount

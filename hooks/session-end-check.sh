@@ -133,8 +133,7 @@ VALIDATE_RE+="|prettier[ \t]+(--check|-c)|biome[ \t]+(check|lint|ci)|ruff |clipp
 # Single jq pass over last 200 lines: find last user-input message,
 # slice forward, classify tool_use entries.
 # The boundary test is the shared `is_user_turn` (HOOK_USER_TURN_JQ in
-# hook-common.sh), single-sourced with scripts/lib/transcript-user-turn.js and
-# gated by tests/scripts/user-turn-parity.test.js (2026-07-27 audit, H2). The
+# hook-common.sh) (2026-07-27 audit, H2). The
 # local spelling this replaces counted isMeta rows, <system-reminder> injections,
 # and rows carrying BOTH a tool_result and trailing text as user input — each of
 # which moves the boundary LATER and shrinks the slice this net inspects. The

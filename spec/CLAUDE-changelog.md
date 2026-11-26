@@ -9,7 +9,7 @@ Canonical history for `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE-extended.md` and 
 No rule text changed, in the core or in either module.
 
 - `hard-rules.json`: `§iron-law-2` and `§10-four-section-order` stay self-checked rules but no longer name a log section; the hooks that wrote those sections (`evidence-gate`, `transcript-structure-scan`) are gone.
-- `OPERATOR.md`: the demote-loop note goes with `hard-rules-audit.js`, and the `Sizing` line with `spec-coherence-audit.js`; a test now holds the byte caps. Hooks are frozen to bug fixes and removals. The outcome harness is tracked.
+- `OPERATOR.md` loses the demote-loop note with `hard-rules-audit.js`, and extended's Recent changes loses the `Sizing` line with `spec-coherence-audit.js`; a test now holds the byte caps. Hooks are frozen to bug fixes and removals. The outcome harness is tracked.
 - This file keeps the v9 entries only (221 KB → about 6 KB); it is installed into every `~/.claude/`, and nothing reads it at runtime.
 
 ## v9.0.0 (major, 2026-11-25) — The core keeps only what the model does not do by default
