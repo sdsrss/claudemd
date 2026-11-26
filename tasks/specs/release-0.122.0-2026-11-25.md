@@ -50,6 +50,12 @@
 - 2026-11-25：标签修复的真实命令回放（评审第 2 轮建议补的一项）：本机 10 个项目转录里 3,376 条 ship 类 Bash 命令，按工作目录各放一个空会话记录，分别过 57b70dd 和修复后的 `memory-read-check`：两版都是 127 拒绝、3,249 放行，判定不同的 0 条。带空格的标签在这些命令里都没出现，所以这次修复不会在历史命令上多拒或少拒。
 - 留到 `next-release` 的项：可选开启和其余默认开启 hook 里引用 v8 小节的文字（spec-module-gate、sandbox-disposal-check、residue-audit、mem-audit 等）；session-end / session-start 的暂停文字；批量评审提醒的 §13.2；tmp-sweep 的 session/task；npx 逐条命中行的 "unpinned" 与钉版本放行（要不要改判另行决定）。
 
+- 2026-11-26（发版后，使用者"按你的建议执行"）：
+  - claude-mem-lite 的 121 行空格分隔标签不改：修复前（空格被删、连成一串）和修复后（整串当短语）都从未命中过；按逗号拆开在该项目 34 个会话上回放，提示词侧新增 285 次推荐、之后读了的 12 次（4.2%，对照：已用逗号的发版手册 32/42），发版命令侧 232 条里多 8 次拒绝，全部来自 `grep`、`dependabot`、`worktree` 撞上命令文本。脚本与结果在本地 `tasks/claude-mem-lite-tags-2026-11-26/`。CHANGELOG 里"改成逗号"的建议对其他用户仍成立，不改。
+  - npx 钉版本：维持现状，理由和数字记在 `docs/S8-RESIDUALS.md` F17。
+  - banned-vocab 拒绝闸门：保留。10-26..11-25 拒绝 2 次（都在 0.120.0 修复之前、都是已标注的误报），0.120.1 装上（11-10）后所有项目 809 次 `git commit`、343 条发版类命令里 0 次；30 天窗口内出现 ≥3 次拒绝且 0 次真命中再下线（记在待办日期里，12-01 复测时看）。
+  - 留到 next-release 的 hook 文字已改（session-end、tmp-sweep、spec-module-gate、sandbox-disposal、residue-audit、mem-audit、ledger-staleness、transcript-vocab-scan、status 输出），判定不变；evidence-gate 的 "§7 Iron Law #2" 不改（§7 在 v9 仍在，`§iron-law-2` 是保留的规则 ID）。
+
 ## 验证记录
 
 - `npm run check`（版本号与 CHANGELOG 拆出前的同一棵树）→ 通过：node 1,758 项，1,755 通过、0 失败、3 跳过；全部 shell 套件通过；shellcheck 96 个文件无告警
@@ -65,3 +71,4 @@
 - main 的 ci 运行 45726978687 → completed success
 - npm-publish 运行 45726995068 → completed success，日志有 `+ claudemd-cli@0.122.0`；registry `dist-tags.latest` 第 5 次轮询变为 0.122.0；`npm view claudemd-cli@0.122.0 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`
 - `next-release` 快进到 95318d4 并推送；本地 `release/v0.122.0` 已用 `git branch -d` 删除
+- 2026-11-26 next-release 上的 hook 文字修复：`npm run check` → 通过：node 1,759 项，1,756 通过、0 失败、3 跳过；全部 shell 套件；shellcheck 96 个文件；`npm run smoke` → 通过（2/2）；新断言先在旧文字上失败（8 个 hook 套件和 status.test.js）；bash 3.2 运行检查未运行（本机没有现成的 3.2 二进制，发版 PR 的 CI 会跑）
