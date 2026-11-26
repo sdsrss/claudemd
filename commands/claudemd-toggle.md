@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Usage: `/claudemd-toggle <hook-name>`
 
-Valid hook names: `session-start-check`, `version-sync`, `memory-prompt-hint`, `spec-module-inject`, `deferred-notice`, `spec-module-gate`, `pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`, `session-extended-read`, `residue-audit`, `sandbox-disposal-check`, `mem-audit`, `session-summary`, `transcript-vocab-scan`, `rework-breaker`, `memory-index-lines`, `cross-repo-write`, `tmp-sweep`, `branch-prune`, `verify-log`, `test-failure-debug`, `evidence-gate`, `ledger-staleness`, `reply-language`, `transcript-structure-scan`, `session-end-check`.
+Valid hook names: `session-start-check`, `version-sync`, `spec-module-inject`, `pre-bash-safety`, `banned-vocab`, `ship-baseline`, `memory-read-check`, `sandbox-disposal-check`, `reply-language`, `memory-index-lines`, `tmp-sweep`, `session-end-check`.
 
 Run: `node ${CLAUDE_PLUGIN_ROOT}/scripts/toggle.js $ARGUMENTS`
 

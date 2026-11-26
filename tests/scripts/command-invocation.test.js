@@ -42,7 +42,7 @@ test('every command except the description-routed ones is user-invoked only', ()
     .readdirSync(COMMANDS)
     .filter(f => f.endsWith('.md'))
     .map(f => f.slice(0, -3));
-  assert.ok(names.length >= 16, `expected at least 16 commands, found ${names.length}`);
+  assert.ok(names.length >= 11, `expected at least 11 commands, found ${names.length}`);
   for (const name of names) {
     const keys = invocationKeys(frontmatter(path.join(COMMANDS, `${name}.md`)));
     assert.ok(

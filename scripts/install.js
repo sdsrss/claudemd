@@ -36,7 +36,7 @@ import {
   semverCmp,
   SPEC_FILES,
 } from './lib/paths.js';
-import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { EVICTABLE_HOOK_BASENAMES } from './lib/hook-registry.js';
 import { copySpecFiles, sha256File, syncSpecModules } from './lib/spec-hash.js';
 import { adopt as adoptStatusline } from './lib/statusline.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
@@ -746,7 +746,7 @@ async function installLocked({ pluginRoot = process.env.CLAUDE_PLUGIN_ROOT } = {
   // user's settings.json anyway — re-ordering keys, stripping the BOM, and
   // racing Claude Code's own writes to the same file for no gain.
   const evicted = unmergeHook(settings, {
-    commandPredicate: c => isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
+    commandPredicate: c => isClaudemdLegacyHookCommand(c, EVICTABLE_HOOK_BASENAMES),
   });
   // …or when there is no settings.json yet. Skipping the write outright meant a
   // fresh machine never got the file created, and `doctor.js:140` reports a

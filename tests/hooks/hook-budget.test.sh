@@ -180,42 +180,11 @@ awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 5950; i++) printf "%s/probe-file-
 awk -v d="$SYNC_TMP" 'BEGIN { for (i = 1; i <= 50; i++) printf "%s/claudemd-sync-aged-%d\n", d, i }' \
   | xargs touch -t 200001010000
 
-# ledger-staleness: ledgers under the fixture cwd. Without one the hook exits at
-# its "no ledger here" guard, which is the cheap branch, and the gate would time
-# an early exit instead of the transcript scan.
-#
-# More than one of them, inside a tasks/ directory wider than the ledgers alone,
-# because both are what the hook walks: it resolves its subject with
-# hook_newest_ledger — a glob over "$cwd"/tasks/*-ledger.md with one
-# platform_stat_mtime call (a subshell and up to two stat execs) per matching
-# ledger — and prints
-# an extra line only when it chose between several candidates. One ledger timed
-# the one-candidate arm of both (v0.91.0 pre-ship review M7, residual form).
-# Sized above this maintainer's real tasks/ (45 entries, 1 ledger) for the same
-# reason the memory index and the transcript are oversized: 200 entries, 12
-# ledgers.
-#
-# Eleven of the twelve are aged far past the hook's 14-day bound. That is the
-# production shape — finished tasks' ledgers linger — and it also makes the
-# newest-ledger pick unambiguous: the current one is strictly newest, so no tie-break
-# order decides which file the probe reaches (this file has already paid once
-# for letting readdir order pick a probe's subject, see the `head -n 50` note
-# above). The age bound reads the NEWEST candidate only, so the aged siblings
-# cannot silence it. The fixture transcript writes .js paths and never any of
-# these files, so the hook reaches its verdict and emits.
-mkdir -p "$CWD/tasks"
-awk -v d="$CWD/tasks" 'BEGIN { for (i = 1; i <= 188; i++) printf "%s/fixture-task-%d.md\n", d, i }' | xargs touch
-awk -v d="$CWD/tasks" 'BEGIN { for (i = 1; i <= 11; i++) printf "%s/aged-%02d-ledger.md\n", d, i }' \
-  | xargs touch -t 200001010000
-printf '# ledger\n\n## Decisions\n\nd\n\n## Next\n\nn\n' > "$CWD/tasks/budget-ledger.md"
-
-# Pre-seeded per-session state so the two Stop scanners take their FULL path
-# instead of the silent first-run branch (which establishes a baseline and
-# exits — cheap, and measuring it is the underread this gate exists to catch).
+# Pre-seeded per-session state so the Stop scanner takes its FULL path instead
+# of the silent first-run branch (which establishes a baseline and exits —
+# cheap, and measuring it is the underread this gate exists to catch).
 STATE_FIX="$FIX_HOME/.claude/.claudemd-state"
 mkdir -p "$STATE_FIX"
-# residue-audit: baseline 0 against ~6,000 entries → over threshold → it emits.
-printf 'v2:0\n' > "$STATE_FIX/tmp-baseline-${SESSION_ID}.txt"
 # sandbox-disposal: a session ref between the aged bulk files (2000) and the 50
 # directories (now), so `find -newer` returns exactly those 50 and the `head -n 50`
 # cut cannot drop them whatever order readdir yields. Written last would make
@@ -244,29 +213,6 @@ else
   fail "fixture: $FIX_NEWER_TOTAL entries newer than the session ref ($FIX_NEWER_DIRS dirs) — expected 50/50. sandbox-disposal's \`| head -n 50\` would then depend on readdir order and its reach proof is luck"
 fi
 
-# The same kind of premise for ledger-staleness: it resolves its subject with
-# hook_newest_ledger over "$cwd"/tasks/*-ledger.md and prints one extra line only when it chose
-# between more than one candidate. With a single ledger on disk the probe times
-# the one-candidate arm of both and the gate says nothing about the other one
-# (v0.91.0 pre-ship review M7, residual form). Asserted rather than assumed,
-# because a fixture that quietly drops back to one ledger takes the coverage
-# with it and nothing else here would notice.
-#
-# Counted off the same glob the hook uses, through the shell rather than
-# `ls | grep` (SC2010). The `-f` test is what makes zero matches read as zero:
-# with no match the glob stays literal and the array still holds one element.
-LS_FIX_LEDGERS=("$CWD"/tasks/*-ledger.md)
-LS_FIX_COUNT=0
-for _lg in ${LS_FIX_LEDGERS[@]+"${LS_FIX_LEDGERS[@]}"}; do
-  [[ -f "$_lg" ]] && LS_FIX_COUNT=$((LS_FIX_COUNT + 1))
-done
-if (( LS_FIX_COUNT > 1 )); then
-  pass "fixture: tasks/ holds $LS_FIX_COUNT ledgers, so ledger-staleness resolves between candidates instead of taking its single-ledger arm"
-else
-  fail "fixture: tasks/ holds $LS_FIX_COUNT ledger(s) — ledger-staleness then times its one-candidate arm and the multi-candidate message line is never reached"
-fi
-
-# ------------------------------------------------------------ subject set ----
 # Derive, do not name: a hook whose runtime scales with data it does not
 # control. Two families, and the second was missing until audit-2026-08-22 P1-2:
 #   - CONTENT: the memory index, a transcript, the rule-hits log.
@@ -285,10 +231,10 @@ while IFS= read -r _f; do
   [[ -n "$_f" ]] && SUBJECTS+=("$(basename "$_f" .sh)")
 done < <(grep -lE "$DATA_RE" "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
 
-if (( ${#SUBJECTS[@]} >= 11 )); then
+if (( ${#SUBJECTS[@]} >= 7 )); then
   pass "subject-set floor (${#SUBJECTS[@]} data-scaling hooks derived from source)"
 else
-  fail "subject-set floor (expected >= 11 data-scaling hooks, found ${#SUBJECTS[@]}) — glob or grep broke"
+  fail "subject-set floor (expected >= 7 data-scaling hooks, found ${#SUBJECTS[@]}) — glob or grep broke"
 fi
 
 # ------------------------------------------------------------- probe table ---
@@ -307,16 +253,6 @@ probe_event() {
   local hook="$1"
   PROBE_ENV=()
   { case "$hook" in
-    memory-prompt-hint)
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
-        '{hook_event_name:"UserPromptSubmit", session_id:$s, cwd:$c,
-          prompt:"what did we learn about budgettag7 here"}' ;;
-    spec-module-gate)
-      # A release command with nothing having read ship.md: the gate greps the
-      # whole transcript for a Read of it, then (log mode) records the miss.
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
-        '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c, transcript_path:$t,
-          tool_use_id:"tu_probe", tool_input:{command:"gh release create v9.9.9"}}' ;;
     memory-read-check)
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c,
@@ -343,36 +279,9 @@ probe_event() {
         '{hook_event_name:"PreToolUse", tool_name:"Bash", session_id:$s, cwd:$c,
           tool_use_id:"tu_probe",
           tool_input:{command:"git commit -m \"significantly faster parser\""}}' ;;
-    mem-audit)
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c}' ;;
-    session-summary)
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c}' ;;
     session-end-check)
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
         '{hook_event_name:"SessionEnd", session_id:$s, cwd:$c, transcript_path:$t}' ;;
-    transcript-structure-scan)
-      PROBE_ENV=("TRANSCRIPT_STRUCTURE_SCAN=1")
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t}' ;;
-    evidence-gate)
-      # The fixture's final assistant turn is a Done claim and its Edit rows
-      # carry .js paths, so the hook reaches its verdict rather than exiting at
-      # the no-claim / no-code-edit guard. last_assistant_message has to be
-      # passed explicitly: the hook takes the CLAIM from the event and only the
-      # EVIDENCE from the transcript.
-      PROBE_ENV=("EVIDENCE_GATE=1")
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t,
-          last_assistant_message:"Done: rewrote the parser."}' ;;
-    ledger-staleness)
-      # Reaches its verdict on the populated fixture (3,000 Edit rows on .js
-      # paths, a seeded ledger nothing writes to) and exits at the no-code-edit
-      # guard on the empty one, which is what the differential compares.
-      PROBE_ENV=("LEDGER_STALENESS=1")
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t}' ;;
     reply-language-check)
       # The fixture's human rows are English, which this hook reads as "the
       # human writes English" and exits on after the scan — silent, so no
@@ -388,16 +297,6 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$_rl_dir/$SESSION_ID.jsonl" \
         '{hook_event_name:"Stop", session_id:$s, cwd:$c, transcript_path:$t,
           last_assistant_message:"The pre-tag reviewer is still running against the repair commit and I will merge to main, push, wait for CI and publish once it reports."}' ;;
-    transcript-vocab-scan)
-      PROBE_ENV=("TRANSCRIPT_VOCAB_SCAN=1")
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" --arg t "$TRANSCRIPT" \
-        '{hook_event_name:"PostToolUse", session_id:$s, cwd:$c, transcript_path:$t,
-          tool_use_id:"tu_probe"}' ;;
-    residue-audit)
-      # Cost is the depth-1 walk of ~/.claude/tmp; the seeded v2:0 baseline
-      # puts it over threshold so it reaches the emit path too.
-      jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
-        '{hook_event_name:"Stop", session_id:$s, cwd:$c}' ;;
     sandbox-disposal-check)
       # The override points the scan at the same 6,000-entry fixture instead of
       # the host's real /tmp — hermetic, and it is the production scan shape.
@@ -410,18 +309,6 @@ probe_event() {
       jq -cn --arg s "$SESSION_ID" --arg c "$CWD" \
         '{hook_event_name:"UserPromptSubmit", session_id:$s, cwd:$c,
           prompt:"budget probe prompt"}' ;;
-    cross-repo-write-check)
-      # In the subject set only for the `${TMPDIR` literal, which it reads as a
-      # string prefix, never as a directory to walk. The probe drives the full
-      # path — Bash segment walk, two identity walks, claim, row, advisory — on
-      # a multi-segment command, with TMPDIR moved off the fixture repos so the
-      # exclusion does not end it early.
-      mkdir -p "$SANDBOX/xr/own/.git" "$SANDBOX/xr/other/.git" "$SANDBOX/xr/tmp"
-      PROBE_ENV=("CROSS_REPO_WRITE=1" "TMPDIR=$SANDBOX/xr/tmp")
-      jq -cn --arg s "xr-$RANDOM-$SESSION_ID" --arg c "$SANDBOX/xr/own" \
-        --arg x "git status; git log -3; cd $SANDBOX/xr/other && git add -A && git commit -q -m probe; git -C $SANDBOX/xr/own tag -l | head -3" \
-        '{hook_event_name:"PreToolUse", session_id:$s, cwd:$c, tool_name:"Bash",
-          tool_use_id:"tu_probe", tool_input:{command:$x}}' ;;
     *) return 1 ;;
   esac; } > "$EVT_FILE"
 }
@@ -629,24 +516,6 @@ for hook in ${SUBJECTS[@]+"${SUBJECTS[@]}"}; do
   fi
 done
 
-# ------------------------------------ ledger-staleness: the multi-candidate arm ----
-# The fixture assertion near the top pins that there WERE candidates to choose
-# between. This pins that the probe actually printed the line that only exists on
-# that branch — otherwise the fixture could hold a dozen ledgers while the hook
-# exited earlier for an unrelated reason, and the gate would still read as though
-# `ledgers > 1` were covered.
-#
-# Stated to its limit: it proves the FIRST sample took that arm, which is the run
-# the reach assertion above validated and the one whose stderr is on disk. A
-# resample (only taken after a sample misses budget, which this hook does not do
-# at ~0.1s against 5s) writes to RETRY_ERR and is not inspected here.
-LS_PROBE_ERR="$SANDBOX/probe-err-ledger-staleness.txt"
-if grep -q "of $LS_FIX_COUNT ledgers" "$LS_PROBE_ERR" 2>/dev/null; then
-  pass "ledger-staleness's measured run took the multi-candidate arm (named $LS_FIX_COUNT candidates)"
-else
-  fail "ledger-staleness's measured run never printed the multi-candidate line, so the recorded time is the one-ledger path: $(head -c 200 "$LS_PROBE_ERR" 2>/dev/null | tr '\n' ' ')"
-fi
-
 # ------------------------------------------- differential reach discrimination ----
 # The loop above proves "the probe ran to completion and did observable work".
 # It does NOT prove that work was the data-scaling walk that put the hook in
@@ -708,10 +577,8 @@ diff_exempt_reason() {
   case "$1" in
     banned-vocab-check)
       printf 'reads a transcript, but bounded at `tail -n 200` so its cost does not scale with transcript size; and its probe DENIES on the commit-message path before the transcript path runs, so the signature is identical under both fixtures either way (verified: removing this exemption fails it at 3837877947|4294967295|262|0|0)' ;;
-    spec-module-gate)
-      printf 'reads a transcript only to find one Read of ship.md; with no such Read its verdict (one module-unread row) is the same for a 5 MB transcript and an empty one, so the signature cannot move with data volume — the timing arm above still measures the full-transcript scan' ;;
-    cross-repo-write-check)
-      printf 'admitted by the `${TMPDIR` literal only: TMPDIR is a string prefix for the scratch exclusion and is never walked, and nothing else it reads is a directory listing or a log, so its cost scales with the command and path depth, not with any fixture this gate varies' ;;
+    session-end-check)
+      printf 'counts only changes under the session cwd or its git top level, and the shared fixture transcript edits /proj/src/*.js outside that cwd, so the hook ends silent on both fixtures (checked by hand on 0.123.0: the same two-row transcript with the paths moved under cwd writes a warn row and a paused checkpoint); the timing arm above still measures the full transcript scan' ;;
     *) printf '' ;;
   esac
 }
@@ -784,10 +651,10 @@ done
 # Vacuity floor: every subject must be compared or exempted with a written
 # reason. A `continue` that silently drops arms would print no failures and read
 # as clean — the shape this whole file exists to refuse.
-if (( DIFF_COMPARED + DIFF_EXEMPTED == ${#SUBJECTS[@]} && DIFF_COMPARED >= 10 )); then
+if (( DIFF_COMPARED + DIFF_EXEMPTED == ${#SUBJECTS[@]} && DIFF_COMPARED >= 5 )); then
   pass "differential floor ($DIFF_COMPARED compared + $DIFF_EXEMPTED exempted = ${#SUBJECTS[@]} subjects, none dropped silently)"
 else
-  fail "differential floor: $DIFF_COMPARED compared + $DIFF_EXEMPTED exempted (+$DIFF_MISSING with no populated signature) against ${#SUBJECTS[@]} subjects, or fewer than 10 compared — arms were skipped instead of failed or exempted"
+  fail "differential floor: $DIFF_COMPARED compared + $DIFF_EXEMPTED exempted (+$DIFF_MISSING with no populated signature) against ${#SUBJECTS[@]} subjects, or fewer than 5 compared — arms were skipped instead of failed or exempted"
 fi
 
 # -------------------------------------------------- network-bounded hooks ----

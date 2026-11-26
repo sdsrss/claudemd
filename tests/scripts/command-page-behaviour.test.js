@@ -29,36 +29,6 @@ const run = (script, args, env) =>
 
 const box = useHomeSandbox('cmdpage');
 
-test('bypass-audit: the page says --cwd is a lookup fallback, as --help does', () => {
-  assertLine(
-    'bypass-audit',
-    "The audit covers every project's suggest rows in the rule-hits log, not only this one: each row is scored against the transcript in the project the row names. `--cwd` (default: the current working directory) is only where a transcript is looked for when that fails or the row names no project, so it does not narrow the numbers to one project."
-  );
-  assertLine(
-    'bypass-audit',
-    '- `totalMissingTranscript` ≈ `totalSuggestions` = the transcripts are in neither place the audit looks: the project each row names, then `--cwd`. A deleted or synthetic session cannot be recovered; for sessions that ran in another project, re-run with `--cwd=<that project>`.'
-  );
-  const r = run('lesson-bypass-audit.js', ['--help'], box.env());
-  assert.equal(r.status, 0);
-  assert.match(r.stdout.replace(/\s+/g, ' '), /does NOT narrow the audit/);
-});
-
-test('analyze: the page names exit 1 for an audit that cannot run, and the CLI exits 1 on a non-directory --project', () => {
-  assertLine(
-    'analyze',
-    "This command is read-only. Without `--strict` it exits 0 whatever it finds; `--strict` exits 1 on CRITICAL or HIGH findings — suitable for pre-tag ship gate. Either way it exits 1 when the audit cannot run (a `--project`/`--cwd` that is not a directory, the two given different values, a file it reads that cannot be read, such as a spec file or the project's MEMORY.md) and 2 on an argument it does not accept: report those as a failed run, not as a clean audit."
-  );
-  const missing = path.join(box.home, 'no-such-project');
-  const r = run('spec-coherence-audit.js', [`--project=${missing}`], box.env());
-  assert.equal(r.status, 1, r.stderr);
-  assert.match(r.stderr, /is not a directory/);
-  assert.equal(run('spec-coherence-audit.js', ['--no-such-flag'], box.env()).status, 2);
-  // The CLI's own --help said the same stale thing ("always exit 0").
-  const help = run('spec-coherence-audit.js', ['--help'], box.env());
-  assert.doesNotMatch(help.stdout, /always exit 0/);
-  assert.match(help.stdout, /Default: exit 0 whatever the findings \(advisory\)\./);
-});
-
 test('uninstall: the restore bullet says a symlinked file comes back as a link', () => {
   assertLine(
     'uninstall',
@@ -421,7 +391,7 @@ test('doctor: the page says a failing row with advisory: true does not count, as
 // 0.117.5 pre-tag review M1 found a spec backup with no `CLAUDE.md` restored
 // over the user's older backup; since D#644 restore passes over it. This runs the
 // reviewer's repro, and checks that README and `uninstall.js --help` say the same.
-test('install and uninstall: a backup of spec files with no CLAUDE.md is passed over, as the pages, README and --help say', () => {
+test('install and uninstall: a backup of spec files with no CLAUDE.md is passed over, as --help says', () => {
   const mk = (stamp, files) => {
     const d = box.claude(`backup-${stamp}`);
     fs.mkdirSync(d, { recursive: true });
@@ -440,15 +410,6 @@ test('install and uninstall: a backup of spec files with no CLAUDE.md is passed 
     "the user's older backup is restored"
   );
   assert.ok(fs.existsSync(path.join(specDir, 'CLAUDE-extended.md')), 'the passed-over dir is left in place');
-  const readme = fs.readFileSync(path.join(REPO, 'README.md'), 'utf8');
-  assert.ok(
-    readme.includes(
-      'a dir counts as one of those when it holds one or more spec files and nothing else, with or without `CLAUDE.md`'
-    ),
-    'README restore row'
-  );
-  // The sentences D#644 removed must not come back beside the new ones (0.117.6 review L7).
-  assert.ok(!readme.includes('An update dir without `CLAUDE.md`'), 'README: the old exception is gone');
   const help = run('uninstall.js', ['--help'], box.env()).stdout.replace(/\s+/g, ' ');
   assert.match(
     help,

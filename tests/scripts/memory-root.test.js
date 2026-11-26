@@ -12,8 +12,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { memoryRoot, encodeProjectCwd } from '../../scripts/lib/paths.js';
-import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
-import { memoryMaintenance } from '../../scripts/lib/memory-maintenance.js';
+import { checkMemoryIndexLinks } from '../../scripts/lib/memory-tags.js';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -79,26 +78,14 @@ for (const [name, start, want] of CASES) {
   });
 }
 
-test('spec-coherence-audit reads the root MEMORY.md from a subdirectory', () => {
-  // checkMemoryIndex resolves the projects root from os.homedir(), which reads
-  // the sandbox's HOME.
+test('the doctor link check reads the root MEMORY.md from a subdirectory', () => {
+  // checkMemoryIndexLinks resolves the projects root from os.homedir(), which
+  // reads the sandbox's HOME.
   const mem = box.claude('projects', encodeProjectCwd(repo), 'memory');
   fs.mkdirSync(mem, { recursive: true });
   fs.writeFileSync(path.join(mem, 'MEMORY.md'), '- [A](a.md) — x\n');
   fs.writeFileSync(path.join(mem, 'a.md'), 'a\n');
-  const r = auditSpecCoherence({ pluginRoot: REPO, projectCwd: path.join(repo, 'sub/deep') });
-  const c = r.checks.find(x => x.name === 'memory-index');
-  assert.notEqual(c.stats.status, 'no-index', JSON.stringify(c.stats));
-  assert.equal(c.stats.memDir, mem);
-});
-
-test('memoryMaintenance looks in the root memory dir from a worktree', async () => {
-  const home = box.home;
-  const r = await memoryMaintenance({
-    cwd: path.join(T, 'wt/sub'),
-    homeDir: home,
-    logPath: path.join(home, 'none.jsonl'),
-    memLiteDbPath: path.join(home, 'none.db'),
-  });
-  assert.equal(r.memDir, path.join(home, '.claude/projects', encodeProjectCwd(repo), 'memory'));
+  const c = checkMemoryIndexLinks(path.join(repo, 'sub/deep'));
+  assert.notEqual(c.status, 'no-index', JSON.stringify(c));
+  assert.equal(c.memDir, mem);
 });

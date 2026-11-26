@@ -618,27 +618,23 @@ test('doctor runs banned-vocab self-test and reports pass when hook denies synth
   assert.doesNotMatch(selftest.detail, /kill-switch engaged/);
 });
 
-test('doctor OBS-2: all 12 advisory-hook liveness checks exist and pass on a clean tree', async () => {
-  // Requires jq + bash; CI installs both. The deny self-tests cover only
-  // banned-vocab + pre-bash-safety (2/16); these liveness checks close the
-  // gap on the 6 Stop hooks + PostToolUse + the other advisory hooks that
-  // never emit a deny. A hook dropped from the livenessTests list → find()
-  // returns undefined → this test fails (coverage lock). session-start-check
-  // + version-sync are intentionally excluded (bootstrap/network side-effects).
+test('doctor OBS-2: every advisory-hook liveness check exists and passes on a clean tree', async () => {
+  // Requires jq + bash; CI installs both. The deny self-tests cover the
+  // blocking gates; these liveness checks cover the hooks that never emit a
+  // deny. A hook dropped from the livenessTests list → find() returns
+  // undefined → this test fails (coverage lock). session-start-check,
+  // version-sync, tmp-sweep and the PreToolUse gates are excluded with their
+  // reasons in doctor-hook-tests.js.
   const have = b => spawnSync('sh', ['-c', `command -v ${b}`]).status === 0;
   if (!have('jq') || !have('bash')) return;
   const EXPECTED = [
     'memory-read-check',
     'ship-baseline-check',
-    'session-extended-read',
-    'transcript-vocab-scan',
     'session-end-check',
-    'session-summary',
-    'mem-audit',
-    'residue-audit',
+    'reply-language-check',
     'sandbox-disposal-check',
-    'transcript-structure-scan',
-    'memory-prompt-hint',
+    'memory-index-lines',
+    'spec-module-inject',
   ];
   const r = await doctorFull({});
   for (const h of EXPECTED) {
@@ -753,7 +749,7 @@ test('hookSelfTests: false drops exactly the hook self-test rows, and the CLI ru
   const fast = (await doctor({})).checks.map(c => c.name);
   const dropped = full.filter(n => !fast.includes(n));
   assert.ok(
-    dropped.length >= 20,
+    dropped.length >= 11,
     `expected the hook self-test and liveness rows to be dropped, got ${dropped.length}`
   );
   assert.deepEqual(
@@ -1040,29 +1036,6 @@ test('hook-drift runs for a path-source marketplace, which has no clone at all',
   assert.match(c.detail, /banned-vocab-check\.sh \(differs\)/);
 });
 
-test('R-N6: rule-usage flags §0.1 demotion candidate when bypass:deny ratio > 50%', async () => {
-  // 6 events on §11-memory-read: 5 bypasses + 1 deny = 83% override rate.
-  // Doctor must flag this as a demotion candidate (rule too strict / wording
-  // confuses, users routinely escape-hatch).
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
-      5
-    ),
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
-  assert.ok(usage, 'rule-usage:§11-memory-read check must exist');
-  assert.equal(usage.ok, false, 'must fail (demotion candidate) when bypass:deny > 50%');
-  assert.match(usage.detail, /demotion candidate/);
-  assert.match(usage.detail, /deny=1/);
-  assert.match(usage.detail, /bypass=5/);
-  assert.match(usage.detail, /83%/);
-});
-
 // 2026-11-03 effect assessment: the static tag list named 128 candidates and
 // did not rank them; one tag (`origin`) caused 13 of 21 false memory-read
 // denies in 30 days. The observed block leads the detail and names the file,
@@ -1150,49 +1123,6 @@ test('memory-tag-specificity output is unchanged below the observed threshold', 
   );
 });
 
-test('v0.23.11: rule-usage counts the deny FAMILY (deny-repeat) — no false demote flag', async () => {
-  // §11-memory-read emits `deny-repeat` for re-denies. 1 deny + 2 deny-repeat
-  // = 3 real blocks vs 2 bypasses → true ratio 40% (healthy). Pre-fix doctor
-  // counted only literal `deny` (=1) → ratio 67% → FALSE demote candidate.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny-repeat","spec_section":"§11-memory-read","extra":null}\n`.repeat(
-      2
-    ),
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
-      2
-    ),
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
-  assert.ok(usage);
-  assert.equal(usage.ok, true, 'deny-family count must keep this healthy');
-  assert.match(usage.detail, /deny=3/);
-  assert.match(usage.detail, /healthy/);
-});
-
-test('R-N6: rule-usage marks healthy when bypass:deny ratio ≤ 50%', async () => {
-  // 5 denies + 1 bypass = 17% override rate — below threshold, healthy.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
-      5
-    ),
-    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
-  assert.ok(usage);
-  assert.equal(usage.ok, true);
-  assert.match(usage.detail, /healthy/);
-  assert.match(usage.detail, /17%/);
-});
-
 test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', async () => {
   // Single deny on §10-V — too few to draw a ratio conclusion. No check emitted.
   const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
@@ -1203,76 +1133,6 @@ test('R-N6: rule-usage skips sections below statistical floor (< 3 events)', asy
   const r = await doctor({});
   const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
   assert.equal(usage, undefined, 'no rule-usage check should fire below RULE_USAGE_MIN_TOTAL=3');
-});
-
-test('R-N6+: demotion-candidate detail names the dominant bypass token (single token)', async () => {
-  // 5 bypasses, all via [skip-memory-check], 1 deny — single-token
-  // 80% override means the rule is being defeated through one specific
-  // escape hatch. Operator should see the token name in the detail line,
-  // not have to cross-reference /claudemd-audit byBypass.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
-      5
-    ),
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":{"missing":["x.md"]}}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
-  assert.ok(usage);
-  assert.equal(usage.ok, false);
-  assert.match(usage.detail, /\[skip-memory-check\]×5/, 'detail must surface bypass token + count');
-});
-
-test('R-N6+: demotion-candidate detail sorts mixed tokens by count desc', async () => {
-  // §11-memory-read (a demotable, non-immutable section): 3× skip-memory-check
-  // + 1× force-skip + 1 deny. ratio 80%, two tokens, output must list them
-  // sorted by count desc: [skip-memory-check]×3, [force-skip]×1.
-  // (§8 sections are immutable-exempt — see the dedicated test below.)
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"skip-memory-check"}}\n`.repeat(
-      3
-    ),
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","extra":{"token":"force-skip"}}\n`,
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","extra":null}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
-  assert.ok(usage);
-  assert.equal(usage.ok, false);
-  // Sort order: count desc → [skip-memory-check]×3 must appear BEFORE
-  // [force-skip]×1 in the detail string.
-  const idxHi = usage.detail.indexOf('[skip-memory-check]×3');
-  const idxLo = usage.detail.indexOf('[force-skip]×1');
-  assert.ok(idxHi > -1 && idxLo > -1, `both tokens must appear; detail="${usage.detail}"`);
-  assert.ok(idxHi < idxLo, 'higher-count token must come first');
-});
-
-test('v0.23.6: rule-usage never flags an immutable §8 section as a demotion candidate', async () => {
-  // §8 SAFETY is §5.1 Never-downgrade. An 83%-bypass ratio (5 bypass + 1 deny,
-  // above the 50% demote threshold) must surface for visibility but NOT carry
-  // the "§0.1 demotion candidate"
-  // label — that would recommend an action the policy forbids.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"bypass-escape-hatch","spec_section":"§8-npx","extra":{"token":"allow-npx-unpinned"}}\n`.repeat(
-      5
-    ),
-    `{"ts":"${now}","hook":"pre-bash-safety","event":"deny","spec_section":"§8-npx","extra":null}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§8-npx');
-  assert.ok(usage, 'rule-usage:§8-npx check must exist (visibility preserved)');
-  assert.equal(usage.ok, true, 'immutable §8 must not fail as a demotion candidate');
-  assert.doesNotMatch(usage.detail, /demotion candidate/, 'must not label immutable §8 a demotion candidate');
-  assert.match(usage.detail, /immutable §8 SAFETY/);
 });
 
 test('v0.23.6: hook-fail-open — bad-event fail-open is advisory (ok:true)', async () => {
@@ -1708,25 +1568,6 @@ test('ENG-03: an UNKNOWN fail-open reason defaults to red, not to advisory', asy
   assert.match(c.detail, /some-new-hook:future-reason=1/);
 });
 
-test('R-N6+: healthy rows stay terse — no token detail attached', async () => {
-  // Healthy section: detail must NOT include token breakdown. Per-token
-  // forensics are only useful when the rule is being defeated.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const rows = [
-    `{"ts":"${now}","hook":"banned-vocab","event":"deny","spec_section":"§10-V","extra":{"matched":["significantly"]}}\n`.repeat(
-      5
-    ),
-    `{"ts":"${now}","hook":"banned-vocab","event":"bypass-escape-hatch","spec_section":"§10-V","extra":{"token":"allow-banned-vocab"}}\n`,
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§10-V');
-  assert.equal(usage.ok, true);
-  assert.match(usage.detail, /healthy/);
-  assert.doesNotMatch(usage.detail, /\[allow-banned-vocab\]/, 'healthy detail must not carry token detail');
-});
-
 test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () => {
   // Legacy rows (no spec_section) accumulate under (unset). Demoting on
   // these would misattribute pre-upgrade behavior to current rule design.
@@ -1742,64 +1583,6 @@ test('R-N6: rule-usage skips (unset) bucket carrying pre-v0.7.0 rows', async () 
   const r = await doctor({});
   const unset = r.checks.find(c => c.name === 'rule-usage:(unset)');
   assert.equal(unset, undefined, '(unset) bucket must not generate a rule-usage check');
-});
-
-test('rule-usage excludes test-session/probe rows (parity with audit.js)', async () => {
-  // Bug (2026-07-03 audit F1): doctor computed rule-usage from UNFILTERED
-  // hits, so manual-probe / sentinel-session rows (session_id ≤7 chars — the
-  // excludeTestSessions cohort, e.g. v0.23.20's 8 session_id='s' ship-baseline
-  // fixtures) inflated deny counts. audit.js filters via excludeTestSessions;
-  // doctor did not → same 30d window showed doctor ship-baseline deny=17 vs
-  // audit deny=9. §0.1 demote verdicts are downstream of this count, so they
-  // must count REAL sessions only.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const realUuid = '11111111-2222-3333-4444-555555555555'; // 36-char real session
-  const rows = [
-    // 3 real denies (kept)
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"${realUuid}","extra":null}\n`.repeat(
-      3
-    ),
-    // 5 sentinel denies (session_id='s' — manual probe, must be excluded)
-    `{"ts":"${now}","hook":"ship-baseline","event":"deny","spec_section":"§7-ship-baseline","session_id":"s","extra":null}\n`.repeat(
-      5
-    ),
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§7-ship-baseline');
-  assert.ok(usage, 'rule-usage:§7-ship-baseline check must exist');
-  // Pre-fix: deny=8 (3 real + 5 sentinel). Post-fix: deny=3 (real only).
-  assert.match(usage.detail, /deny=3\b/, `sentinel-session rows must be excluded; detail="${usage.detail}"`);
-  assert.doesNotMatch(usage.detail, /deny=8/, 'must not count sentinel-session rows');
-});
-
-test('rule-usage demote token breakdown also excludes sentinel bypasses', async () => {
-  // The demote-candidate token breakdown iterates the hit list a SECOND time
-  // (parallel consumer of the same data). It must filter sentinels identically
-  // to the count, else "bypass=N" and the [token]×k breakdown disagree.
-  const log = path.join(box.home, '.claude/logs/claudemd.jsonl');
-  const now = new Date().toISOString();
-  const realUuid = '11111111-2222-3333-4444-555555555555';
-  const rows = [
-    // Real: 3 bypass via skip-memory-check + 1 deny → 75% override (demote candidate)
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":{"token":"skip-memory-check"}}\n`.repeat(
-      3
-    ),
-    `{"ts":"${now}","hook":"memory-read-check","event":"deny","spec_section":"§11-memory-read","session_id":"${realUuid}","extra":null}\n`,
-    // Sentinel: 4 bypass via force-skip (manual probe) — must NOT appear anywhere
-    `{"ts":"${now}","hook":"memory-read-check","event":"bypass-escape-hatch","spec_section":"§11-memory-read","session_id":"probe","extra":{"token":"force-skip"}}\n`.repeat(
-      4
-    ),
-  ].join('');
-  fs.writeFileSync(log, rows);
-  const r = await doctor({});
-  const usage = r.checks.find(c => c.name === 'rule-usage:§11-memory-read');
-  assert.ok(usage);
-  assert.equal(usage.ok, false, 'real-only 3 bypass / 1 deny = 75% → demote candidate');
-  assert.match(usage.detail, /bypass=3\b/, 'count must exclude sentinel bypasses');
-  assert.match(usage.detail, /\[skip-memory-check\]×3/, 'real bypass token present');
-  assert.doesNotMatch(usage.detail, /force-skip/, 'sentinel-session token must not appear in breakdown');
 });
 
 test('doctor CLI rejects space-form --prune-backups 5 (was silent default)', () => {

@@ -1,16 +1,19 @@
 # claudemd
 
-> A **personal AI-coding discipline harness**: one developer's opinionated **AI-CODING-SPEC v9.0**, encoded as Claude Code shell hooks and shipped with the plugin. Built and dogfooded on my own repos — fork and adapt, don't adopt wholesale.
+> A **personal AI-coding discipline harness**: one developer's **AI-CODING-SPEC v9.0** for Claude Code, plus a thin safety net of shell hooks. Built and dogfooded on my own repos — fork and adapt, don't adopt wholesale.
 
 [![CI](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sdsrss/claudemd/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/claudemd-cli.svg)](https://www.npmjs.com/package/claudemd-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-claudemd plugs into the Claude Code hook system to **block commits, pushes, and bash commands** that violate AI-CODING-SPEC v9.0 — banned vocabulary in commit messages, `rm -rf $VAR` without variable validation, ship-on-red-CI, unread `MEMORY.md` entries during release flows, and more. The spec itself (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) ships with the plugin and installs into `~/.claude/`, so the rules Claude Code reads at session start match the rules the hooks enforce. (`OPERATOR.md` is the human-only spec-maintenance handbook — Agent-loaded files are the CLAUDE trio.)
+claudemd does two things:
 
-A standalone CLI (`npx claudemd-cli`) reuses the same `banned-vocab.patterns` source for git commit-msg hooks, GitHub Actions, and other agents that don't run inside Claude Code.
+1. **Installs a short spec** (`CLAUDE.md`, about 2.8 KB) into `~/.claude/`, where Claude Code reads it as your user-global instructions, plus two modules (`ship`, `review`) that load only when a prompt asks for a release or a review.
+2. **Runs 12 shell hooks** that catch a few expensive mistakes: `rm -rf "$VAR"` on an unchecked variable, an unpinned `npx <pkg>`, a push while CI is red, a release command before the relevant `MEMORY.md` entries were read.
 
-> **Status & scope.** This is a single-maintainer tool that encodes one developer's working discipline — not a general-purpose product. It's exercised almost entirely on my own repositories, the spec is opinionated, and the defaults reflect my preferences rather than a consensus. If you install it, expect to fork `CLAUDE.md` and tune the rules to your own workflow. Treat it as a reference implementation of "spec-as-enforced-hooks," not a turnkey solution. Issues and PRs are welcome.
+Why this little: an outcome A/B with hidden tests (`docs/claudemd-value-assessment-2026-11-25.md`) found that the earlier 24 KB spec gave the same or lower correctness than no spec at 1.8–2.4× the cost, while the hooks alone cost 1.04× with unchanged correctness. Spec v9.0 keeps only what the model does not do by default.
+
+> **Status & scope.** A single-maintainer tool, exercised almost entirely on my own repositories. The defaults reflect my preferences. If you install it, expect to fork `spec/CLAUDE.md`. Issues and PRs are welcome.
 
 ---
 
@@ -23,19 +26,16 @@ Run **both** slash commands inside Claude Code:
 /plugin install claudemd@claudemd
 ```
 
-Then bootstrap the **current** session (skip the wait-for-next-session restart) + verify:
+Then bootstrap the **current** session and check it:
 
 ```
 /claudemd-install
-/claudemd-status
 /claudemd-doctor
 ```
 
-`install` copies the spec into `~/.claude/`, writes the hook manifest, and evicts legacy entries — idempotent, safe to re-run. (Background: Claude Code does not fire `postInstall`, so without `/claudemd-install`, `install.js` runs on the next `SessionStart` instead.) `status` reports plugin version, shipped vs installed spec version, kill-switch state, and rule-hits row count. `doctor` runs 40+ health checks with `[✓] / [△] / [✗]` markers — including whether the hooks Claude Code actually runs still match the marketplace, and whether the statusline renderer `settings.json` points at is still on disk.
+`install` copies the spec into `~/.claude/` and writes the install manifest; it is idempotent. Claude Code does not fire `postInstall`, so without `/claudemd-install` the same script runs at the next `SessionStart`. `doctor` runs the health checks, including the hooks' own self-tests.
 
-Fallback (no slash command — e.g. scripting outside CC): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js`. Find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`.
-
-> ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** Claude Code reads this file as your user-global instructions across every project. If you've hand-written personal instructions there (`Always reply in 中文`, `My name is X`, etc.), install moves your existing files to `~/.claude/backup-<ISO>/` (last 5 kept automatically) before writing the spec. Since v0.5.3, install prints a `[claudemd] WARN: …` line to stderr when the existing file does not look like a claudemd spec — visible when you run `/claudemd-install` (or `install.js`) yourself. Since v0.75.0 the **SessionStart** bootstrap, where that stderr goes to `claudemd-bootstrap.log` instead, raises the same notice as an in-session banner naming the backup path (silence it with `DISABLE_USER_CONTENT_BANNER=1`). To bring your personal instructions back, run `/claudemd-uninstall restore` and then `/plugin uninstall claudemd@claudemd` — while the plugin stays installed, the next session start installs the spec over the restored file again — or merge the two files by hand.
+> ⚠️ **`~/.claude/CLAUDE.md` is shared real estate.** If you keep personal instructions there, install moves your file to `~/.claude/backup-<ISO>/` (last 5 kept) before writing the spec, and says so in a banner. To get it back, run `/claudemd-uninstall restore` and then `/plugin uninstall claudemd@claudemd`, or merge the two files by hand.
 
 ---
 
@@ -43,13 +43,11 @@ Fallback (no slash command — e.g. scripting outside CC): `node ~/.claude/plugi
 
 | Tool | Required | Why |
 |---|---|---|
-| `node >= 20` | yes | install / status / doctor / update scripts (`package.json` engines) |
-| `jq` | yes | every hook parses Claude Code event JSON via `jq` — without it hooks silently fail-open |
-| `git` | yes | `ship-baseline-check` reads HEAD body; `session-start-check` runs `git ls-remote`; manual upgrade fallback |
-| `gh` | recommended | `ship-baseline-check` calls `gh run list` — if absent, the hook fail-opens silently and shipping on red CI is no longer blocked |
-| `coreutils` | macOS only | hooks need GNU `timeout`. Install with `brew install coreutils`, then prepend `$(brew --prefix coreutils)/libexec/gnubin` to your `PATH` |
-
-Verify in one command (Linux): `node --version && jq --version && gh --version && git --version && timeout --version | head -1`. macOS users can swap `timeout` for `gtimeout` if `coreutils` is bottle-installed without the `gnubin` shim.
+| `node >= 20` | yes | install, doctor and the other scripts |
+| `jq` | yes | every hook parses Claude Code's event JSON with `jq`; without it the hooks fail open |
+| `git` | yes | `ship-baseline-check`, `session-start-check`, `session-end-check` |
+| `gh` | recommended | `ship-baseline-check` calls `gh run list`; without it shipping on red CI is not blocked |
+| `coreutils` | macOS only | GNU `timeout`: `brew install coreutils`, then put `$(brew --prefix coreutils)/libexec/gnubin` on `PATH` |
 
 ---
 
@@ -57,124 +55,83 @@ Verify in one command (Linux): `node --version && jq --version && gh --version &
 
 | Layer | Contents |
 |---|---|
-| 28 shell hooks | `banned-vocab-check` · `pre-bash-safety-check` · `ship-baseline-check` · `residue-audit` · `memory-read-check` · `memory-prompt-hint` · `spec-module-inject` · `deferred-notice` · `spec-module-gate` · `sandbox-disposal-check` · `session-start-check` · `session-extended-read` · `session-summary` · `session-end-check` · `transcript-vocab-scan` · `rework-breaker` · `memory-index-lines` · `test-failure-debug` · `cross-repo-write-check` · `tmp-sweep` · `branch-prune` · `verify-log` · `evidence-gate` · `ledger-staleness` · `reply-language-check` · `transcript-structure-scan` · `version-sync` · `mem-audit` |
-| 16 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-analyze` · `/claudemd-uninstall` · `/claudemd-rules` · `/claudemd-clean-residue` · `/claudemd-sparkline` · `/claudemd-sampling-audit` · `/claudemd-bypass-audit` · `/claudemd-design-adopt` · `/claudemd-statusline` |
+| 12 shell hooks | `pre-bash-safety-check` · `ship-baseline-check` · `memory-read-check` · `banned-vocab-check` · `session-start-check` · `version-sync` · `spec-module-inject` · `sandbox-disposal-check` · `reply-language-check` · `memory-index-lines` · `tmp-sweep` · `session-end-check` |
+| 11 slash commands | `/claudemd-install` · `/claudemd-status` · `/claudemd-update` · `/claudemd-refresh` · `/claudemd-audit` · `/claudemd-toggle` · `/claudemd-doctor` · `/claudemd-uninstall` · `/claudemd-clean-residue` · `/claudemd-design-adopt` · `/claudemd-statusline` |
 | 1 standalone CLI | `claudemd-cli lint` · `claudemd-cli audit` ([npm: `claudemd-cli`](https://www.npmjs.com/package/claudemd-cli)) |
-| Spec v9.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` (backup-before-overwrite) · `spec-modules/*.md` (mirrored from the plugin) |
-| StatusLine (opt-out) | PS1-style line — `user@host:dir (branch) Model [ctx:N% · 5h:N% · 7d:N%]` (`dir` = cwd basename; context / 5-hour quota / weekly quota, all **used %**, read from Claude Code's `rate_limits` payload; quota segments auto-hide when the data is absent, or force-hide with `DISABLE_STATUSLINE_QUOTA=1`) — wired into `~/.claude/settings.json` on install **only when the slot is empty**; an existing statusline is left untouched. Skip entirely with `CLAUDEMD_NO_STATUSLINE=1`. Manage via `/claudemd-statusline`. |
+| Spec v9.0 | `~/.claude/CLAUDE.md` · `CLAUDE-extended.md` · `CLAUDE-changelog.md` · `OPERATOR.md` · `spec-modules/*.md` |
+| StatusLine (opt-out) | `user@host:dir (branch) Model [ctx:N% · 5h:N% · 7d:N%]`, wired into `~/.claude/settings.json` only when the slot is empty. Skip with `CLAUDEMD_NO_STATUSLINE=1`, hide the quota segments with `DISABLE_STATUSLINE_QUOTA=1`, manage with `/claudemd-statusline`. |
 
-Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): install never puts the spec in that namespace, so on a machine that never ran `/claudemd-update` before 0.68.3 `restore` cannot return a stale spec instead (for that older layout, see the `restore` row below). (The user-content sweep does move `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` along beside your own file, so the directory is not literally yours alone — the `CLAUDE.md` in it is.) It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.
+A hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` heading) goes to `~/.claude/backup-<ISO>/`, which `restore` reads. An installed claudemd spec that differs from the shipped one goes to `spec-backup-<ISO>/` instead, which `restore` does not read. Both keep the last 5.
 
-> Since v0.1.5, hook registration lives in the plugin's own `hooks/hooks.json` — the Claude Code harness expands `${CLAUDE_PLUGIN_ROOT}` there automatically on every invocation, so hooks track the active plugin version without manual re-registration. `install.js`'s remaining jobs are (1) copy `spec/CLAUDE*.md` into `~/.claude/` (with backup-before-overwrite), (2) evict any legacy claudemd hook entries from prior installs (≤0.1.1 absolute-path form, 0.1.2-0.1.4 `${CLAUDE_PLUGIN_ROOT}`-in-settings.json form), and (3) write the installed manifest. It never touches other-plugin hooks. Claude Code's plugin-lifecycle `postInstall` field is not honored, so the script runs from `SessionStart` instead.
+Hooks are registered by the plugin's own `hooks/hooks.json`; Claude Code expands `${CLAUDE_PLUGIN_ROOT}` there, so the hooks follow the active plugin version.
 
 ---
 
 ## Hooks (what fires when)
 
-Once installed, hooks run silently in the background. Verbose log: `~/.claude/logs/claudemd.jsonl` (one row per hook decision). Aggregate via `/claudemd-audit`.
+Every hook fails open: a missing `jq`, malformed event JSON or a timeout lets the tool call through. Decisions are logged to `~/.claude/logs/claudemd.jsonl`; `/claudemd-audit` aggregates them.
 
 | Trigger | Hook | What happens |
 |---|---|---|
-| `git commit` with banned vocab (e.g. `significantly`, `70% faster`, `should work`) | `banned-vocab-check` | Blocks the commit with a message pointing to the §10-V spec rule. It reads the message from `-m` or an `-F -` here-doc, skips words inside backtick spans and paths, and does not read the file of `-F FILE`. |
-| Bash command with `rm -rf $VAR` (unvalidated expansion), unpinned `npx <pkg>`, or a fetch piped into an interpreter (`curl … \| sh`) | `pre-bash-safety-check` (v0.5.0+) | Blocks at PreToolUse:Bash per §8 SAFETY. Bypass via `[allow-rm-rf-var]` / `[allow-npx-unpinned]` / `[allow-curl-sh]` token in the command, or pin/validate the variable. The `rm` arm is **wider than the `-rf` shorthand**: it fires on any `-r` / `-R` / `-f` / `-F` short flag or `--recursive` / `--force` long form (so `rm -f "$VAR/one-file"` is blocked too), and on `find "$VAR" -delete` / `find "$VAR" -exec rm …`. For an `rm` the deny message names the flag it matched (`rm -f`, `rm --force`, …) rather than a fixed `rm -rf`; the two `find` forms share one class label, `find … -delete/-exec rm`. |
-| `git push` while the pushed branch's CI is red | `ship-baseline-check` | Blocks the push (2-second `gh run list` timeout; fail-open if `gh` absent or times out). |
-| Bash command matching ship/push/deploy/release with an unread matched `MEMORY.md` entry | `memory-read-check` | Blocks the command with a list of memory files to Read first. |
-| Session end with `~/.claude/tmp/` growth > 20 entries | `residue-audit` | Advisory stderr warning; never blocks. |
-| Session stop with fresh test/probe residue: `tmp.XXXXXX` / `claudemd-*` / `agent-tmp-*` (v0.119.0+) directories in `~/.claude/tmp` or `/var/tmp`, `claudemd-*` / `agent-tmp-*` in `/tmp`, or a `~/.claude/projects/` dir left by a headless `claude -p` run from a temp cwd (the session's own transcript dir excluded); judged since the session's previous Stop, by mtime, so a concurrent session's sandbox can show up. Since v0.98.0 a directory is reported only if it is still there at the session's NEXT Stop, so a dir a background run removes on its own is not reported; `SANDBOX_DISPOSAL_IMMEDIATE=1` reports at first sight as before | `sandbox-disposal-check` | Advisory stderr warning by default. Opt-in `SANDBOX_DISPOSAL_BLOCK=1` (v0.97.0+, default OFF) returns `{"decision":"block"}` naming up to five, with a reason that some may belong to another session, so the session removes the ones it created before finishing, once per turn (`stop_hook_active`). |
-| Session end (Stop), at most once per 24h | `mem-audit` (v0.9.4+) | Scans CC auto-memory `~/.claude/projects/*/memory/feedback_*.md` for missing `**Why:**` / `**How to apply:**` body structure plus MEMORY.md ↔ files index drift; advisory stderr, never blocks. |
-| Session end | `session-summary` (v0.8.0+) | Writes `~/.claude/.claudemd-state/last-session-summary.json`; banner emit at next `SessionStart`. |
-| New session start with GitHub remote tag newer than local cache max version | `session-start-check` (v0.4.0+) | Shows an "upgrade available" notice to the user via `systemMessage`. Rate-limited to once per 24h via `~/.claude/.claudemd-state/upstream-check.lastrun` sentinel. 3-second `git ls-remote` timeout, fail-open. |
-| New session start with a `~/.claude/CLAUDE*.md` / `OPERATOR.md` that is edited, or **missing** | `session-start-check` (v0.84.0+ for the missing half) | Two banners, because the fixes differ: an edited file says `/claudemd-update`, a deleted one says `/claudemd-install`. A deleted spec is the louder case — Claude Code reads these as your user-global instructions, so its absence silently unloads the spec. Silence both with `DISABLE_SPEC_DRIFT_BANNER=1`. |
-| New session start with a `~/.claude/.claudemd-manifest.json` that exists but does not parse | `session-start-check` (v0.84.0+) | Re-runs the bootstrap, which rewrites the manifest atomically. Previously this state exited silently on every session, forever. |
-| `UserPromptSubmit` whose text matches a spec module's `triggers:` (a module not yet injected this session) | `spec-module-inject` (v0.101.0+) | Adds the module's body from `~/.claude/spec-modules/` as context: at most two modules per prompt, `ship` first, each once per session and again after a compaction. A second module that would take the text past a 9,800-character budget, kept under Claude Code's 10,000-character context cap, waits for a later prompt from a person. On by default; `DISABLE_SPEC_MODULE_INJECT_HOOK=1` turns it off. |
-| `UserPromptSubmit` when a Stop hook left an observation for this session (today only `evidence-gate`) | `deferred-notice` (v0.105.0+) | Adds the observation to the model's context with the next prompt, once, capped at 2,000 bytes. Delivering at the next prompt instead of from the Stop hook costs no extra model turn. Nothing to do unless a notice is queued, and `evidence-gate` queues one only when opted in twice (Opt-in: `EVIDENCE_GATE_DELIVER=1` on top of `EVIDENCE_GATE=1`, default OFF), because its verdict has not passed the 0.8 precision gate the G1b pre-registration sets for any channel into the model. |
-| Bash release command (`git tag v1.2.3`, `git push --tags`, `gh release create`, `npm publish`) in a session that never received `ship.md` | `spec-module-gate` (v0.101.0+) | Default `log`: one `module-unread` rule-hits row, no output. `SPEC_MODULE_GATE=advisory` adds a note; `deny` refuses the command; `off` or `DISABLE_SPEC_MODULE_GATE_HOOK=1` silences it. |
-| First `UserPromptSubmit` after a mid-session `/plugin install` upgrade | `version-sync` (v0.3.1+) | Backgrounds `install.js` once per session when the manifest version diverges from the active plugin's `package.json`. Sentinel-gated; fail-open. |
-| Session stop with a completion claim in the last assistant message and no verification output behind it | `evidence-gate` (v0.90.0+) | Stop advisory — judges the TRANSCRIPT (is there a non-error Bash result after the last code edit whose command names a runner, or whose output looks like one) rather than the prose, which is what the prose-reading detector closed in the 2026-07-24 labeling pass, one of six closed there at a pooled precision bound of 0.17 were doing. Opt-in (`EVIDENCE_GATE=1`, default OFF) for FP signal collection; with `EVIDENCE_GATE_DELIVER=1` as well (v0.105.0+), `deferred-notice` also hands the model a short version with the next prompt. |
-| Session stop after code edits, with a long-task ledger under `cwd` that nothing wrote to | `ledger-staleness` (v0.91.0+) | Stop advisory — the third G7 arm, beside the `SessionStart` re-injection. Both halves are transcript structure over the same tail window: a code-file `Edit`/`Write` in it, and no `Edit`/`Write` on the resolved `tasks/<slug>-ledger.md` in it. The window is a staleness threshold rather than a scanning budget, so a ledger written more than a window ago reads as behind. No ledger means the convention is not in use in this project; a ledger older than `CLAUDEMD_LEDGER_MAX_AGE_DAYS` (default 14) means a finished task. Either way it stays silent — and the age bound is skipped rather than guessed if `hooks/lib/platform.sh` is unavailable, so on that path an old ledger can still draw the advisory. Opt-in (`LEDGER_STALENESS=1`, default OFF) for FP signal collection. |
-| Session stop whose last reply is English while the human writes 中文 | `reply-language-check` (v0.96.0+) | Stop, returning `{"decision":"block"}` (as `sandbox-disposal-check` does under its opt-in): the turn continues for one more message, asking for the same content in 中文 (no new work, no tools); the English text already shown stays. The human's language comes from the human's own messages only — task notifications, teammate messages, meta rows and tool results never count; a slash command counts by its arguments; a message typed mid-turn counts. The majority language of the human's newest 20 messages decides, so one pasted English log does not flip a 中文 session. What the human says about language is not parsed: a 中文 request for English replies, a translation or an `英文版` still gets a 中文 restatement — turn the hook off or set it to `log` for that. A reply whose first line is a conventional-commit subject is not judged. Headless `claude -p` runs are skipped, and it asks at most once per turn (`stop_hook_active`). Opt-in: `REPLY_LANGUAGE_CHECK=1`, or `=log` to record without asking; default OFF. |
-| `PostToolUse` on `Edit`/`Write`/`Bash`, at each 8th edit of one file in one session (a Bash command counts once per code file its `bashEditDiff` lists; one changing more than 20 is skipped as bulk, v0.99.0+) | `rework-breaker` (v0.90.0+) | Advisory; injects one line naming the count. Opt-in (`REWORK_BREAKER=1`, default OFF) for FP signal collection — a large legitimate refactor looks identical from here. |
-| `PostToolUse` on `Edit`/`Write`/`Bash` that writes an auto-memory index line over 150 characters (Edit: lines new in `new_string`; Write: lines not in the previous file; Bash: index lines found verbatim in the command, so `echo`/`printf`/heredoc appends count and a `sed -i` partial edit does not) | `memory-index-lines` (v0.122.0+) | Advisory; tells the agent which lines the call wrote, or for Bash quoted whole (a read-only `grep -F` of the line included), are over 150 characters, with each one's length and title, so it shortens them in the same turn. Lines the call did not carry are not flagged (`/claudemd-doctor` lists those). A command that does not name `MEMORY.md` exits before any `jq`. |
-| `PostToolUse` on `Bash`, when a verification command succeeds (a smoke entry, a test / typecheck / lint / build runner, or runner output) | `verify-log` (v0.105.0+) | Log only: records the working-tree content fingerprint the command ran on, and `evidence-gate` records the fingerprint at each completion claim, for an offline comparison (`scripts/offline-eval/wtree-verdicts.mjs`). Opt-in (`EVIDENCE_WTREE=1`, with `EVIDENCE_GATE=1` for the claim side). A run whose output reports failures is not logged, since a runner piped into `tail` exits 0 when it fails. The fingerprint stages the tree into a temporary index, so modified and untracked, non-ignored file contents (and tree objects) enter `.git/objects` as unreachable objects until `git gc` prunes them, by default after two weeks. |
-| `PostToolUseFailure` on `Bash`, when a test runner (`npm test`, `pytest`, `node --test`, `bash tests/…`, …) exits non-zero and `debug.md` is not yet in this session (a runner piped into `tail` exits 0 when it fails, and is not seen) | `test-failure-debug` (v0.105.0+) | Adds the `debug` spec module as context, once per session, shared with `spec-module-inject`'s once-per-session list. Opt-in (`DEBUG_ON_TEST_FAILURE=1`, default OFF). Spec v9.0 ships no `debug` module, so from plugin 0.122.0 it adds nothing. |
-| `PreToolUse` on `Edit`/`Write`/`NotebookEdit`/`Bash`, when the target is a git repo other than the session's project | `cross-repo-write-check` (v0.95.0+) | Advisory, never a verdict; injects one line per target repo per session (again on a later hit when it could not record that it told): stop and ask unless the user asked for that repo, and use `git worktree add` rather than switching branches in its shared tree. Bash side sees git writes after a literal `cd` or `git -C` only. Opt-in (`CROSS_REPO_WRITE=1`, default OFF); `CROSS_REPO_WRITE_ALLOW` takes colon-separated absolute repo roots (a leading `~/` or `$HOME/` is expanded). |
-| `PostToolUse` on any `Bash` call, at most once per 10 min | `tmp-sweep` (v0.93.0+) | Deletes, detached, the per-run dirs vitest leaves in the temp root and never removes (`<tmp>/<21-char id>/ssr/<sha1>`, 13-45 MB each; on a tmpfs `/tmp` that is RAM). Only the exact vitest signature, only when idle 60 min (24 h while a vitest watcher runs). From v0.119.0 it also deletes agent temp residue (as spec v8 defined it): an `agent-tmp-*` dir of your uid with no `.keep` at its top and no socket or FIFO inside, in which no mtime or ctime is within 72 h, read without following symlinks. From v0.120.0 a dir that is, or holds, a mount of another filesystem is kept (a bind mount of the same filesystem is not detected). Roots: `$TMPDIR`, `/tmp`, `/var/tmp` (from v0.119.0) and `~/.cache/tmp`. Also injects one line when the temp root (`$TMPDIR`, else `/tmp`) is ≥ 80% full. Parallel Bash calls claim the slot atomically, so one sweep runs (a few can overlap only while a lock left by a killed hook is being cleared). **On by default.** |
-| `PostToolUse` after `git merge` / `pull` / `fetch` / `push` or `gh pr merge` | `branch-prune` (v0.93.0+) | Advisory. Lists the local branches whose remote branch was deleted (`[gone]`) and whose tip is on the default branch, plus `worktree-agent-*` branches on it, and tells the session to delete them with the `git branch -d` command it gives, leaving out any the project keeps (v0.110.0+; before, it left that to the user); git re-checks merged-ness and use at the moment of deletion. Never lists the default branch, a worktree checkout or a symbolic ref, nor (`worktree-agent-*` aside) a branch whose upstream still exists or one with no upstream. Names at most 10 per line (0.113.3+; the command covers those 10) and gives the line once per session for the same set, or on every call when it cannot record that it did (an unwritable state directory). From v0.116.0 it also lists `landed` branches — gone or `worktree-agent-*` branches whose work is on the default branch byte for byte (a copy of each commit by `git patch-id --verbatim`, or one squash commit, at the same place, checked by a three-way merge; git 2.40+) — after a rebase merge, a cherry-pick or a squash, which `git branch -d` refuses — with a `git branch -D` command that first checks each branch tip is still the commit it judged. Deletes nothing. Local git only. **On by default.** |
-| `PostToolUse` / `PostToolUseFailure` after a `git branch -d` | `branch-prune` (v0.116.0+) | Advisory. For each branch the command named that is still there (refused, or `\|\| true`), says whether it landed — its work is on the default branch byte for byte, as above, or its tip is on it — and gives the checked `git branch -D` command for those; the others are kept, with up to 3 commits that have no copy or the reason they were not compared (a shallow or partial clone, grafts, no local default branch, merge commits, …), for the session to name under open items. Core §7 of the spec lets a session use `-D` only through this command. Deletes nothing. **On by default.** |
-| `PostToolUse` after assistant text containing banned vocab | `transcript-vocab-scan` | Advisory; logs to rule-hits without blocking. Opt-in (`TRANSCRIPT_VOCAB_SCAN=1`, default OFF) for FP signal collection. |
-| Session end with last assistant turn carrying a §10 report out of order (spec v8 `## 汇报` parts 变更 / 验证 / 遗留, or the v7 four sections), a verification line without a verdict or a v7 `Done:` line without an evidence fingerprint, or `Uncertain:` short hedges without `because` | `transcript-structure-scan` (v0.9.10+) | Stop advisory — closes the audit gap that ~7 self-enforced HARD rules (§iron-law-2 / §10-four-section-order / §10-honesty) had no hook-side feedback signal. Opt-in (`TRANSCRIPT_STRUCTURE_SCAN=1`, default OFF) for FP signal collection; FP-tightened so single-section `Done:` lines never trigger. |
+| Bash: `rm -r`/`-f` (or `find … -delete` / `-exec rm`) on an unchecked variable, an unpinned `npx <pkg>`, a fetch piped into an interpreter (`curl … \| sh`) | `pre-bash-safety-check` | Denies (spec §8). Fix by guarding the variable (`"${DIR:?}/x"`) or pinning the package. Escape tokens below are the user's to give. |
+| `git push` while the branch's newest CI run is red | `ship-baseline-check` | Denies. `known-red baseline: <reason>` in the commit body lets it through. Fails open when `gh` is absent or takes over 2 s. |
+| A push, PR, release, publish or deploy command whose keywords match a `MEMORY.md` entry not yet Read this session | `memory-read-check` | Denies with the list of memory files to Read first. |
+| `git commit` (or a ship command after prose) using a banned word as an unmeasured claim (`significantly`, a bare `N× faster`) | `banned-vocab-check` | Denies with the fix recipe. Reads `-m` and `-F -` messages, not the file of `-F FILE`. |
+| Session start | `session-start-check` | Runs the install on a fresh or upgraded plugin; banners for an available upgrade, an edited or missing installed spec, a failed earlier install, and `tasks/*-paused.md` checkpoints; after a compaction, a reminder to re-read the task's plan. |
+| First prompt after a mid-session plugin upgrade | `version-sync` | Re-runs the install in the background, once per session. |
+| A prompt that asks for a release or a review | `spec-module-inject` | Adds the `ship` or `review` module to context, once per session and again after a compaction. |
+| Session stop with fresh test or probe directories left in temp roots | `sandbox-disposal-check` | Advisory on stderr. Opt-in `SANDBOX_DISPOSAL_BLOCK=1` asks the session to remove the ones it created. |
+| Session stop whose last reply is English while the human writes 中文 | `reply-language-check` | Asks for the same content in 中文, once per turn. Opt-in: `REPLY_LANGUAGE_CHECK=1`, or `=log` to record only; default OFF. |
+| An `Edit`/`Write`/`Bash` that writes a `MEMORY.md` index line over 150 characters | `memory-index-lines` | Advisory naming the lines, so they are shortened in the same turn. |
+| Any `Bash` call, at most once per 10 min | `tmp-sweep` | Deletes, detached, the per-run directories vitest leaves in temp roots, and `agent-tmp-*` directories of your uid idle for 72 h (never one with a `.keep` at its top, a socket or FIFO, or a mount inside). Warns when the temp root is ≥ 80% full. |
+| Session end with file changes after the last test, build or commit | `session-end-check` | Writes `tasks/session-end-<sid>-paused.md` listing them; the next session start lists it. |
 
 ### Execution order (PreToolUse:Bash)
 
-CC runs all configured PreToolUse hooks for `Bash` sequentially in declaration order. **First deny stops the rest** and the tool call is denied. The 5 hooks in the `Bash` matcher group fire in this order (declared in `hooks/hooks.json`; `cross-repo-write-check`, opt-in and advisory, runs on Bash from its own `Edit|Write|NotebookEdit|Bash` group):
+Claude Code runs the four `Bash` PreToolUse hooks in `hooks/hooks.json` order and the first deny stops the call: `pre-bash-safety-check`, `banned-vocab-check`, `ship-baseline-check`, `memory-read-check`. A hook that times out counts as a pass.
 
-1. `pre-bash-safety-check` (§8 SAFETY immutable) — `rm -rf $VAR`, unpinned `npx <pkg>`. First so a §8 violation can never be overridden by a downstream hook.
-2. `spec-module-gate` (core §12) — a release command in a session without `ship.md`; logs by default, denies only under `SPEC_MODULE_GATE=deny`.
-3. `banned-vocab-check` (§10-V) — `git commit` message scan.
-4. `ship-baseline-check` (`ship.md`, CI baseline) — `git push` while base CI is red.
-5. `memory-read-check` (extended §13) — ship/release/deploy commands matching unread MEMORY.md tags.
+**Readonly fast-path**: every PreToolUse:Bash hook exits early on a definitely-read-only command (no shell metacharacters, first word in a safe-reader list such as `ls`, `cat`, `git log`, `git status`, `git diff`). Opt out with `BASH_READONLY_FAST_PATH=0`.
 
-Per-hook timeout (3-5s in `hooks.json`); timeout = treated as exit 0 (pass) per fail-open contract. Stop / SessionStart / UserPromptSubmit / PostToolUse hooks run all declared hooks regardless (none can block; advisories accumulate). Internal hook errors (missing `jq`, malformed event JSON, unreadable patterns file) fail-open; failures do NOT propagate to subsequent hooks.
-
-**Readonly fast-path** (v0.8.3 introduced opt-in default-OFF; **v0.20.0 promoted to default-ON** via §13.3 advisory→enforce gate): the four Bash hooks other than `spec-module-gate` (which matches release commands only) short-circuit when the command is a definitely-read-only shape (no shell-meta, first token in safe-reader whitelist — `ls`, `cat`, `git log`, `git status`, `git diff`, `git rev-parse`, `pwd`, `echo`, `head`, `tail`, etc.). Opt-out: `export BASH_READONLY_FAST_PATH=0` (or any other value than the literal `0` is treated as ON).
+---
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `/claudemd-install` | Bootstrap the current session right after `/plugin install` (copy spec into `~/.claude/`, write manifest, evict legacy entries). Idempotent. CC does not fire `postInstall`, so without this command `install.js` waits until the next `SessionStart`. |
-| `/claudemd-status [--verbose]` | Plugin version + spec version + kill-switch state + logs line count. `--verbose` adds per-hook env-var × event × effective vs persisted state table, the sub-feature toggle group, and the escape-token reference. |
-| `/claudemd-update` | Interactive diff against plugin-shipped spec, then apply-all or cancel (4-file spec set is lockstep — per-file select would dangle §EXT cross-references). |
-| `/claudemd-refresh` | v0.48.0 — one-shot plugin refresh (marketplace update → uninstall → install via the `claude` CLI). Restart Claude Code afterwards; spec + manifest sync is automatic. Fired by the SessionStart upgrade banner. |
-| `/claudemd-audit [N]` | Aggregate rule-hits over last N days (default 30). Top banned-vocab patterns, per-hook deny counts. Slash form takes a bare number (`/claudemd-audit 90`); direct script invocation takes `--days=N` (= form only). |
-| `/claudemd-toggle <hook-name>` | Enable/disable a specific hook by toggling `DISABLE_*_HOOK` in `settings.json` env. |
-| `/claudemd-doctor [--prune-backups=N] [--ack-fail-open]` | Health checks; optionally prune each backup namespace (`~/.claude/backup-*`, `spec-backup-*`, `handhook-backup-*`) to its N newest. Dirs the `backup-namespace-legacy` check reports (pre-0.68.3 spec backups sitting in the personal namespace) are skipped — neither deleted nor counted toward N — and echoed under `pruneSkippedLegacy`. v0.7.1+ also flags rule sections whose bypass:deny ratio > 50% (R-N6 §0.1 demotion candidates). `--ack-fail-open` (v0.114.0) clears a `hook-fail-open` row once its cause is fixed: the events it acknowledges stop counting, and the next prerequisite fail-open a hook records turns the row red again. |
-| `/claudemd-rules [N]` | v0.8.0+ — audit `spec/hard-rules.json` manifest over last N days (default 30 — lowered from 90d in v0.13.1 after the 90d gate was structurally unreachable under typical log retention). Surfaces `demoteCandidates` (hook-enforced rules with 0 fired rows, `hits.fired`) and `staleReviews` (rules whose `last_demote_review` is null/old). |
-| `/claudemd-sparkline [--days=A,B,C]` | v0.8.4+ R-N9 — per-`spec_section` cumulative counts of signal events across 3 windows (default 30/60/90d). Trend arrow compares per-period rate, and shows a direction only for a gap over 20% that the counts could rarely produce at equal rates (exact two-sided 5% test); `(newly active)` / `(silenced)` annotations flag activation/deactivation transitions. Markdown block suitable for CHANGELOG header pre-release. |
-| `/claudemd-clean-residue [--apply]` | Dry-run-by-default cleanup across four scopes: `$TMPDIR` (`claudemd-sync-*` / `claudemd-memtags-hay-*` sentinels, historical `claudemd-(mockgh\|work).*` sandboxes, `claudemd-landed.*` repositories a killed branch-prune judgement left), `~/.claude/tmp` tool-exhaust past the §EXT §7-EXT retention window, the ephemeral per-session classes in `~/.claude/.claudemd-state` (the command's own page lists them), and headless-probe dirs (`-tmp-*`, `-var-tmp`, every transcript `entrypoint: sdk-cli`) in `~/.claude/projects` past the same window, never an interactive session's or one holding a memory file. Exits 3 if `--apply` leaves targets behind. |
-| `/claudemd-design-adopt [check\|remove]` | v0.24.0 — for a UI project, generate a thin, fact-based `DESIGN.md` from its real design-token sources (deterministic detector `scripts/design-detect.js`; evidence-gated rules menu; never invents values) and wire a sentinel block into project CLAUDE.md. `check` verifies pointers resolve; `remove` unwires. Always shows the diff and asks before writing. Manual/opt-in — no SessionStart hook, nothing auto-fires. |
-| `/claudemd-statusline [check\|remove] [--force]` | v0.25.0 — register claudemd's PS1-style statusLine into `~/.claude/settings.json`. Default adopts into an empty slot; `check` reports the current owner with no writes; `remove` restores the prior statusline (or clears the slot) and deletes `~/.claude/claudemd-statusline.sh` unless a host provider still runs it; `--force` takes over another provider's slot, saving its statusLine so `remove` can restore it. Always shows the diff and asks before writing. Install-time auto-adopt is empty-slot-only (opt-out: `CLAUDEMD_NO_STATUSLINE=1`). When another composite provider (e.g. code-graph) owns the slot, claudemd registers as a guest so both segments render, unless the host already runs claudemd's renderer under its own provider id (code-graph's `_previous`), where it reports that and stops; `--supersede=<id>` replaces a named provider. |
-| `/claudemd-uninstall` | Pre-uninstall cleanup: clears manifest + legacy `settings.json` hook entries; add `CLAUDEMD_PURGE=1` to also drop `~/.claude/.claudemd-state/` + the rule-hits log. Run BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
+| `/claudemd-install` | Copy the spec into `~/.claude/` and write the manifest now, instead of at the next session start. Idempotent. |
+| `/claudemd-status [--verbose]` | Plugin and spec versions, kill-switch state, log size. `--verbose` lists every hook's switch and the sub-feature switches. |
+| `/claudemd-update` | Diff the installed spec against the plugin's, then apply all or cancel. |
+| `/claudemd-refresh` | Update the marketplace clone and reinstall the plugin through the `claude` CLI; restart afterwards. |
+| `/claudemd-audit [N]` | Hook decisions over the last N days (default 30): denies, bypasses and fail-opens per hook. |
+| `/claudemd-toggle <hook-name>` | Set or clear one hook's `DISABLE_*_HOOK` in `settings.json`. |
+| `/claudemd-doctor [--prune-backups=N] [--ack-fail-open]` | Health checks and hook self-tests, including `MEMORY.md` lines that name a missing memory file; optionally keep only the N newest backups per namespace; acknowledge a fixed `hook-fail-open` row. |
+| `/claudemd-clean-residue [--apply]` | Dry run by default: stale claudemd sentinels and sandboxes in `$TMPDIR`, old tool exhaust in `~/.claude/tmp`, expired per-session state files, and headless-probe transcript dirs. Exits 3 if `--apply` leaves targets behind. |
+| `/claudemd-design-adopt [check\|remove]` | For a UI project, generate a fact-based `DESIGN.md` from its design tokens and point the project `CLAUDE.md` at it. Shows the diff and asks before writing. |
+| `/claudemd-statusline [check\|remove] [--force]` | Install, inspect or remove the status line. Shows the diff and asks before writing. |
+| `/claudemd-uninstall` | Pre-uninstall cleanup: clears the manifest and legacy `settings.json` hook entries; add `CLAUDEMD_PURGE=1` to also drop `~/.claude/.claudemd-state/` and the log. Run it BEFORE `/plugin uninstall claudemd@claudemd` (see [Uninstall](#uninstall)). |
 
 ---
 
 ## Standalone CLI
 
-The same `banned-vocab.patterns` source the in-CC hook uses is also exposed as a Node CLI for **git commit-msg hooks, GitHub Actions, and other agents** (Codex, Cursor, OpenClaw) — anywhere outside the Claude Code process.
+The banned-vocabulary scan as a Node CLI, for git commit-msg hooks, GitHub Actions and agents outside Claude Code. Stateless: text in, findings and an exit code out.
 
 ```bash
-# After npm publish (operator-driven, not part of plugin install):
 npx claudemd-cli lint "your commit message here"
 npx claudemd-cli lint --stdin < message.txt
-npx claudemd-cli audit ~/.claude/projects/<encoded>/<session>.jsonl
-npx claudemd-cli audit transcript.jsonl --json
-
-# Dev mode (this repo, before npm publish):
-node bin/claudemd-lint.js lint "your commit message here"
-node bin/claudemd-lint.js audit ~/.claude/projects/<encoded>/<session>.jsonl
+npx claudemd-cli audit ~/.claude/projects/<encoded>/<session>.jsonl --json
 ```
 
-| Subcommand | Purpose |
-|---|---|
-| `lint <text>` / `--file` / `--stdin` | Scan commit-message text for §10-V banned vocab. Exit 0 clean / 1 hits / 2 bad arguments or input it cannot use (a missing or unreadable file, text that is not UTF-8), including an empty or blank text argument (`--stdin` or `--file` with empty input still exits 0). |
-| `audit <jsonl-path>` | Scan all assistant-text turns in one Claude Code transcript jsonl (more than one path exits 2; run it once per file). Skips `@ratio` patterns by default (chat prose has different baseline conventions); pass `--include-ratio` to include them. |
-| `--json` | JSON output (machine-readable for CI). |
-| `--commit-msg` / `--no-commit-msg` | (`lint`) Force git commit-message cleanup on/off. Auto-ON for `COMMIT_EDITMSG` / `MERGE_MSG` / `SQUASH_MSG` / `TAG_EDITMSG` / `NOTES_EDITMSG`. |
-| `--comment-char <c>` | (`lint`) git `core.commentChar`. Default `#`. |
-| `--version` / `--help` | Standard. |
+`lint` exits 0 clean, 1 on hits, 2 on bad arguments or unusable input. Given a `COMMIT_EDITMSG`-style path it drops what git drops (the `#` template block and the `-v` diff); for piped input add `--commit-msg`. `--comment-char <c>` matches a non-default `core.commentChar`.
 
-**Commit-message hook example (`.git/hooks/commit-msg`)** — a `commit-msg` hook, not `pre-commit`: git hands `commit-msg` the message file as `$1` and gives `pre-commit` no arguments (an empty `lint ""` exits 2 rather than passing):
+**commit-msg hook (`.git/hooks/commit-msg`)** — git passes the message file as `$1`:
 
 ```bash
 #!/usr/bin/env bash
 npx claudemd-cli lint "$1" || exit 1
 ```
 
-> **Pass the path, not the bytes.** A `commit-msg` hook receives the message file *before* git's cleanup pass, so when you commit through an **editor** it still contains git's `#` template/status block and — under `git commit -v` — the whole staged diff below the `>8` scissors line. git discards that before storing the commit, so `lint` does too: hand it the **path** and it recognizes the filename and scans only what git will keep. A banned word sitting in your staged diff no longer blocks a clean message. If your hook pipes instead (`… --stdin < "$1"`), add `--commit-msg` to get the same cleanup.
->
-> This is scoped to git-authored template text, not to `#` in general. Under `git commit -m` / `-F` / `--cleanup=whitespace|verbatim` git **keeps** column-0 `#` lines in the stored message, and so does `lint` — a `#` heading in a `-F release-notes.md` body stays in scope. Indented `# …` always stays in scope (git strips at column 0 only). Non-default `core.commentChar` → pass `--comment-char <c>`; `core.commentChar=auto` is not detected, so set it explicitly there.
-
-**GitHub Actions example (`.github/workflows/commit-msg-lint.yml`)** — lints the message of every commit in a pull request and fails the check if any has a hit. These are stored messages, already cleaned by git, so they go through `--stdin` without `--commit-msg`: a `#` line git kept is part of the message and stays in scope. The package version is pinned, unlike the one-off commands above: a workflow runs unattended on every push, so it should run the version you chose, and you bump it when you choose to (the plugin's `pre-bash-safety-check` blocks unpinned `npx <pkg>` for the same reason). This repository's checks (`npm run check` and CI) fail when the pin below differs from `package.json`'s version, so it names the release this README ships with; put the version you want there.
+**GitHub Actions** — pin the version, since a workflow runs unattended:
 
 ```yaml
 name: commit-msg lint
@@ -196,7 +153,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # An assignment, so a bad range fails the step instead of linting nothing.
           commits=$(git rev-list "$BASE_SHA..$HEAD_SHA")
           status=0
           for c in $commits; do
@@ -206,215 +162,86 @@ jobs:
           exit "$status"
 ```
 
-The CLI does NOT depend on `~/.claude/` state — pure stateless input → stdout/stderr + exit code. Same enforcement, anywhere Node 20+ runs.
-
 ---
 
 ## Kill-switches
 
-All visible in `/claudemd-status`. Three tiers:
+`/claudemd-status --verbose` lists them all with their current state.
 
-**1. Plugin-wide.** Short-circuits every hook before any logic runs:
+**Plugin-wide**: `DISABLE_CLAUDEMD_HOOKS=1` turns every hook off.
 
-```bash
-export DISABLE_CLAUDEMD_HOOKS=1
-```
-
-**2. Per-hook.** Disable one, leave others active:
+**Per hook** (or `/claudemd-toggle <hook-name>`):
 
 ```bash
-export DISABLE_BANNED_VOCAB_HOOK=1               # or
-export DISABLE_PRE_BASH_SAFETY_HOOK=1            # or
-export DISABLE_SHIP_BASELINE_HOOK=1              # or
-export DISABLE_RESIDUE_AUDIT_HOOK=1              # or
-export DISABLE_MEMORY_READ_HOOK=1                # or
-export DISABLE_MEMORY_HINT_HOOK=1                # v0.11.0+ — UserPromptSubmit MEMORY.md tag pre-matcher (proactive §11 hint)
-export DISABLE_SPEC_MODULE_INJECT_HOOK=1         # v0.101.0+ — UserPromptSubmit spec-module injection (ship / review modules)
-export DISABLE_SPEC_MODULE_GATE_HOOK=1           # v0.101.0+ — PreToolUse ship-module check before release commands (SPEC_MODULE_GATE=log|advisory|deny|off, default log)
-export DISABLE_SANDBOX_DISPOSAL_HOOK=1           # Stop §8.V4 residue scan (opt-in block: SANDBOX_DISPOSAL_BLOCK=1, v0.97.0+; first-sight timing: SANDBOX_DISPOSAL_IMMEDIATE=1, v0.98.0+)
-export DISABLE_SESSION_START_HOOK=1              # or
-export DISABLE_SESSION_SUMMARY_HOOK=1            # v0.8.0+ — Stop hook writing summary
-export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync (mid-session upgrade re-install)
-export DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1      # PostToolUse §10-V advisory scan
-export DISABLE_REWORK_BREAKER_HOOK=1             # v0.90.0+ — PostToolUse:Edit|Write|Bash G2 rework advisory (§1 root-cause; opt-in REWORK_BREAKER=1)
-export DISABLE_MEMORY_INDEX_LINES_HOOK=1         # v0.122.0+ — PostToolUse:Edit|Write|Bash advisory: an index line just written to MEMORY.md is over 150 characters
-export DISABLE_DEFERRED_NOTICE_HOOK=1            # v0.105.0+ — UserPromptSubmit delivery of observations a Stop hook queued (evidence-gate under EVIDENCE_GATE=1 + EVIDENCE_GATE_DELIVER=1)
-export DISABLE_VERIFY_LOG_HOOK=1                 # v0.105.0+ — PostToolUse:Bash working-tree fingerprint log for verification runs (opt-in EVIDENCE_WTREE=1)
-export DISABLE_TEST_FAILURE_DEBUG_HOOK=1         # v0.105.0+ — PostToolUseFailure:Bash debug.md on a failing test run (opt-in DEBUG_ON_TEST_FAILURE=1)
-export DISABLE_CROSS_REPO_WRITE_HOOK=1           # v0.95.0+ — PreToolUse cross-repo write advisory (§5 scope; opt-in CROSS_REPO_WRITE=1)
-export DISABLE_TMP_SWEEP_HOOK=1                  # v0.93.0+ — PostToolUse:Bash vitest tmp-dir sweep + temp-root pressure advisory
-export DISABLE_BRANCH_PRUNE_HOOK=1               # v0.93.0+ — Bash hint listing merged (and, v0.116.0+, landed) local branches; verdict after a git branch -d
-export DISABLE_EVIDENCE_GATE_HOOK=1              # v0.90.0+ — Stop G1b Iron Law #2 evidence-existence advisory (opt-in EVIDENCE_GATE=1)
-export DISABLE_LEDGER_STALENESS_HOOK=1           # v0.91.0+ — Stop G7 long-task ledger staleness advisory (opt-in LEDGER_STALENESS=1)
-export DISABLE_REPLY_LANGUAGE_HOOK=1            # v0.96.0+ — Stop 中文 restatement of an English reply (§1 language; opt-in REPLY_LANGUAGE_CHECK=1|log)
-export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 report-shape advisory
-export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
-export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd session-exit checkpoint
-export DISABLE_SESSION_EXTENDED_READ_HOOK=1      # v0.10.1+ — PreToolUse:Read §13.1-extended-read denominator signal
+export DISABLE_PRE_BASH_SAFETY_HOOK=1
+export DISABLE_SHIP_BASELINE_HOOK=1
+export DISABLE_MEMORY_READ_HOOK=1
+export DISABLE_BANNED_VOCAB_HOOK=1
+export DISABLE_SESSION_START_HOOK=1
+export DISABLE_USER_PROMPT_SUBMIT_HOOK=1         # version-sync
+export DISABLE_SPEC_MODULE_INJECT_HOOK=1
+export DISABLE_SANDBOX_DISPOSAL_HOOK=1
+export DISABLE_REPLY_LANGUAGE_HOOK=1
+export DISABLE_MEMORY_INDEX_LINES_HOOK=1
+export DISABLE_TMP_SWEEP_HOOK=1
+export DISABLE_SESSION_END_CHECK_HOOK=1
 ```
 
-**2a. Per-sub-feature** (v0.4.0+). Sub-flags inside an enabled hook, named without the `_HOOK` suffix:
+**Parts of a hook**:
 
-```bash
-export DISABLE_UPSTREAM_CHECK=1            # the upstream-tag check and the stale-
-                                           # registration banner of session-start-check;
-                                           # bootstrap-on-mismatch behavior remains active.
+| Variable | Turns off |
+|---|---|
+| `DISABLE_UPSTREAM_CHECK=1` | session start's upgrade-available check and stale-registration banner |
+| `DISABLE_COMPACT_REREAD_REMINDER=1` | the post-compaction re-read reminder |
+| `DISABLE_PAUSED_BANNER=1` | the list of `tasks/*-paused.md` checkpoints at session start |
+| `DISABLE_SPEC_DRIFT_BANNER=1` | the edited-or-missing installed spec banner (`/claudemd-doctor` still reports it) |
+| `DISABLE_BOOTSTRAP_FAIL_BANNER=1` | the banner about an earlier failed background install |
+| `DISABLE_USER_CONTENT_BANNER=1` | the banner naming the backup of a hand-written `~/.claude/CLAUDE.md` |
+| `CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1` | the synchronous first install; the spec then reaches the model one session later |
+| `DISABLE_RULE_HITS_LOG=1` | every append to `~/.claude/logs/claudemd.jsonl`; a deny still denies |
+| `DISABLE_HOOK_ROOT_RECORD=1` | the rewrite of `~/.claude/.claudemd-state/hook-root.json`, which `DISABLE_RULE_HITS_LOG` does not cover; an existing file is still what `/claudemd-doctor` reads |
+| `BANNED_VOCAB_PROSE_SCAN=0` | banned-vocab's scan of the prose before a ship command (the commit-message scan stays) |
+| `CLAUDEMD_PATH2_DRY_RUN=1` | that prose scan's deny; it logs `deny-prose-dry-run` instead |
 
-export DISABLE_SESSION_SUMMARY_BANNER=1    # v0.8.0+ — only the SessionStart banner-emit
-                                           # half of session-summary; the Stop-side write
-                                           # of last-session-summary.json continues so
-                                           # the data is captured for /claudemd-audit
-                                           # but no additionalContext line is injected.
+**Per command** — these tokens are the user's exit, not the agent's (spec §8):
 
-export DISABLE_COMPACT_REREAD_REMINDER=1   # v0.27.0+ — only the post-compaction §11
-                                           # re-read reminder banner (SessionStart with
-                                           # source=="compact"); compact events still
-                                           # skip bootstrap/upgrade-banner either way.
-
-export DISABLE_PAUSED_BANNER=1             # v0.98.0+ — only the SessionStart list of
-                                           # tasks/*-paused.md checkpoints (names + ages,
-                                           # 5 newest; startup / resume / clear, never
-                                           # compact).
-
-export DISABLE_LEDGER_INJECT=1             # v0.90.0+ — only the G7 long-task ledger
-                                           # injection (SessionStart source=="compact" or
-                                           # "resume" re-injects tasks/<slug>-ledger.md's
-                                           # Decisions + Next); the re-read reminder above
-                                           # still fires.
-
-export CLAUDEMD_FORCE_ASYNC_BOOTSTRAP=1    # v0.75.0+ — restores the pre-0.75.0 detached
-                                           # bootstrap on the FRESH-install path (no
-                                           # manifest yet), which otherwise runs install.js
-                                           # synchronously inside the 5s SessionStart
-                                           # budget so ~/.claude/CLAUDE.md is on disk
-                                           # before Claude Code assembles context. Set it
-                                           # if a slow/networked $HOME makes that wait
-                                           # unacceptable; the cost is that the spec first
-                                           # reaches the model one session later. Upgrades
-                                           # are detached either way.
-
-export DISABLE_USER_CONTENT_BANNER=1       # v0.75.0+ — only the SessionStart notice
-                                           # that install.js moved a hand-written
-                                           # ~/.claude/CLAUDE.md into a backup dir.
-                                           # The backup and the install-time stderr
-                                           # WARN still happen; what stops is the
-                                           # in-session banner naming the backup
-                                           # path and the restore command. The hook
-                                           # still consumes its sentinel on this
-                                           # path, so opting out leaves no residue
-                                           # and cannot fire a late banner naming a
-                                           # since-pruned backup dir.
-
-export DISABLE_BOOTSTRAP_FAIL_BANNER=1     # v0.50.0+ — only the SessionStart banner
-                                           # reporting that a PRIOR session's background
-                                           # install.js upgrade failed; the failure
-                                           # sentinel + bootstrap.log trail keep being
-                                           # written so the state stays diagnosable.
-
-export DISABLE_SPEC_DRIFT_BANNER=1         # only the SessionStart banner reporting
-                                           # installed-spec vs plugin-spec drift; the
-                                           # version check itself still runs, so
-                                           # /claudemd-doctor keeps reporting the drift.
-
-export DISABLE_RULE_HITS_LOG=1             # stop every hook from appending to
-                                           # ~/.claude/logs/claudemd.jsonl. Enforcement
-                                           # is unaffected (a deny still denies); what
-                                           # stops is the telemetry /claudemd-audit,
-                                           # /claudemd-rules and the §13.1 demote loop
-                                           # read. Set it while hand-probing a hook so
-                                           # the probe does not land in the real corpus.
-                                           # With it set, an install also keeps each
-                                           # older plugin-cache folder that has no
-                                           # .orphaned_at mark (cachePruned.held,
-                                           # no-log-signal; about 11 MB each) until
-                                           # Claude Code marks it or the log is on again.
-                                           # It does NOT cover hook-root.json — see below.
-
-export DISABLE_HOOK_ROOT_RECORD=1          # stop SessionStart/SessionEnd rewriting
-                                           # ~/.claude/.claudemd-state/hook-root.json,
-                                           # the record of which plugin root actually
-                                           # fired. Separate switch because
-                                           # DISABLE_RULE_HITS_LOG stops the jsonl and
-                                           # no other write: a sandboxed probe that set
-                                           # only that one was still writing to the live
-                                           # state dir. Setting it stops the rewrite
-                                           # only: an existing hook-root.json is still
-                                           # what /claudemd-doctor reads, so remove that
-                                           # file too for the hook-drift row to fall
-                                           # back to cache resolution.
-
-export DISABLE_BATCH_CADENCE_ADVISORY=1    # v0.19.2+ — only the §13.2 batch-review
-                                           # cadence advisory inside session-end-check;
-                                           # mid-SPINE warn-on-unvalidated-mutation
-                                           # behavior remains active. Threshold also
-                                           # configurable via CLAUDEMD_BATCH_THRESHOLD=N
-                                           # (positive integer, default 20).
-
-export BANNED_VOCAB_PROSE_SCAN=0           # v0.21.0+ — disable only the Path 2 prose
-                                           # scan in banned-vocab-check (the v0.21.0
-                                           # §13.3 Gate 2 promotion that denies
-                                           # ship-flow commands when the preceding
-                                           # assistant turn's prose contains a
-                                           # high-fire §10-V pattern). Path 1
-                                           # commit-message scan remains active.
-
-export CLAUDEMD_PATH2_DRY_RUN=1            # v0.21.1+ — Path 2 observability mode.
-                                           # When set, ship-verb + prior-prose §10-V
-                                           # match logs a `deny-prose-dry-run` event
-                                           # row to ~/.claude/logs/claudemd.jsonl
-                                           # instead of denying. Grep the rows to
-                                           # measure true-positive vs false-positive
-                                           # rate before committing to live deny.
-                                           # Sample: jq -r 'select(.event=="deny-prose-dry-run") | .extra.matched' ~/.claude/logs/claudemd.jsonl
-```
-
-**3. Per-invocation escape hatches.** Embed in the command itself, no env var needed:
-
-| Escape | Where | Bypasses |
+| Token | Where | Bypasses |
 |---|---|---|
 | `[allow-banned-vocab]` | commit message | `banned-vocab-check` |
 | `known-red baseline: <reason>` | commit body | `ship-baseline-check` |
-| `[skip-memory-check]` | bash command string | `memory-read-check` |
-| `[allow-rm-rf-var]` | bash command string | `pre-bash-safety-check` (rm-with-var path only) |
-| `[allow-npx-unpinned]` | bash command string | `pre-bash-safety-check` (unpinned npx path only) |
-| `[allow-curl-sh]` | bash command string | `pre-bash-safety-check` (fetch-into-interpreter path only) |
+| `[skip-memory-check]` | command string | `memory-read-check` |
+| `[allow-rm-rf-var]` | command string | `pre-bash-safety-check`, rm on a variable |
+| `[allow-npx-unpinned]` | command string | `pre-bash-safety-check`, unpinned npx |
+| `[allow-curl-sh]` | command string | `pre-bash-safety-check`, fetch into an interpreter |
 
 ---
 
 ## Update
 
-Claude Code has **no** `/plugin update` slash command — it's silently ignored as unrecognized. The canonical upgrade is one command (v0.48.0+):
+Claude Code has no `/plugin update` command. Use:
 
 ```
 /claudemd-refresh                                   # marketplace update → uninstall → install, then restart
 ```
 
-Manual fallback (e.g. the `claude` CLI is not on PATH):
+Manual fallback (the `claude` CLI is not on `PATH`):
 
 ```
-/plugin marketplace update claudemd                 # refresh local marketplace clone (git fetch)
-/plugin uninstall claudemd@claudemd                 # remove old plugin version
-/plugin install claudemd@claudemd                   # install latest from refreshed clone
-/reload-plugins                                     # apply changes to current session
+/plugin marketplace update claudemd
+/plugin uninstall claudemd@claudemd
+/plugin install claudemd@claudemd
+/reload-plugins
 ```
-
-Or open the interactive UI via `/plugin` → **Installed** tab → select `claudemd` → follow upgrade prompts.
 
 > **Other open Claude Code windows:** run `/reload-plugins` in each of them too. Every already-running session pinned its hook paths to the old versioned plugin-cache dir at startup, so until it reloads or restarts it keeps running the previous version's hooks. Those hooks still work: a refresh does not delete the old dir, which stays for at least 14 days (Claude Code marks it for cleanup).
 
-After the plugin upgrade, sync the shipped spec into `~/.claude/`:
-
-```
-/claudemd-update
-```
-
-The command prints per-file diff summary, then prompts `apply-all` or `cancel`. Per-file select is intentionally not supported — the 4-file spec set (`CLAUDE.md` + `CLAUDE-extended.md` + `CLAUDE-changelog.md` + `OPERATOR.md`) evolves lockstep, and mixing versions would dangle `§EXT §X-EXT` cross-references in Core. `apply-all` also syncs the `~/.claude/spec-modules/` mirror, which the diff summary does not list. Backup is automatic (retained to 5). `/claudemd-update` never fetches from GitHub — it only diffs the plugin-cache spec against your `~/.claude/CLAUDE*.md` + `~/.claude/OPERATOR.md`. The network fetch is Claude Code's job (via `/plugin marketplace update`).
+The next session start syncs the spec into `~/.claude/`. `/claudemd-update` does it now, after showing the diff.
 
 ---
 
 ## Uninstall
 
-Claude Code's marketplace lifecycle does not fire `preUninstall`, so `/plugin uninstall claudemd@claudemd` alone leaves orphan state behind (`~/.claude/.claudemd-manifest.json`, `~/.claude/.claudemd-state/`, `~/.claude/logs/claudemd.jsonl`). Use the **two-step flow**:
+Claude Code does not fire `preUninstall`, so run the cleanup first:
 
 ```
 /claudemd-uninstall                    # clear manifest (+ state & log with CLAUDEMD_PURGE=1)
@@ -423,59 +250,29 @@ Claude Code's marketplace lifecycle does not fire `preUninstall`, so `/plugin un
 
 Reversing the order is the orphan-state vector — after `/plugin uninstall`, `${CLAUDE_PLUGIN_ROOT}` is no longer set (the cache folder stays on disk until Claude Code deletes it, but no command points at it), with no in-tree tool to clean up afterwards. `/claudemd-doctor` flags `[△] plugin cache: orphan manifest …` if you've already hit this.
 
-### Spec disposition
+What happens to the installed spec:
 
-`/claudemd-uninstall` defaults to `keep` (leaves `~/.claude/CLAUDE*.md` in place). A slash command takes no env vars, so pick `restore` by typing `/claudemd-uninstall restore`; any other argument (`/claudemd-uninstall delete`, say) gets a list of the options and a question, which you answer in the next message; the command runs `scripts/uninstall.js` with the env vars below (the same ones work when you run the script directly):
+| Ask for | Behavior |
+|---|---|
+| `/claudemd-uninstall` (keep, the default) | `~/.claude/CLAUDE*.md` stays in place. |
+| `/claudemd-uninstall restore` | Puts your newest `~/.claude/backup-<ISO>/` files back; a home file that is not the spec and differs from the backup is kept and listed. Then run `/plugin uninstall`, or the next session start installs the spec again. |
+| a full removal | Asks once more, then removes the four spec files and the `spec-modules/*.md` files. |
 
-| Option | Type / ask for | Env vars the script reads | Behavior |
-|---|---|---|---|
-| `keep` (default) | `/claudemd-uninstall` | (none) | `~/.claude/CLAUDE*.md` left in place; settings.json hook entries cleared. |
-| `restore` | `/claudemd-uninstall restore` | `CLAUDEMD_SPEC_ACTION=restore` | Puts the most recent `~/.claude/backup-<ISO>/*.md` back in `~/.claude/` (a file that was a symlink comes back as a link to the file it pointed at, absolute also when the original was relative; one whose target is gone is skipped), except over a home file that is not the spec and differs from the backup (listed in `kept`). Backups that hold only spec files are not counted as the most recent unless every backup is one: a pre-0.68.3 `/claudemd-update` backed up the spec files it replaced there, and a dir counts as one of those when it holds one or more spec files and nothing else, with or without `CLAUDE.md` (an update where `CLAUDE.md` matched the plugin's left it out), each a regular file whose first line is the `# AI-CODING-SPEC …` heading (notes added below that heading do not change this); the ones newer than the backup restored are listed in `skippedSpecOnly` and left in place. Use this if your install-time stderr showed `[claudemd] WARN: existing ~/.claude/CLAUDE.md does not look like a claudemd spec` — your hand-written user-global instructions are sitting in the backup waiting to be brought back. Then run `/plugin uninstall claudemd@claudemd`: while the plugin stays installed, the next session start installs the spec over the restored file again. |
-| `delete` | ask for a full removal | `CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1` | Hard-AUTH: removes all four spec files (`CLAUDE*.md` + `OPERATOR.md`) and every regular `*.md` file in `~/.claude/spec-modules/`. After a default uninstall (no manifest left), only spec files whose first line is the `# AI-CODING-SPEC` H1 and only the module files claudemd generated (their `# AI-CODING-SPEC … — module: <name>` heading) go; the rest are listed in `kept`. |
+A purge (add `CLAUDEMD_PURGE=1`) also drops `~/.claude/.claudemd-state/` and the log. It leaves your backups (`backup-<ISO>/`, `spec-backup-<ISO>/`, `settings.json.claudemd-backup-<ISO>`) for you to delete.
 
-Asking for a purge (`CLAUDEMD_PURGE=1`) also drops `~/.claude/.claudemd-state/` and your rule-hits log.
-
-**What `--purge` deliberately leaves**: `~/.claude/settings.json.claudemd-backup-<ISO>` — the copy of your `settings.json` taken before install rewrote it, and `~/.claude/backup-<ISO>/` / `spec-backup-<ISO>/`. Purge removes claudemd's own state; it does not remove your data, and these files are the copies that exist so `restore` has something to restore from. Delete them by hand once you are sure you no longer want them.
-
-### Direct script invocation (advanced fallback)
-
-If `/claudemd-uninstall` is unavailable (you already ran `/plugin uninstall` first and want to clean up by reaching into the cache before it gets pruned, or you need to script the uninstall outside CC):
-
-```bash
-CLAUDEMD_SPEC_ACTION=keep     node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=restore  node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
-CLAUDEMD_SPEC_ACTION=delete CLAUDEMD_CONFIRM=1 node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js
-```
-
-The slash command and the script are equivalent — the slash command just supplies `${CLAUDE_PLUGIN_ROOT}` for you.
-
-Once the cache is gone too, restore your own `CLAUDE.md` by hand: copy `CLAUDE.md` from the newest `~/.claude/backup-<ISO>/` whose `CLAUDE.md` is your own to `~/.claude/CLAUDE.md` (a pre-0.68.3 `/claudemd-update` can have left newer ones holding only spec files, whose first line is the `# AI-CODING-SPEC …` heading).
+Without the plugin, run the script from the cache: `CLAUDEMD_SPEC_ACTION=keep|restore node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/uninstall.js`.
 
 ---
 
 ## Troubleshooting
 
-**`Plugin "claudemd" not found in any marketplace`** — you forgot the `/plugin marketplace add sdsrss/claudemd` step. Re-run it, then retry install.
+**`Plugin "claudemd" not found in any marketplace`** — run `/plugin marketplace add sdsrss/claudemd` first.
 
-**Hooks don't fire / `~/.claude/CLAUDE*.md` not present after install** — Claude Code's `postInstall` lifecycle is not honored, so `install.js` runs from the `SessionStart` hook on your next session, not at install time. Three options:
+**No `~/.claude/CLAUDE.md` after install** — run `/claudemd-install`, or start a new session.
 
-1. **Recommended**: run `/claudemd-install` in your current session. Wraps `scripts/install.js` exactly the same way `SessionStart` does — idempotent, prints a JSON summary.
-2. Start a fresh Claude Code session (`SessionStart` fires the bootstrap automatically).
-3. Run the script manually outside CC (e.g. shell scripting): `node ~/.claude/plugins/cache/claudemd/claudemd/<version>/scripts/install.js` (find `<version>` with `ls ~/.claude/plugins/cache/claudemd/claudemd/ | sort -V | tail -1`).
+**`ship-baseline-check` passes on red CI** — `gh` is missing, unauthenticated or slow. `/claudemd-doctor` reports `gh: missing`, and `ship-baseline:gh-failed` / `gh-timeout` rows under `hook-fail-open`.
 
-Verify with `/claudemd-status` — the "log.lines" count should increment after the next hook fires.
-
-**`/plugin update claudemd` does nothing / empty stdout** — `/plugin update` is not a valid Claude Code slash command; CC silently ignores unrecognized commands. Use `/claudemd-refresh` — or the manual sequence in the [Update](#update) section: `/plugin marketplace update claudemd` → `/plugin uninstall claudemd@claudemd` → `/plugin install claudemd@claudemd` → `/reload-plugins`. If that also fails (marketplace clone refuses to refresh), manually `git -C ~/.claude/plugins/marketplaces/claudemd fetch origin main --tags && git merge --ff-only origin/main`, then `git archive v<version> | tar -x -C ~/.claude/plugins/cache/claudemd/claudemd/<version>/`, then run that version's `scripts/install.js`.
-
-**`Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated with a plugin`** (5 errors on every `Bash` tool call + every session end) — you're on claudemd 0.1.2 / 0.1.3 / 0.1.4. Those releases wrote hook commands into `~/.claude/settings.json` under the literal `${CLAUDE_PLUGIN_ROOT}` token, but the CC harness only expands that variable for hooks defined in a plugin's own `hooks/hooks.json` — never in `settings.json`. The fix is v0.1.5+, which moves hook registration into the plugin's `hooks/hooks.json` (where the token expands correctly) and evicts the stale settings.json entries on install. Upgrade via the canonical sequence in the [Update](#update) section, then restart the Claude Code session to clear the cached hook registry.
-
-**`ship-baseline-check` passes on red CI** — `gh` CLI is not installed, or `gh run list` failed or took over 2 s (authentication, network). Install with `brew install gh` / `apt-get install gh` and run `gh auth login`. Check with `/claudemd-doctor`: it reports `gh: missing` if absent, and from v0.115.0 counts `ship-baseline:gh-failed` / `gh-timeout` rows under `hook-fail-open` (could not evaluate) for repositories with a github.com remote.
-
-**CI matrix fails on macOS** — our own CI installs `coreutils` for GNU `timeout`. If you're running hooks outside the bundled CI, ensure `timeout` is on PATH (`brew install coreutils && export PATH="$(brew --prefix coreutils)/libexec/gnubin:$PATH"`).
-
-**`/claudemd-doctor` reports backup growth** — run `/claudemd-doctor --prune-backups=5` to keep only the 5 most recent.
-
-**`PreToolUse:Bash hook error ... No such file or directory`** pointing at `~/.claude/hooks/banned-vocab-check.sh` — Claude Code loaded `settings.json` at session start and cached the old hand-install hook entry in memory. `install.js` migrated the on-disk entry to the cache path and moved the original shell file to `~/.claude/backup-*/hooks/`, but the running session's hook registry is still stale. Exit and restart the Claude Code session — settings.json is re-read from disk, and the error stops. (This applies to any mid-session `settings.json` change, not just claudemd.)
+**A hook error naming a path under `~/.claude/hooks/`** — the running session cached an old hand-installed hook entry from `settings.json`. Restart Claude Code.
 
 ---
 
@@ -483,35 +280,24 @@ Verify with `/claudemd-status` — the "log.lines" count should increment after 
 
 ```
 claudemd/
-├── .claude-plugin/
-│   ├── plugin.json           # minimal manifest (name, version, author, license, keywords)
-│   └── marketplace.json      # marketplace catalog entry
-├── hooks/                    # 28 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags, spec-module, verify-cmd, wtree)
-│   └── hooks.json            # authoritative hook registration (v0.1.5+); CC expands ${CLAUDE_PLUGIN_ROOT} here
-├── commands/                 # 16 slash-command markdown files
-├── bin/                      # standalone CLI entrypoint (claudemd-lint.js → `npx claudemd-cli` on npmjs.org)
-├── scripts/                  # 22 Node.js scripts + scripts/lib/ (single-source registry, lint, etc.)
-├── spec/                     # shipped v9.0 CLAUDE*.md trio + OPERATOR.md + hard-rules.json manifest
-├── tests/                    # hook shell tests + Node.js tests + integration + fixtures
-├── docs/                     # ADDING-NEW-HOOK.md + RULE-HITS-SCHEMA.md + superpowers/
-└── .github/workflows/        # ci.yml (ubuntu+macOS × node 20/22/24) + npm-publish.yml (tag-triggered)
+├── .claude-plugin/           # plugin.json + marketplace.json
+├── hooks/                    # 12 shell hooks + hooks/lib/ (hook-common, rule-hits, platform, memory-tags, spec-module)
+│   └── hooks.json            # hook registration; CC expands ${CLAUDE_PLUGIN_ROOT} here
+├── commands/                 # 11 slash-command markdown files
+├── bin/                      # standalone CLI (claudemd-lint.js → `npx claudemd-cli`)
+├── scripts/                  # 16 Node.js scripts + scripts/lib/
+├── spec/                     # the spec: CLAUDE.md, CLAUDE-extended.md, modules, OPERATOR.md, hard-rules.json
+├── tests/                    # hook shell tests, Node tests, integration, fixtures
+└── docs/                     # ARCHITECTURE.md, HOOK-PROTOCOL.md, RULE-HITS-SCHEMA.md, …
 ```
 
----
-
-## Extending
-
-- **Add a new hook** — see [`docs/ADDING-NEW-HOOK.md`](docs/ADDING-NEW-HOOK.md) for the full checklist (hook script + test + plugin registration + telemetry gates + docs + the content gates a new hook trips + version bump).
-- **Rule-hits log schema** — [`docs/RULE-HITS-SCHEMA.md`](docs/RULE-HITS-SCHEMA.md) for the JSONL row format used by `/claudemd-audit`.
-- **Design rationale + decisions log** — [`docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md`](docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md).
+Hooks are frozen: bug fixes and removals only (`spec/OPERATOR.md` §13.3). `docs/ADDING-NEW-HOOK.md` records what a new hook would need.
 
 ---
 
 ## Changelog
 
-Every release is recorded in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) on GitHub. It is not shipped in the npm tarball — at 1.3 MB it is larger than the whole runtime (133 KB unpacked, 47 KB compressed), and `npx claudemd-cli` re-downloads that tarball on every cold run.
-
----
+Every release is in [`CHANGELOG.md`](https://github.com/sdsrss/claudemd/blob/main/CHANGELOG.md) and on the GitHub Releases page. It is not shipped in the npm tarball.
 
 ## License
 

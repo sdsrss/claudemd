@@ -48,25 +48,25 @@ test('toggle re-enables banned-vocab (clears kill-switch)', async () => {
 });
 
 test('R15: an opt-in hook says it stays off until its opt-in variable is set', async () => {
-  // evidence-gate runs only with EVIDENCE_GATE=1. The toggle flips the kill
+  // reply-language runs only with REPLY_LANGUAGE_CHECK=1. The toggle flips the kill
   // switch alone, so on a fresh install it answered "disabled" for a hook that
   // was already off, then "enabled" for one that still exited at its gate.
-  const saved = process.env.EVIDENCE_GATE;
-  delete process.env.EVIDENCE_GATE;
+  const saved = process.env.REPLY_LANGUAGE_CHECK;
+  delete process.env.REPLY_LANGUAGE_CHECK;
   try {
-    const off = await toggle('evidence-gate');
+    const off = await toggle('reply-language');
     assert.equal(off.newState, 'disabled');
-    assert.match(off.note, /opt-in.*EVIDENCE_GATE/);
-    const on = await toggle('evidence-gate');
+    assert.match(off.note, /opt-in.*REPLY_LANGUAGE_CHECK/);
+    const on = await toggle('reply-language');
     assert.equal(on.newState, 'enabled');
-    assert.match(on.note, /inactive until EVIDENCE_GATE=1/);
+    assert.match(on.note, /inactive until REPLY_LANGUAGE_CHECK=1/);
 
     const p = path.join(tmpHome, '.claude/settings.json');
     const s = JSON.parse(fs.readFileSync(p, 'utf8'));
-    s.env.EVIDENCE_GATE = '1';
+    s.env.REPLY_LANGUAGE_CHECK = '1';
     fs.writeFileSync(p, JSON.stringify(s));
     assert.equal(
-      (await toggle('evidence-gate')).note,
+      (await toggle('reply-language')).note,
       undefined,
       'opted in: the kill switch is the whole story'
     );
@@ -74,20 +74,20 @@ test('R15: an opt-in hook says it stays off until its opt-in variable is set', a
 
     // R18 L3: a value that is SET but not "1" is not "unset", and a JSON number
     // 1 opts in like the string does.
-    s.env.EVIDENCE_GATE = '0';
+    s.env.REPLY_LANGUAGE_CHECK = '0';
     fs.writeFileSync(p, JSON.stringify(s));
-    assert.match((await toggle('evidence-gate')).note, /EVIDENCE_GATE is "0", not 1/);
-    s.env.EVIDENCE_GATE = 1;
+    assert.match((await toggle('reply-language')).note, /REPLY_LANGUAGE_CHECK is "0", not 1 or log/);
+    s.env.REPLY_LANGUAGE_CHECK = 1;
     fs.writeFileSync(p, JSON.stringify(s));
-    assert.equal((await toggle('evidence-gate')).note, undefined, 'a numeric 1 counts as opted in');
+    assert.equal((await toggle('reply-language')).note, undefined, 'a numeric 1 counts as opted in');
 
     // R20 L7: reply-language opts in with 1 OR log; the note names both.
     s.env.REPLY_LANGUAGE_CHECK = '2';
     fs.writeFileSync(p, JSON.stringify(s));
     assert.match((await toggle('reply-language')).note, /REPLY_LANGUAGE_CHECK is "2", not 1 or log/);
   } finally {
-    if (saved === undefined) delete process.env.EVIDENCE_GATE;
-    else process.env.EVIDENCE_GATE = saved;
+    if (saved === undefined) delete process.env.REPLY_LANGUAGE_CHECK;
+    else process.env.REPLY_LANGUAGE_CHECK = saved;
   }
 });
 
@@ -95,40 +95,40 @@ test('a project settings file decides over the user file, for the opt-in value a
   // Claude Code layers settings env: .claude/settings.local.json over
   // .claude/settings.json over ~/.claude/settings.json (docs, env-vars
   // "Precedence"). The toggle read only the user file, so a user-level "0"
-  // under the project's EVIDENCE_GATE=1 drew "not active", and a project
+  // under the project's REPLY_LANGUAGE_CHECK=1 drew "not active", and a project
   // DISABLE_*_HOOK=1 kept the hook off while the toggle answered "enabled".
-  const saved = process.env.EVIDENCE_GATE;
-  delete process.env.EVIDENCE_GATE;
+  const saved = process.env.REPLY_LANGUAGE_CHECK;
+  delete process.env.REPLY_LANGUAGE_CHECK;
   try {
     fs.mkdirSync(path.join(proj, '.claude'));
     fs.writeFileSync(
       path.join(tmpHome, '.claude/settings.json'),
-      JSON.stringify({ env: { EVIDENCE_GATE: '0', DISABLE_EVIDENCE_GATE_HOOK: '1' } })
+      JSON.stringify({ env: { REPLY_LANGUAGE_CHECK: '0', DISABLE_REPLY_LANGUAGE_HOOK: '1' } })
     );
     fs.writeFileSync(
       path.join(proj, '.claude/settings.json'),
-      JSON.stringify({ env: { EVIDENCE_GATE: '1' } })
+      JSON.stringify({ env: { REPLY_LANGUAGE_CHECK: '1' } })
     );
-    const on = await toggle('evidence-gate');
+    const on = await toggle('reply-language');
     assert.equal(on.newState, 'enabled');
     assert.equal(on.note, undefined, 'the project opts in');
 
     fs.writeFileSync(
       path.join(proj, '.claude/settings.local.json'),
-      JSON.stringify({ env: { DISABLE_EVIDENCE_GATE_HOOK: '1' } })
+      JSON.stringify({ env: { DISABLE_REPLY_LANGUAGE_HOOK: '1' } })
     );
-    const off = await toggle('evidence-gate');
+    const off = await toggle('reply-language');
     assert.equal(off.newState, 'disabled');
     assert.equal(off.note, undefined, 'the local file agrees');
-    const onAgain = await toggle('evidence-gate');
+    const onAgain = await toggle('reply-language');
     assert.equal(onAgain.newState, 'enabled');
     assert.match(
       onAgain.note,
-      /\.claude\/settings\.local\.json sets DISABLE_EVIDENCE_GATE_HOOK="1".*stays disabled in this project/
+      /\.claude\/settings\.local\.json sets DISABLE_REPLY_LANGUAGE_HOOK="1".*stays disabled in this project/
     );
   } finally {
-    if (saved === undefined) delete process.env.EVIDENCE_GATE;
-    else process.env.EVIDENCE_GATE = saved;
+    if (saved === undefined) delete process.env.REPLY_LANGUAGE_CHECK;
+    else process.env.REPLY_LANGUAGE_CHECK = saved;
   }
 });
 

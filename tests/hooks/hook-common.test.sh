@@ -195,7 +195,7 @@ for f in "$HOOKS_DIR"/*.sh; do
   esac
 done
 
-if (( ${#CONSUMERS[@]} < 2 )); then
+if (( ${#CONSUMERS[@]} < 1 )); then
   echo "FAIL: memory-dir consumer extraction found ${#CONSUMERS[@]} hook(s) — a consumer gate must never validate an empty set"
   FAIL=$((FAIL + 1))
 else

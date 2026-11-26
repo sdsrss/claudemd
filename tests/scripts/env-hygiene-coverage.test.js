@@ -90,7 +90,7 @@ function survivorsOfReset(names) {
 test('the knob detector finds the known opt-ins and skips internal state', () => {
   const knobs = knobsReadByHooks();
   // Liveness: a detector that finds nothing would make the next test vacuous.
-  for (const k of ['REWORK_BREAKER', 'REPLY_LANGUAGE_CHECK', 'EVIDENCE_WTREE', 'SPEC_MODULE_GATE']) {
+  for (const k of ['REPLY_LANGUAGE_CHECK', 'SANDBOX_DISPOSAL_BLOCK', 'BASH_READONLY_FAST_PATH']) {
     assert.ok(knobs.includes(k), `detector lost ${k}: ${knobs.join(' ')}`);
   }
   // Awk programs held in a variable are state, not knobs.

@@ -29,7 +29,7 @@ Show the transition first: run `detect --json`; if `verdict` is `claudemd`, stat
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/statusline-adopt.js remove --json`
 Report the `action` (`removed` / `restored` / `unregistered` / `not-ours`). For `unregistered`, cite `restored` if any, `notRestored` if set (saved providers left in `~/.claude/.claudemd-state/statusline-prev.json` because the host already has a provider with that id), and `rendererKept` (the providers the renderer was kept for) if set. If `not-ours`, nothing was changed.
 
-## Step 1 — consent gate (always, binds under AUTONOMY_LEVEL: aggressive)
+## Step 1 — consent gate (always)
 
 Writing `~/.claude/settings.json` — or, for the host/guest path, the host's registry files (`~/.cache/code-graph/statusline-registry.json` + `~/.claude/statusline-providers.json`) — is a §5 hard-AUTH action: both are user-global writes. BEFORE writing, show the user exactly what changes:
 - the `statusLine` command that will be set: `bash "$HOME/.claude/claudemd-statusline.sh"`

@@ -400,32 +400,11 @@ const MUTATIONS = [
     /^hooks\/lib\/rule-hits\.sh:\d+: builtin writes stdout to a file/,
   ],
   [
-    'the ledger write back to a redirection inside the subshell',
-    'hooks/rework-breaker.sh',
-    `( printf '%s\\n' "$RB_KEY" ) 2>/dev/null >> "$RB_LEDGER" || {`,
-    `(printf '%s\\n' "$RB_KEY" >> "$RB_LEDGER") 2>/dev/null || {`,
-    /^hooks\/rework-breaker\.sh:\d+: builtin writes stdout to a file/,
-  ],
-  [
     'the sync bootstrap back to a { } group',
     'hooks/session-start-check.sh',
     `    platform_timeout 4 node "$PLUGIN_ROOT/scripts/install.js" 2>&1\n  ) 2>/dev/null >> "$LOG" || SYNC_RC=$?`,
     `    platform_timeout 4 node "$PLUGIN_ROOT/scripts/install.js" 2>&1\n  } 2>/dev/null >> "$LOG" || SYNC_RC=$?`,
     /^hooks\/session-start-check\.sh:\d+: compound writes stdout to a file/,
-  ],
-  [
-    "verify-log's failure check back on a here-string",
-    'hooks/verify-log.sh',
-    `grep -Eq "$FAIL_OUT_RE" < <(printf '%s\\n%s' "$OUT" "$ERR") && exit 0`,
-    `grep -Eq "$FAIL_OUT_RE" <<<"$OUT"$'\\n'"$ERR" && exit 0`,
-    /^hooks\/verify-log\.sh:\d+: here-string/,
-  ],
-  [
-    "the release gate's word split back on a here-string",
-    'hooks/spec-module-gate.sh',
-    '  _words=($_seg)\n',
-    '  read -ra _words <<<"$_seg"\n',
-    /^hooks\/spec-module-gate\.sh:\d+: here-string/,
   ],
   [
     'the kept site reworded without updating KEPT',

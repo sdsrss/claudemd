@@ -5,8 +5,7 @@
 // column reaches them:
 //
 //   bin/claudemd-lint.js  HAS_NUMERIC_ARROW    /\d\S*\s*(?:→|->|=>)\s*\d/
-//   scripts/sampling-audit.js  EVIDENCE_FINGERPRINT  clause
-//                              [0-9]+[^\s]*\s*(→|->|=>)\s*[0-9]+
+//   (and EVIDENCE_FINGERPRINT in scripts/sampling-audit.js, removed in 0.123.0)
 //
 // Both are `<digit-run><unbounded-run>` with no delimiter present, so the
 // unanchored scan retries from every offset and rescans the tail each time.
@@ -60,7 +59,6 @@ function extractRegex(relPath, name) {
 }
 
 const HAS_NUMERIC_ARROW = extractRegex('bin/claudemd-lint.js', 'HAS_NUMERIC_ARROW');
-const EVIDENCE_FINGERPRINT = extractRegex('scripts/sampling-audit.js', 'EVIDENCE_FINGERPRINT');
 
 // Reader control. Whichever layout the tree happens to carry today, the OTHER
 // one has no coverage — and a reader that silently stops finding the
@@ -95,10 +93,7 @@ const BUDGET_MS = 500;
 // 468ms — under the budget, so the smaller size only failed on the doubling
 // case), EVIDENCE_FINGERPRINT 2k ≈ 2648ms. Both fail in seconds; both pass in
 // ~1ms once bounded.
-const PROBES = [
-  ['HAS_NUMERIC_ARROW', HAS_NUMERIC_ARROW, 30000],
-  ['EVIDENCE_FINGERPRINT', EVIDENCE_FINGERPRINT, 2000],
-];
+const PROBES = [['HAS_NUMERIC_ARROW', HAS_NUMERIC_ARROW, 30000]];
 
 for (const [name, re, n] of PROBES) {
   test(`R11-12: ${name} stays bounded on a ${n / 1000}k digit run`, () => {
@@ -123,18 +118,4 @@ test('R11-12: HAS_NUMERIC_ARROW still recognizes real before/after anchors', () 
   for (const s of ['no numbers here', 'a → b']) {
     assert.equal(HAS_NUMERIC_ARROW.test(s), false, `must not match: ${s}`);
   }
-});
-
-test('R11-12: EVIDENCE_FINGERPRINT still recognizes every evidence class', () => {
-  for (const s of [
-    'scripts/audit.js:42',
-    '7 passed',
-    'p99 580ms→140ms',
-    'Checked: pre-fix TypeError',
-    'known-red baseline: flaky',
-    '证据：re-ran the suite',
-  ]) {
-    assert.ok(EVIDENCE_FINGERPRINT.test(s), `must match: ${s}`);
-  }
-  assert.equal(EVIDENCE_FINGERPRINT.test('it works now'), false);
 });

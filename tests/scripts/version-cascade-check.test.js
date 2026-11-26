@@ -9,11 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import {
-  runVersionCascadeCheck,
-  runSpecSizingCheck,
-  runPluginSemverCheck,
-} from '../../scripts/version-cascade-check.js';
+import { runVersionCascadeCheck, runPluginSemverCheck } from '../../scripts/version-cascade-check.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -109,18 +105,15 @@ test('CLI: clean repo → exit 0 + stdout ok line', () => {
 });
 
 test('CLI: --json → exit 0 + parseable JSON on clean repo (v0.21.2 nested shape)', () => {
-  // v0.21.2 reshape: top-level `ok` is the combined gate; `cascade` and
-  // `sizing` sub-objects carry the per-check detail. The old flat shape
-  // didn't have room for the sizing branch.
+  // Top-level `ok` is the combined gate; `cascade` and `pluginSemver`
+  // sub-objects carry the per-check detail.
   const r = spawnSync('node', [SCRIPT, '--json'], { encoding: 'utf8' });
   assert.equal(r.status, 0);
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.cascade.ok, true);
-  assert.equal(parsed.sizing.ok, true);
   assert.match(parsed.cascade.expectedMinor, /^v\d+\.\d+$/);
   assert.equal(parsed.cascade.filesChecked.length, 3);
-  assert.ok(Array.isArray(parsed.sizing.drifts));
 });
 
 test('CLI: --help → exit 0 + usage on stdout', () => {
@@ -134,8 +127,6 @@ test('CLI: unknown flag → exit 2 + argv-shape error', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Unknown/);
 });
-
-// --- Spec sizing drift check (v0.21.2) ------------------------------------
 
 test('REL-M3: ADDING-NEW-HOOK names as many semver sites as the gate enumerates', () => {
   // Round-17 REL-M3. The contributor doc told you to bump four sites; this gate
@@ -169,212 +160,6 @@ test('REL-M3: ADDING-NEW-HOOK names as many semver sites as the gate enumerates'
     /All \$\{semverResult\.sites\.length\} MUST match/,
     'version-cascade-check.js went back to a hand-written count in its failure text'
   );
-});
-
-test('real repo: spec sizing claim matches actual fs sizes within ±20B', () => {
-  const r = runSpecSizingCheck({ root: REPO_ROOT });
-  assert.equal(r.ok, true, `Sizing line claims diverge from actual: ${JSON.stringify(r.drifts, null, 2)}`);
-});
-
-function makeSizingFixture(tmpDir, { sizingLine, coreBytes, extPadding, opBytes }) {
-  fs.mkdirSync(path.join(tmpDir, 'spec'), { recursive: true });
-  if (coreBytes != null) {
-    fs.writeFileSync(path.join(tmpDir, 'spec/CLAUDE.md'), 'x'.repeat(coreBytes));
-  }
-  if (sizingLine != null) {
-    // CLAUDE-extended.md body = the **Sizing** line itself + padding to reach target bytes
-    const lineLen = sizingLine.length + 1; // +1 for trailing newline
-    const pad = Math.max(0, (extPadding ?? 0) - lineLen);
-    fs.writeFileSync(path.join(tmpDir, 'spec/CLAUDE-extended.md'), sizingLine + '\n' + 'y'.repeat(pad));
-  }
-  if (opBytes != null) {
-    fs.writeFileSync(path.join(tmpDir, 'spec/OPERATOR.md'), 'z'.repeat(opBytes));
-  }
-  return tmpDir;
-}
-
-test('synthetic: sizing claims match actual → ok', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    // Carefully compute extended target so claim matches actual after we
-    // write line + padding. Sizing line is 200 bytes (incl. newline);
-    // pad to 1500B total → claimed extended=1500.
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, true, `unexpected drifts: ${JSON.stringify(r.drifts)}`);
-    assert.equal(r.drifts.length, 0);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: core file +100B drift → reported as over-threshold', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    // Claim core=1000 but write 1100 — drift +100B (over ±20B threshold).
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1100, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    const coreDrift = r.drifts.find(d => d.name === 'core');
-    assert.ok(coreDrift, 'must report drift for core');
-    assert.equal(coreDrift.claimed, 1000);
-    assert.equal(coreDrift.actual, 1100);
-    assert.equal(coreDrift.delta, 100);
-    assert.equal(coreDrift.reason, 'over-threshold');
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: drift exactly +20B → still ok (inclusive boundary)', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1020, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, true, `±20B is inclusive; drifts=${JSON.stringify(r.drifts)}`);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: drift +21B → reported (exclusive boundary)', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1021, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    const coreDrift = r.drifts.find(d => d.name === 'core');
-    assert.ok(coreDrift);
-    assert.equal(coreDrift.delta, 21);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-// v0.21.6 P6 — over-threshold drift must include copy-paste-ready OLD/NEW edit.
-test('synthetic: over-threshold drift emits suggested edit (P6 arrowed form)', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    // core: claim 1000, write 1100 → +100B drift, over threshold.
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1100, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    const coreDrift = r.drifts.find(d => d.name === 'core');
-    assert.ok(coreDrift.suggested, 'over-threshold drift must carry suggested edit');
-    assert.equal(coreDrift.suggested.old, 'core 1000 → 1000 bytes');
-    assert.equal(coreDrift.suggested.new, 'core 1000 → 1100 bytes');
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: plain-form claim drift also emits suggested edit (P6)', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    // OPERATOR.md uses plain form "N bytes" (no arrow) — common when file is unchanged.
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 bytes.';
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 600 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    const opDrift = r.drifts.find(d => d.name === 'OPERATOR.md');
-    assert.ok(opDrift.suggested, 'plain-form drift must carry suggested edit');
-    assert.equal(opDrift.suggested.old, 'OPERATOR.md 500 bytes');
-    assert.equal(opDrift.suggested.new, 'OPERATOR.md 600 bytes');
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: extended.md missing → FAILS the ship gate', () => {
-  // Contract reversed 2026-07-25 (audit). This previously returned ok:true with
-  // skipped:'extended-missing', so a spec file that had gone missing passed the
-  // pre-tag gate with exit 0 — while the sibling case below (file present, Sizing
-  // line absent) already failed. In this repo spec/CLAUDE-extended.md always
-  // exists; its absence means a broken checkout, which is what the gate is for.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    assert.match(r.error, /CLAUDE-extended\.md missing/);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: extended.md exists but Sizing line missing → fail with helpful detail', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    fs.mkdirSync(path.join(tmp, 'spec'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'spec/CLAUDE-extended.md'), '# extended\nbody without sizing line\n');
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, false);
-    assert.equal(r.skipped, 'sizing-line-missing');
-    assert.match(r.detail, /Sizing/);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('synthetic: arrow form and plain "N bytes" form both parse', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    // No arrow — direct "N bytes" claims.
-    const sizingLine = '**Sizing**: core 1000 bytes; extended 1500 bytes; OPERATOR.md 500 bytes.';
-    makeSizingFixture(tmp, { sizingLine, coreBytes: 1000, extPadding: 1500, opBytes: 500 });
-    const r = runSpecSizingCheck({ root: tmp });
-    assert.equal(r.ok, true, `plain form must parse; drifts=${JSON.stringify(r.drifts)}`);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('CLI: sizing drift exits 1 with stderr Δ line + actionable Fix sizing note', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sizing-fixture-'));
-  try {
-    // Build a valid-cascade fixture but bad sizing — proves cascade can pass
-    // while sizing fails (combined exit 1).
-    fs.mkdirSync(path.join(tmp, 'spec'), { recursive: true });
-    fs.mkdirSync(path.join(tmp, '.claude-plugin'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'spec/hard-rules.json'), JSON.stringify({ spec_version: 'v6.13.0' }));
-    fs.writeFileSync(path.join(tmp, 'README.md'), 'spec v6.13 here\n');
-    fs.writeFileSync(path.join(tmp, '.claude-plugin/plugin.json'), '{"description":"v6.13"}');
-    fs.writeFileSync(path.join(tmp, '.claude-plugin/marketplace.json'), '{"d":"v6.13"}');
-    // Sizing claim 1000 for core, actual 1500 — drift +500B
-    const sizingLine =
-      '**Sizing**: core 1000 → 1000 bytes; extended 1500 → 1500 bytes; OPERATOR.md 500 → 500 bytes.';
-    fs.writeFileSync(path.join(tmp, 'spec/CLAUDE.md'), 'x'.repeat(1500));
-    fs.writeFileSync(
-      path.join(tmp, 'spec/CLAUDE-extended.md'),
-      sizingLine + '\n' + 'y'.repeat(1500 - sizingLine.length - 1)
-    );
-    fs.writeFileSync(path.join(tmp, 'spec/OPERATOR.md'), 'z'.repeat(500));
-    // Run CLI against this fixture root via env override (resolvePluginRoot
-    // walks up from script location, so we have to invoke node + the script
-    // with cwd at tmp won't work — script computes root via fileURLToPath).
-    // Instead, copy script + lib into tmp? Too heavy. Just verify the
-    // run* functions assembled by an end-to-end caller would produce exit 1
-    // via direct re-invocation of the same logic against the fixture.
-    const cascade = runVersionCascadeCheck({ root: tmp });
-    const sizing = runSpecSizingCheck({ root: tmp });
-    assert.equal(cascade.ok, true, 'cascade should pass on this fixture');
-    assert.equal(sizing.ok, false, 'sizing should fail on this fixture');
-    assert.equal(sizing.drifts.length >= 1, true);
-    const overall = cascade.ok && sizing.ok;
-    assert.equal(overall, false, 'combined check must fail when sizing fails alone');
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
 });
 
 // === Check 3: plugin semver agreement (v0.47.4) ===

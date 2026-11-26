@@ -211,10 +211,11 @@ test('R11-25: the comment stripper does not eat code (instrument self-check)', (
 });
 
 test('R11-25: an undocumented exit injected into a real CLI turns the gate red (mutation control)', () => {
-  // Not a synthetic string: the injection goes into the actual source of the
-  // file that was invisible, at the line range that was being deleted.
-  const victim = cliEntryPoints().find(c => c.rel === 'scripts/sampling-audit.js');
-  assert.ok(victim, 'premise: sampling-audit.js is in the judged set');
+  // Not a synthetic string: the injection goes into the actual source of a
+  // long CLI, mid-file (sampling-audit.js, the file this was written for, went
+  // in 0.123.0).
+  const victim = cliEntryPoints().find(c => c.rel === 'scripts/doctor.js');
+  assert.ok(victim, 'premise: doctor.js is in the judged set');
   const lines = victim.text.split('\n');
   assert.ok(lines.length > 600, 'premise: the file is long enough for a mid-file injection');
   lines.splice(500, 0, 'if (process.env.NEVER_EVER_SET) process.exit(4);');

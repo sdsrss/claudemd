@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { projectsRoot } from './paths.js';
+import { projectsRoot, memoryRoot, encodeProjectCwd, projectDir } from './paths.js';
 
 // scripts/lib/memory-tags.js — §11-EXT Tag-specificity (SHOULD) static check.
 //
@@ -471,4 +471,28 @@ export function scanMemoryTags({ rootDir } = {}) {
     }
   }
   return { findings, scannedFiles };
+}
+
+// MEMORY.md ↔ memory files, both directions, for the project that owns `cwd`
+// (memory/ is keyed by the git root, not the directory doctor runs in). A
+// dangling index line points the agent at a file that is gone; an orphan file
+// is one nothing indexes, so no session finds it. Moved here from the retired
+// spec-coherence-audit.js (0.123.0).
+export function checkMemoryIndexLinks(cwd = process.cwd()) {
+  const memDir = path.join(projectDir({ encoded: encodeProjectCwd(memoryRoot(cwd)) }), 'memory');
+  const memIndex = path.join(memDir, 'MEMORY.md');
+  if (!fs.existsSync(memIndex)) return { memDir, status: 'no-index', dangling: [], orphans: [] };
+  const indexed = new Set();
+  for (const line of fs.readFileSync(memIndex, 'utf8').split('\n')) {
+    const file = indexEntryFile(line);
+    if (file !== null) indexed.add(file);
+  }
+  const onDisk = new Set(fs.readdirSync(memDir).filter(f => f.endsWith('.md') && f !== 'MEMORY.md'));
+  return {
+    memDir,
+    status: 'ok',
+    indexedCount: indexed.size,
+    dangling: [...indexed].filter(f => !onDisk.has(f)).sort(),
+    orphans: [...onDisk].filter(f => !indexed.has(f)).sort(),
+  };
 }

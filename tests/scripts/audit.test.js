@@ -369,47 +369,6 @@ test('R-N3: byTrend marks recovery when ratio ≤ 0.5', async () => {
   assert.equal(r.byTrend['§10-V'].flag, 'recovery');
 });
 
-test('A5 selfCompliance: section present, rate withheld while precision uncalibrated', async () => {
-  // HOME is redirected to tmpHome (no transcripts) — the section must still
-  // appear with all 8 rules and the A4 gate must withhold `rate` (null) while
-  // precision is uncalibrated. Detectors CLOSED by the 2026-07-24 labeling
-  // pass (0.54.0) must surface status 'closed' + their closedReason — the
-  // dashboard contradicted the calibration record by recomputing 'collecting'
-  // from precision alone (2026-07-25 audit, loop-F1). This list mirrors the
-  // CALIBRATION table in scripts/sampling-audit.js; a drift means one of the
-  // two moved without the other. §10-V and §11-turn-yield joined it with the
-  // 2026-11-01 labeling pass (D#576).
-  const CLOSED = [
-    '§10-V',
-    '§iron-law-2',
-    '§10-four-section-order',
-    '§10-honesty',
-    '§11-turn-yield',
-    '§7-bugfix-anchor',
-    '§11-post-compaction',
-    '§5-hard-auth',
-  ];
-  const r = await audit({ days: 30 });
-  assert.ok(r.selfCompliance, 'selfCompliance section must exist');
-  assert.equal(typeof r.selfCompliance.scannedTranscripts, 'number');
-  const rules = r.selfCompliance.rules;
-  assert.equal(Object.keys(rules).length, 8, `expected 8 rules, got ${Object.keys(rules).join(', ')}`);
-  for (const [k, v] of Object.entries(rules)) {
-    assert.equal(typeof v.opportunities, 'number', `${k} missing opportunities`);
-    assert.equal(typeof v.violations, 'number', `${k} missing violations`);
-    assert.equal(v.rate, null, `${k} rate must be withheld (null) until precision ≥ 0.8`);
-    // Every rule is closed since 2026-11-01, so a rule missing from the list is
-    // the drift this mirror exists to catch (a collecting arm here could never
-    // run — 0.117.0 pre-tag review L9).
-    assert.ok(CLOSED.includes(k), `${k} is not in the CLOSED mirror of CALIBRATION`);
-    assert.equal(v.status, 'closed', `${k} must report closed, got: ${v.status}`);
-    assert.ok(
-      typeof v.closedReason === 'string' && v.closedReason.length > 0,
-      `${k} must carry its closedReason`
-    );
-  }
-});
-
 test('audit CLI rejects non-numeric --days (L1)', () => {
   // Regression: parseInt('garbage', 10) → NaN → cutoff NaN → every row
   // filtered out silently. Previous runs returned 0 hits with no error.

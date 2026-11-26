@@ -28,10 +28,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // [scriptRel, flag, badValue, validValue, errorRe]
 const CASES = [
   ['scripts/audit.js', '--days', '1.5', '30', /requires a positive integer/],
-  ['scripts/sparkline.js', '--days', '1.5,2,3', '30,60,90', /≥2 comma-separated positive integers/],
-  ['scripts/hard-rules-audit.js', '--days', '2.7', '90', /requires a positive integer/],
   ['scripts/doctor.js', '--prune-backups', '2.5', '5', /requires a positive integer/],
-  ['scripts/lesson-bypass-audit.js', '--days', '2.7', '30', /requires a positive integer/],
 ];
 
 const run = (relScript, args) =>

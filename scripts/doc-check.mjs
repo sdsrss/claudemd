@@ -58,12 +58,7 @@ export const REPO_ROOT = path.resolve(HERE, '..');
 // under ~/.claude is a DIFFERENT artifact (possibly a different version, and
 // absent in CI), so resolving anchors against it would make the gate's verdict
 // depend on the machine. Overridable per document with `spec-source:`.
-export const DEFAULT_SPEC_SOURCES = [
-  'spec/CLAUDE.md',
-  'spec/CLAUDE-extended.md',
-  'spec/hard-rules.json',
-  'scripts/sampling-audit.js',
-];
+export const DEFAULT_SPEC_SOURCES = ['spec/CLAUDE.md', 'spec/CLAUDE-extended.md', 'spec/hard-rules.json'];
 
 /** Parse the optional ```doc-check fenced block. Unknown keys are an error. */
 export function parseConfig(text) {

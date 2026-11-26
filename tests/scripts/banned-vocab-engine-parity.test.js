@@ -137,9 +137,9 @@ test('§10-V: grep -iE and JS RegExp return the same verdict for every (pattern,
 // locale is set. Cardinality is asserted in both directions — a file that
 // stopped matching patterns entirely would otherwise pass with zero offenders
 // (feedback_gate_must_report_its_cardinality).
-const BASH_ENGINES = ['hooks/banned-vocab-check.sh', 'hooks/transcript-vocab-scan.sh'];
+const BASH_ENGINES = ['hooks/banned-vocab-check.sh'];
 
-test('§10-V: both bash engines match patterns through hook_vocab_grep (the LC_ALL=C seam)', () => {
+test('§10-V: the bash engine matches patterns through hook_vocab_grep (the LC_ALL=C seam)', () => {
   for (const rel of BASH_ENGINES) {
     const src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
     const code = src.split('\n').filter(l => !/^\s*#/.test(l));

@@ -506,8 +506,8 @@ for f in "$HOOKS_DIR"/*.sh; do
 done
 # Floor: the loop must have had subjects. An empty HOOKS_DIR glob would print
 # nothing and pass, which is the shape run-all.sh's suite-count floors exist for.
-if (( T22_HOOKS >= 15 )); then
-  ok "T22 scanned $T22_HOOKS hook(s) (floor 15)"
+if (( T22_HOOKS >= 12 )); then
+  ok "T22 scanned $T22_HOOKS hook(s) (floor 12)"
 else
   ng "T22 scanned only $T22_HOOKS hook(s) — the glob matched nothing or the layer moved"
 fi

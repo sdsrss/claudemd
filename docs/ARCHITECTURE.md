@@ -4,8 +4,8 @@ For full design rationale, see `docs/superpowers/specs/2026-04-21-claudemd-plugi
 
 ## Four layers
 
-1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`, `memory-tags.sh`, `spec-module.sh`, `verify-cmd.sh`, `wtree.sh`).
-2. **L2 Management scripts** (`scripts/*.js`) — Node.js ≥20, handle install/uninstall/update/status/audit/toggle/doctor/hard-rules-audit/clean-residue/sampling-audit/…. Share a `scripts/lib/` module set (acyclic, rooted at `paths.js`).
+1. **L1 Hooks** (`hooks/*.sh`) — deterministic shell, <3s nominal, fail-open on any internal error. Invoked directly by Claude Code. Shared bash helpers live in `hooks/lib/` (`hook-common.sh`, `rule-hits.sh`, `platform.sh`, `memory-tags.sh`, `spec-module.sh`). Hooks are frozen: bug fixes and removals only (`spec/OPERATOR.md` §13.3).
+2. **L2 Management scripts** (`scripts/*.js`) — Node.js ≥20, handle install/uninstall/update/status/audit/toggle/doctor/clean-residue/…. Share a `scripts/lib/` module set (acyclic, rooted at `paths.js`).
 3. **L3 Slash commands** (`commands/*.md`) — markdown stubs that tell the agent which L2 script to invoke.
 4. **Standalone CLI** (`bin/claudemd-lint.js`) — the npm-published `claudemd-cli` (`lint` + `audit` for §10-V banned-vocab / transcript scanning in git hooks, CI, or other agents). Imports `scripts/lib/lint.js` (downward dependency only — no duplication of the matcher).
 
@@ -19,15 +19,13 @@ Module → responsibility → external interface. "External" means what a caller
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `hooks/*.sh` (27 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
-| `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn, install-failure sentinel bookkeeping, the newest long-task ledger | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_memfile_was_read` / `hook_spawn_install` / `hook_install_sentinel_clear` / `hook_install_sentinel_write` / `hook_newest_ledger` |
+| `hooks/*.sh` (12 hooks) | Per-event enforcement / advisory (see taxonomy) | Wired by `hooks/hooks.json`; stdin = Claude Code event JSON; stdout = one JSON object (deny / additionalContext) or nothing; always exit 0; per-hook kill-switch `DISABLE_<HOOK>_HOOK=1` (names from `scripts/lib/hook-registry.js`) |
+| `hook-common.sh` | Fail-open runtime shared by every hook: event parsing, deny/record emission, readonly fast-path, heredoc stripping, command flattening, background install spawn, install-failure sentinel bookkeeping | `hook_read_event` / `hook_read_bash_fields` / `hook_jq_field` / `hook_deny` / `hook_record` / `hook_record_failopen` / `hook_kill_switch` / `hook_require_jq` / `hook_is_readonly_bash` / `hook_flatten_cmd` / `hook_strip_heredoc_bodies` / `hook_trigger_view` / `hook_memfile_was_read` / `hook_spawn_install` / `hook_install_sentinel_clear` / `hook_install_sentinel_write` |
 | `rule-hits.sh` | Append-only JSONL audit log with size-capped rotation | `rule_hits_append` / `hook_encode_project`; writes `~/.claude/logs/claudemd.jsonl` (schema: `docs/RULE-HITS-SCHEMA.md`) |
 | `platform.sh` | GNU/BSD abstraction for stat / find / timeout | `platform_stat_mtime` / `platform_find_newer` / `platform_timeout` |
 | `memory-tags.sh` | MEMORY.md `[tag]` index parsing + prompt matching in one awk pass | `memtags_match` / `memtags_failopen`; spills past the 128 KiB env cliff to `$TMPDIR/claudemd-memtags-hay-*` |
-| `spec-module.sh` | The injected text of one spec module, for both hooks that inject one | `specmod_body` (frontmatter and build comment dropped) / `specmod_entry` |
-| `verify-cmd.sh` | What counts as verification: T1/T2 command and output patterns, and the failure-output pattern | `T1_CMD_RE` / `T2_CMD_RE` / `T2_OUT_RE` (evidence-gate, verify-log) / `FAIL_OUT_RE` (verify-log only) |
-| `wtree.sh` | Working-tree content fingerprint through a temporary index; the real index is never written | `wtree_hash DIR`; temp file `$TMPDIR/claudemd-wtree-*` |
-| `hooks/banned-vocab.patterns` | §10-V pattern list — the single source for the bash hook and the JS engine | One pattern per line; read by `banned-vocab-check.sh`, `transcript-vocab-scan.sh` and `scripts/lib/lint.js` |
+| `spec-module.sh` | The injected text of one spec module, for `spec-module-inject.sh` | `specmod_body` (frontmatter and build comment dropped) / `specmod_entry` |
+| `hooks/banned-vocab.patterns` | §10-V pattern list — the single source for the bash hook and the JS engine | One pattern per line; read by `banned-vocab-check.sh` and `scripts/lib/lint.js` |
 
 **L2 — management scripts (Node ≥20, ESM)**
 
@@ -37,20 +35,14 @@ Module → responsibility → external interface. "External" means what a caller
 | `scripts/uninstall.js` | Reverse of install: evict hook entries, clear manifest, optional purge of state (`CLAUDEMD_PURGE=1`) | `node scripts/uninstall.js` (no flags — env-driven); exports `CLAUDEMD_STATE_FILE_RE` |
 | `scripts/update.js` | Diff installed `~/.claude/CLAUDE*.md` against the shipped spec; apply on request | `node scripts/update.js`; env `CLAUDEMD_UPDATE_CHOICE=apply-all` |
 | `scripts/status.js` | Plugin / spec / kill-switch / log status | `node scripts/status.js [--verbose]` → JSON |
-| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, rule usage, memory layers | `node scripts/doctor.js [--prune-backups=N] [--ack-fail-open]` |
+| `scripts/doctor.js` | Health checks: deps, spec drift, settings, hook drift, backups, memory index, hook self-tests | `node scripts/doctor.js [--prune-backups=N] [--ack-fail-open]` |
 | `scripts/toggle.js` | Flip one hook's `DISABLE_*` env in `settings.json` | `node scripts/toggle.js <hook-name>` |
 | `scripts/audit.js` | Aggregate rule-hits over a window | `node scripts/audit.js [--days=N]` → JSON |
-| `scripts/hard-rules-audit.js` | Join `spec/hard-rules.json` with rule-hits → demote candidates | `node scripts/hard-rules-audit.js [--days=N]` |
-| `scripts/sparkline.js` | Rule-usage trend across three windows | `node scripts/sparkline.js` → markdown block |
-| `scripts/sampling-audit.js` | Retrospective transcript scan for 8 self-enforced HARD rules | `node scripts/sampling-audit.js [--global] [--sample=N] …` |
-| `scripts/lesson-bypass-audit.js` | Cite-recall of memory hints vs later transcript activity | `node scripts/lesson-bypass-audit.js [--days=N]` |
-| `scripts/spec-coherence-audit.js` | Read-only core ↔ extended ↔ MEMORY.md ↔ patterns coherence audit | `node scripts/spec-coherence-audit.js` |
-| `scripts/safety-coverage-audit.js` | Static check that hooks implement every §8 clause they quote | `node scripts/safety-coverage-audit.js` |
 | `scripts/clean-residue.js` | Reap sentinels / stale tmp / orphan state past retention | `node scripts/clean-residue.js [--apply] [--age-days=N] [--retention-days=N]` |
 | `scripts/statusline-adopt.js` | Manage the statusLine slot in `settings.json` | `node scripts/statusline-adopt.js <detect\|adopt\|remove> [--json] [--force]` |
 | `scripts/design-detect.js` | Stateless design-token detector for `/claudemd-design-adopt` | `node scripts/design-detect.js [--json] [--cwd=PATH]` |
 | `scripts/lint-argv.js` | Repo gate against argv silent-fallback shapes | `node scripts/lint-argv.js` (exit 1 on hit); `npm run lint:argv` |
-| `scripts/version-cascade-check.js` | Pre-tag version / Sizing-line consistency | `node scripts/version-cascade-check.js`; `npm run version-check` |
+| `scripts/version-cascade-check.js` | Pre-tag spec-version and plugin-semver consistency | `node scripts/version-cascade-check.js`; `npm run version-check` |
 | `scripts/baseline-metrics.js` | Repeatable code-health baseline (files, long functions, duplication, cycles, coverage, lint) | `node scripts/baseline-metrics.js [--json] [--skip-*]`; `npm run metrics` |
 | `scripts/statusline.sh` | PS1-style statusLine renderer | Invoked by Claude Code's `statusLine.command`; stdin = status JSON |
 | `scripts/refresh-plugin.sh` | Marketplace update → uninstall → install in one shot | `bash scripts/refresh-plugin.sh` (via `/claudemd-refresh`) |
@@ -68,21 +60,18 @@ Module → responsibility → external interface. "External" means what a caller
 | `spec-hash.js` / `spec-diff.js` / `install-drift.js` | Installed-vs-shipped comparison: hash, unified diff, hook-entry drift; the one spec-copy path (verify + rollback) | `sha256File` `compareSpecs` `copySpecFiles` / `diffSpec` / `compareHooks` |
 | `lint.js` | §10-V banned-vocab engine + transcript parser (shared with `bin/`) | `readPatterns` `scan` `parseTranscript` `stripIdentifiers` `stripGitCommitComments` `formatHumanReadable` `formatJSON` `DEFAULT_PATTERNS_FILE` … |
 | `rule-hits-parse.js` | JSONL reader + every aggregation the audit scripts use | `readHits` `groupBySection` `groupByHook` `topPatterns` `byBypass` `byFailOpen` `byTrend` `blockingDenyCount` … |
-| `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget | `indexEntryFile` `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `MEMORY_INDEX_BUDGET_BYTES` |
-| `memory-maintenance.js` | Cross-layer memory promote / repatriate / stale scan (needs `node:sqlite`, self-skips on Node 20) | `memoryMaintenance` + threshold constants |
-| `runbook-review-check.js` | Ship-runbook review-step scanner (doctor) | `scanRunbookReviewSteps` |
+| `memory-tags.js` | MEMORY.md index parsing, tag classification, size budget, index ↔ file links | `indexEntryFile` `parseMemoryIndex` `classifyTag` `scanMemoryTags` `scanMemoryIndexSizes` `checkMemoryIndexLinks` `MEMORY_INDEX_BUDGET_BYTES` |
 | `statusline.js` / `statusline-hosts.js` | statusLine detect / adopt / remove; host adapters (code-graph guest slot) | `detect` `adopt` `remove` / `detectHost` `HOST_ADAPTERS` `CLAUDEMD_PROVIDER_ID` |
 | `cache-prune.js` | Prune older plugin-cache versions (two gates: semver basename **and** realpath under `pluginCacheDir()`); an older version a running session may still use is held: a record in its `.in_use/` naming a live process (D#652), `.orphaned_at` under 14 days old, a hook-log row from it in the last 14 days (D#635), or, with `DISABLE_RULE_HITS_LOG=1`, no mark at all (D#643) | `pruneCache` |
-| `transcript-user-turn.js` | Normalise the two user-turn content shapes (string vs array) | `userTurnText` `isUserTurn` |
 
 **L3 / CLI / spec**
 
 | Module | Responsibility | External interface |
 |---|---|---|
-| `commands/*.md` (16) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
+| `commands/*.md` (11) | Slash-command stubs; each names the L2 script to run | `/claudemd-<name>` in Claude Code |
 | `bin/claudemd-lint.js` | npm `claudemd-cli`: banned-vocab lint + transcript audit | `claudemd-cli lint <text\|--file\|--stdin> [--json] [--commit-msg]`, `claudemd-cli audit <jsonl>` (one path); exit 0 clean / 1 hits / 2 bad arguments, including an empty or blank `lint` text argument |
 | `spec/` | Shipped spec (`CLAUDE.md`, `CLAUDE-extended.md`, `OPERATOR.md`, changelog) + `hard-rules.json` mirror | Copied verbatim into `~/.claude/` by install/update; gated by the drift tests |
-| `tests/` | 97 node suites, 41 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
+| `tests/` | 82 node suites, 25 hook suites, 4 integration suites, shared libs under `tests/lib/` | `npm test` (= `bash tests/run-all.sh`); `npm run test:scripts` / `test:hooks` / `test:coverage` |
 
 ## Module dependency graph
 
@@ -96,35 +85,28 @@ scripts/uninstall.js ──► lib/{backup, hook-registry, paths, settings-merge
 scripts/update.js ──► lib/{backup, paths, spec-diff, argv}
 scripts/status.js ──► lib/{hook-registry, paths, settings-merge, spec-hash, argv}
 scripts/toggle.js ──► lib/{hook-registry, settings-merge, argv}
-scripts/doctor.js ──► scripts/clean-residue.js, lib/{backup, hook-registry, install-drift, memory-maintenance,
-                      memory-tags, paths, rule-hits-parse, runbook-review-check, settings-merge, spec-hash,
-                      argv}
-scripts/audit.js ──► scripts/sampling-audit.js, lib/{paths, rule-hits-parse, argv}
-scripts/sampling-audit.js ──► lib/{lint, paths, rule-hits-parse, transcript-user-turn, argv}
-scripts/{hard-rules-audit, lesson-bypass-audit, sparkline}.js ──► lib/{paths, rule-hits-parse, argv}
-scripts/spec-coherence-audit.js ──► lib/{lint, paths, argv, spec-sizing, spec-modules}
-scripts/{safety-coverage-audit, clean-residue, version-cascade-check}.js ──► lib/{paths, argv}
+scripts/doctor.js ──► scripts/clean-residue.js, lib/{backup, hook-registry, install-drift, memory-tags, paths,
+                      rule-hits-parse, settings-merge, spec-hash, argv}
+scripts/audit.js ──► lib/{paths, rule-hits-parse, argv}
+scripts/{clean-residue, version-cascade-check}.js ──► lib/{paths, argv}
 scripts/statusline-adopt.js ──► lib/{statusline, paths, argv}
 scripts/{design-detect, lint-argv}.js ──► lib/argv
 scripts/baseline-metrics.js ──► lib/argv
 
 scripts/lib/statusline.js ──► lib/{backup, settings-merge, statusline-hosts, paths}
 scripts/lib/install-drift.js ──► lib/spec-hash ──► lib/paths
-scripts/lib/{backup, cache-prune, memory-maintenance, settings-merge, statusline-hosts}.js ──► lib/paths
-scripts/lib/{argv, lint, rule-hits-parse, memory-tags, spec-diff, hook-registry,
-             runbook-review-check, transcript-user-turn}.js ──► (leaf: node: builtins only)
+scripts/lib/{backup, cache-prune, memory-tags, settings-merge, statusline-hosts}.js ──► lib/paths
+scripts/lib/{argv, lint, rule-hits-parse, spec-diff, hook-registry}.js ──► (leaf: node: builtins only)
 
 hooks/<every hook>.sh ──► hooks/lib/hook-common.sh ──► hooks/lib/rule-hits.sh
-hooks/{branch-prune, ledger-staleness, mem-audit, memory-prompt-hint, sandbox-disposal-check,
-       session-start-check, session-summary, ship-baseline-check, spec-module-gate, spec-module-inject,
-       tmp-sweep, version-sync}.sh ──► hooks/lib/platform.sh
-hooks/{memory-prompt-hint, memory-read-check}.sh ──► hooks/lib/memory-tags.sh
-hooks/{spec-module-inject, test-failure-debug}.sh ──► hooks/lib/spec-module.sh
-hooks/{evidence-gate, verify-log}.sh ──► hooks/lib/{verify-cmd, wtree, platform}.sh
+hooks/{sandbox-disposal-check, session-end-check, session-start-check, ship-baseline-check,
+       spec-module-inject, tmp-sweep, version-sync}.sh ──► hooks/lib/platform.sh
+hooks/memory-read-check.sh ──► hooks/lib/memory-tags.sh
+hooks/spec-module-inject.sh ──► hooks/lib/spec-module.sh
 scripts/perf-baseline.sh ──► hooks/lib/rule-hits.sh
 ```
 
-Two script-to-script edges exist and are deliberate: `doctor.js` reuses `clean-residue.js`'s orphan scan, and `audit.js` reuses `sampling-audit.js`'s self-compliance section. Neither is imported back.
+One script-to-script edge exists and is deliberate: `doctor.js` reuses `clean-residue.js`'s orphan scan. It is not imported back.
 
 ## Main flows
 
@@ -142,8 +124,8 @@ on each run, so a citation that stops matching is a red build rather than a stal
 5. Failure leaves `bootstrap-failed.json`; the next SessionStart banner reports it. An inline run that failed or timed out also falls through to the detached spawn in the same session, so the sync path is never worse than the async one. The one inline outcome that does not spawn is a stand-down on a lock another process holds (exit 3), and deliberately: the retry would take the same lock decision. That branch records `bootstrap-stand-down`, leaves the failure sentinel alone, and writes no manifest, so the next SessionStart re-enters the fresh path.
 
 **2. Bash command gate (PreToolUse:Bash)**
-1. Five hooks in the `Bash` matcher group run in order (`cross-repo-write-check.sh`, opt-in and advisory, also runs on Bash from its own group): `pre-bash-safety-check.sh`, `spec-module-gate.sh`, `banned-vocab-check.sh`, `ship-baseline-check.sh`, `memory-read-check.sh`. `spec-module-gate.sh` is the exception to steps 2-4: it reads the event with `hook_read_event` and `hook_trigger_view`, matches release commands only, writes a `module-unread` row in its default `log` mode and builds its own JSON in `advisory` / `deny` mode.
-2. The other four each call `hook_read_bash_fields` (jq parse, heredoc-body strip, line-continuation flatten) and exit early when `hook_is_readonly_bash` classifies the command as read-only.
+1. Four hooks in the `Bash` matcher group run in order: `pre-bash-safety-check.sh`, `banned-vocab-check.sh`, `ship-baseline-check.sh`, `memory-read-check.sh`.
+2. Each calls `hook_read_bash_fields` (jq parse, heredoc-body strip, line-continuation flatten) and exit early when `hook_is_readonly_bash` classifies the command as read-only.
 3. The hook matches its own command shapes (rm -rf $VAR / unpinned npx / curl|sh; git commit -m prose; git push with red base-branch CI; ship verbs without a matched MEMORY.md Read).
 4. A hit emits one deny JSON object via `hook_deny` (or is downgraded to a bypass row by an in-command `[allow-*]` token); a miss emits nothing. Exit is always 0.
 5. `hook_record` appends the verdict to `~/.claude/logs/claudemd.jsonl` with `spec_section`.
@@ -155,12 +137,11 @@ on each run, so a citation that stops matching is a red build rather than a stal
 4. The shipped files are copied over the installed ones.
 5. `session-start-check.sh` sees no drift on the next session and stays silent.
 
-**4. Audit loop (rule-hits → `/claudemd-audit` → `/claudemd-doctor`)**
+**4. Hook telemetry (rule-hits → `/claudemd-audit`, `/claudemd-doctor`)**
 1. Every hook verdict lands in `claudemd.jsonl` (flow 2, step 5).
-2. `scripts/audit.js` reads the window with `readHits`, aggregates `groupBySection` / `topPatterns` / `byBypass`, and appends the sampling-audit self-compliance section.
-3. `scripts/hard-rules-audit.js` joins the same rows with `spec/hard-rules.json` to list rules with zero fired rows (`hits.fired`: a check that found nothing is not a firing).
-4. `scripts/doctor.js` surfaces those as demote candidates alongside spec drift, hook drift and backup inventory.
-5. A spec edit that follows goes through `spec/` + version bump + ship, never `~/.claude/` directly.
+2. `scripts/audit.js` reads the window with `readHits` and aggregates per hook: denies, bypasses (`byBypass`), fail-opens (`byFailOpen`), banned-vocab patterns.
+3. `scripts/doctor.js` reads the same window for unacknowledged fail-opens and for the memory files `memory-read-check` denied most.
+4. A rule change goes through `spec/`, an outcome run (`spec/OPERATOR.md` §13.1), a version bump and a release, never `~/.claude/` directly.
 
 **5. Standalone lint (`claudemd-cli`, npm)**
 1. `bin/claudemd-lint.js` validates argv with `validateAndExpandFlags` (space-form flags, auto `--file` for an existing path).
@@ -168,11 +149,10 @@ on each run, so a citation that stops matching is a red build rather than a stal
 3. `scan` runs the same matcher the hook uses and reports hits with pattern + context.
 4. Output is human-readable or `--json`; exit 1 on any hit so commit-msg hooks and CI can gate on it.
 
-**6. Memory hint and read enforcement**
-1. On UserPromptSubmit, `memory-prompt-hint.sh` runs `memtags_match` over the prompt against MEMORY.md `[tag]` entries.
-2. Matches are emitted as additionalContext naming the files to Read (advisory).
-3. When a later Bash command is a ship verb, `memory-read-check.sh` checks the transcript for a Read of a matched file.
-4. No Read → deny with the file list; an in-command `[skip-memory-check: <reason>]` token records a bypass row (reason kept in `extra.bypass_reason`) instead.
+**6. Memory read enforcement**
+1. When a Bash command is a ship verb, `memory-read-check.sh` runs `memtags_match` over it against MEMORY.md `[tag]` entries.
+2. It checks the transcript (and the session's subagent transcripts) for a Read of each matched file.
+3. No Read → deny with the file list; an in-command `[skip-memory-check: <reason>]` token records a bypass row (reason kept in `extra.bypass_reason`) instead.
 
 ## Positioning: §8 is a guardrail, not a security boundary
 
@@ -192,7 +172,7 @@ The `pre-bash-safety-check.sh` §8 gate (rm -rf $VAR / unpinned npx / curl|sh) s
 - **L1 may spawn — never import — L2**: on version mismatch, `hook_spawn_install` (hooks/lib/hook-common.sh) runs `node scripts/install.js` detached, guarded by `command -v node`, a 10s timeout, and the `bootstrap-failed.json` failure sentinel; any failure is fail-open. The *import* dependency direction stays strictly downward (four-layers rule above).
 - **Spec is artifact, not code**: no hook parses `~/.claude/CLAUDE.md` to decide what to enforce — rules are compiled into the hook scripts and `hooks/banned-vocab.patterns`. (`session-start-check.sh` does `cmp` the installed spec against the shipped one to raise the drift banner; that reads the file as an artifact to hash, not as instructions.)
 - **`${CLAUDE_PLUGIN_ROOT}` wins when it is set; `__dirname` is the fallback**: `paths.js#resolvePluginRoot` returns the env var whenever it is non-empty and only then derives from `__dirname` / `${BASH_SOURCE[0]}`. This bullet used to call the variable "a hint", which is the opposite of what the resolver does and matters because pointing it at a stale versioned cache dir is how the never-downgrade guard in `install.js` gets exercised (Round-14 audit SCR-L3). `doctor.js`'s hook-drift check deliberately does NOT consult it — its whole subject is the difference between *this* tree and the marketplace install Claude Code actually fires, so reading the env var there would compare a thing to itself.
-- **Spec → hook → audit data plane is closed-loop** (v0.7.0+): `spec/CLAUDE*.md` rules → `hooks/*.sh` enforcement → `~/.claude/logs/claudemd.jsonl` rule-hits with `spec_section` field → `/claudemd-audit` `bySection` aggregation. v0.8.0 closes the spec side: `spec/hard-rules.json` is the machine-readable mirror of every `(HARD)` annotation; `tests/scripts/hard-rules-drift.test.js` and `tests/scripts/spec-pattern-drift.test.js` are the CI gates that prevent silent edits to either side.
+- **Spec → hook → log**: `spec/CLAUDE*.md` rules → `hooks/*.sh` enforcement → `~/.claude/logs/claudemd.jsonl` rows with a `spec_section` field → `/claudemd-audit`. `spec/hard-rules.json` mirrors every `(HARD)` annotation; `tests/scripts/hard-rules-drift.test.js` and `tests/scripts/spec-pattern-drift.test.js` keep the two sides in step.
 
 ## Data flow
 
@@ -206,103 +186,25 @@ User action / session end
                                    └─ project field (v0.6.2)
 ```
 
-Session-summary follows a separate path:
-
-```
-Stop hook
-  └─> hooks/session-summary.sh
-      └─> aggregates ~/.claude/logs/claudemd.jsonl since session-summary.lastrun
-          └─> writes ~/.claude/.claudemd-state/last-session-summary.json
-              └─> SessionStart hook reads + emits as additionalContext
-                  └─> rm (consume-once)
-```
-
-## Long-task ledger (G7)
-
-`tasks/<slug>-ledger.md` — the file a task carries across compaction and resume.
-Not an orchestrator and not a plan: it is the small set of facts a later turn
-cannot re-derive from the code. `session-start-check.sh` re-injects two of its
-sections on `SessionStart` with `source` `compact` or `resume`, and
-`ledger-staleness.sh` says so at `Stop` when a session edited code and wrote
-nothing here (G7's third arm, v0.91.0, opt-in `LEDGER_STALENESS=1`).
-
-Five sections, in this order, all `## `-level:
-
-| Section | Holds | Why it is a section |
-|---|---|---|
-| `Goal` | one paragraph: what finishing looks like | re-derivable from the work, so it is NOT injected |
-| `Decisions` | one row per settled choice: options, the choice, reversibility, when | **injected** — filled once at task start, and the half a compaction cannot reconstruct |
-| `Verified-done` | one line per finished item, each carrying the command and its exit code | not injected: it is the record, not the state, and it is the longest section |
-| `Open` | what is known to be unresolved | not injected |
-| `Next` | the immediate next action | **injected** — where the task stands |
-
-Rules the format exists to enforce, in the order they are usually broken:
-
-1. **`Decisions` is filled at task start, not as you go.** The reason is
-   structural, not measured: a decision settled at the start is one the task
-   can be re-entered against after a compaction, and one settled mid-execution
-   is not, because nothing records that it was settled at all. Reversible
-   choices get a written default instead of a question; irreversible ones stay
-   questions. (An earlier draft of this line cited `sampling-audit`'s answered-
-   ask counts. Those come from a detector whose precision was never labeled —
-   `tasks/sampling-audit-2026-09-21.md` marks the metric NOT YET READABLE — and
-   this project's MEMORY.md carries the standing rule not to cite them. It also
-   quoted the 2026-09-07 figures as the 2026-09-21 ones.)
-2. **A `Verified-done` line without a command and an exit code is not done.**
-   That is Iron Law #2 in the one place a long task accumulates claims fastest;
-   `evidence-gate.sh` is the same rule one layer down, on the transcript.
-3. **Update the ledger before starting the next item, not after finishing it.**
-   A ledger written afterwards records what was remembered, not what happened.
-
-Injection is bounded three ways — newest ledger under the event's `cwd` only,
-mtime within `CLAUDEMD_LEDGER_MAX_AGE_DAYS` (default 14), and the extracted text
-capped at `CLAUDEMD_LEDGER_MAX_BYTES` (default 1600) — because it lands in
-context at exactly the moment context is scarce. A ledger whose headings were
-renamed yields nothing and is skipped, rather than injecting the wrong half of
-the file. Opt out with `DISABLE_LEDGER_INJECT=1`.
-
-`PreCompact` was measured to fire on this build (2026-09-21, manual `/compact`;
-see the roadmap's §5 table) and is deliberately NOT registered: the fact it would
-record — that a compaction happened — is already available to the
-`source=="compact"` SessionStart branch, which has 8 real firings in this
-machine's rule-hits log, whereas PreCompact's behaviour under AUTO compaction has
-no evidence either way. One event, verified on both triggers, beats two where the
-second is unverified on the trigger that matters.
-
 ## State locations
 
 - `~/.claude/.claudemd-manifest.json` — install manifest (command string + SHA256, hook entries) (v0.1.9+; pre-0.1.9 lived at `stateDir()/installed.json` and is migrated on first read)
 - `~/.claude/.claudemd-state/hook-root.json` — `{"root","ts","version","sid"}` naming the directory Claude Code actually loaded the plugin from, measured from inside a running hook rather than inferred from the filesystem. Written by `hook_record_plugin_root` (`hooks/lib/hook-common.sh`) for `session-start-check.sh` and `session-end-check.sh`, both non-blocking. Read by `runningPluginRoot()` (`scripts/lib/paths.js`), the local basis for both `hook-drift` rows: the root doctor's own tree is compared against, and the local side of the `hook-drift:upstream` comparison. `activePluginRoot()` resolves only an INSTALLED location — the registry entry, then the newest version in the cache, then the marketplace clone — so for a plugin that runs from where it sits it answers with an unrelated leftover. Rewritten whenever those hooks fire, so it never ages out — not an orphan at any age, and removed only by an uninstall with `CLAUDEMD_PURGE=1`.
-- `~/.claude/.claudemd-state/tmp-baseline-<sid>.txt` — residue-audit per-session baseline (2026-08-16 audit CONC-3); orphans reaped by clean-residue.js
-- `~/.claude/.claudemd-state/tmp-baseline.txt` — legacy residue-audit baseline, still written by sessions whose event carries no session_id
 - `~/.claude/.claudemd-state/session-start-<sid>.ref` — sandbox-disposal per-session window ref (2026-08-16 audit F5); orphans reaped by clean-residue.js
 - `~/.claude/.claudemd-state/sandbox-pending-<sid>.list` — sandbox-disposal's deferred-report list (v0.98.0): temp dirs first seen at the previous Stop, reported at the next if still present; removed when empty, orphans reaped by clean-residue.js
 - `~/.claude/.claudemd-state/sandbox-pending.list` — the same list for a Stop event with no session_id; like `session-start.ref` it is live state for those sessions and clean-residue.js never reaps it
-- `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref (session-summary stopped reading it in v0.9.13 — it owns the `session-summary-*.lastrun` family)
+- `~/.claude/.claudemd-state/session-start.ref` — legacy sid-less sandbox-disposal ref
 - `~/.claude/.claudemd-state/install.lock` — `install()`'s cross-process mutex, created with `open(O_CREAT|O_EXCL)` and released in a `finally`; a lock older than 10 minutes **or** whose recorded pid is gone is treated as abandoned and taken over by a `rename` whose result the taker verifies by bytes, mtime and inode/dev, because a SIGKILL has no `finally` (Round-14 audit SCR-H2; owner check and rename from round-17 FLW-H1 / SCR-H1)
 - `~/.claude/.claudemd-state/upstream-check.lastrun` — session-start upstream-check 24h sentinel
-- `~/.claude/.claudemd-state/last-session-summary.json` — v0.8.0 R-N4 summary written on Stop, read on next SessionStart
 - `~/.claude/.claudemd-state/bootstrap-failed.json` — install.js failure sentinel (v0.50.0; written/cleared by `hook_install_sentinel_write` / `hook_install_sentinel_clear` — the shared bookkeeping behind both `hook_spawn_install` and the v0.75.0 inline fresh-install path — read by the SessionStart failure banner, stale copy cleared on version match)
 - `~/.claude/.claudemd-state/*.last-shown` — **legacy, no longer written**. Both SessionStart banners (session summary, bootstrap failure) consumed their sentinel by renaming it to this name, and clean-residue's state-dir patterns did not match the result, so only an uninstall with `CLAUDEMD_PURGE=1` removed it (2026-08-29 audit R10-21e). Both now consume with `rm`, and `clean-residue`'s `last-shown` pattern reaps whatever an upgraded machine still carries (2026-09-05 audit P3-1)
 - `~/.claude/.claudemd-state/user-content-backup.json` — v0.75.0; written by `install.js` when it moved a hand-written (non-spec) `~/.claude/CLAUDE.md` into a `backup-<stamp>/` dir, carrying that dir's path. Read by `emit_user_content_banner` in `session-start-check.sh` and **consumed with `rm`** — the idiom the two banners above have since adopted: the durable artifact is the backup dir named in the message, so a diagnostic copy would only add another state file nothing reaps (see R10-21e on the line above). Exists because install.js's stderr WARN about the overwrite lands in `claudemd-bootstrap.log` on every bootstrap path — the notice was unreachable on the default install route.
-- `~/.claude/.claudemd-state/ext-read-<sid>.ts` — per-session §13.1-extended-read dedup sentinel (`session-extended-read.sh`). Reaped by `session-end-check.sh` for its OWN session only, so a crash / kill / abnormal exit leaks one; `/claudemd-clean-residue` reaps the rest past the retention window.
 - `~/.claude/.claudemd-state/failopen-<hook>-<reason>.ts` — `hook_record_failopen` rate-limit marker (1 row per (hook, reason) per 60s); a marker dated after now (a clock that ran ahead) counts as stale, not fresh (v0.114.0)
 - `~/.claude/.claudemd-state/fail-open-ack.json` — `{"acknowledged":[[ts, hook, reason], …]}` written by `/claudemd-doctor --ack-fail-open` (v0.114.0): one entry per prerequisite fail-open row it acknowledged, repeated when rows share all three, and `hook-fail-open` does not count a row an entry matches; no clock is compared. Only a regular file counts, and one that does not parse or has no `acknowledged` array is none. Written to `fail-open-ack.json.<pid>` and renamed over the path, so a symlink or FIFO there is replaced rather than written through; the temp is removed on failure. clean-residue reaps neither; `CLAUDEMD_PURGE=1` removes both with the rest of the state directory
 - `~/.claude/.claudemd-state/mem-coverage-<sid>.ts` — **dead**: written by the `memory-coverage-scan` Stop hook removed in v0.23.12. No in-tree producer remains; existing copies are reaped by `/claudemd-clean-residue`.
-- `~/.claude/.claudemd-state/l2-task-counter` — §13.2 batch-review L2+ session counter (`session-end-check.sh`, reset on advisory trip)
 - `~/.claude/.claudemd-state/ship-baseline-recent` — ship-baseline recent-run cache
-- `~/.claude/.claudemd-state/mem-audit.lastrun` — `mem-audit.sh` cadence sentinel
-- `~/.claude/.claudemd-state/session-summary-<sid>.lastrun` — `session-summary.sh` per-session window ref (audit-2026-08-22 条目 6; one global file meant concurrent sessions shared a window and the banner was decided by whichever stopped first); orphans reaped by clean-residue.js
-- `~/.claude/.claudemd-state/session-summary.lastrun` — legacy sid-less session-summary cadence sentinel, still written by sessions whose Stop event carries no session_id
 - `~/.claude/.claudemd-state/statusline-prev.json` — prior statusLine object (command, padding and any other keys) saved by `/claudemd-statusline` so `remove` can restore it whole
-- `~/.claude/.claudemd-state/vocab-scan-<sid>.last` — per-session transcript-vocab-scan content-hash cursor (`transcript-vocab-scan.sh`). Nothing reaps it on session end; `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/rework-<sid>.fired-<key>-<n>` — the claim that the advisory for multiple `<n>` of file `<key>` has already been emitted this session (`rework-breaker.sh`). Created with `set -o noclobber`, i.e. `O_CREAT|O_EXCL`, so exactly one process wins each multiple when several Edit hooks run concurrently; the tally file beside it cannot carry that, because appending and then re-reading it is a race.
-- `~/.claude/.claudemd-state/rework-<sid>.counts` — per-session append-only edit tally, one `cksum` key per code-file Edit/Write and per code file a Bash command changed, commands changing more than 20 code files skipped as bulk (`rework-breaker.sh`). One short line per edit, so a long session's file is the size of its edit count; nothing reaps it on session end, `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/xrepo-<sid>-<key>` — the claim that this session has already been told about target repo `<key>` (`cksum` of the repo's physical `.git` path; `cross-repo-write-check.sh`). Empty, created with `set -o noclobber` so concurrent Edits announce a repo once; `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/branch-prune-<sid>-<key>` — the claim that this session has already been given the branch-prune list for one set of merged and landed branches (`<key>` = `cksum` of the cwd and every listed name; `branch-prune.sh`; a verdict on a `git branch -d` is not claimed). Empty, created with `set -o noclobber` so concurrent Bash calls hint once; a changed set gets a new key and a new hint. `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/modinj-<sid>.list` — the spec modules `spec-module-inject.sh` has already injected this session, one name per line, plus a `pending:<name>` line for a module deferred by the size budget to a later prompt from a person; `session-start-check.sh` deletes it on compaction (the injected text is gone), `/claudemd-clean-residue` reaps it past the retention window.
-- `~/.claude/.claudemd-state/modinj-<sid>.debug-lock` — `test-failure-debug.sh`'s O_EXCL lock around its re-check of that list and its append, removed right after; one older than a minute was left by a killed hook and is taken over (0.113.3). Not reaped by `/claudemd-clean-residue`; uninstall's purge removes it
-- `~/.claude/.claudemd-state/notice-<sid>.<source>` — an observation a Stop hook queued for the model (`evidence-gate.sh` writes `notice-<sid>.evidence-gate` when it fires in an interactive session with `EVIDENCE_GATE_DELIVER=1` and `DISABLE_DEFERRED_NOTICE_HOOK` unset); `deferred-notice.sh` renames it to `….delivering.<pid>`, reads it and deletes it on the session's next prompt. One nobody collects (the session ended) is reaped by `/claudemd-clean-residue` past the retention window.
+- `~/.claude/.claudemd-state/modinj-<sid>.list` — the spec modules `spec-module-inject.sh` has already injected this session, one name per line; `session-start-check.sh` deletes it on compaction (the injected text is gone), `/claudemd-clean-residue` reaps it past the retention window.
 - `~/.claude/.claudemd-state/tmp-sweep.stamp` — `tmp-sweep.sh` rate-limit stamp; its mtime is the last sweep. One file, rewritten in place, never grows.
 - `~/.claude/.claudemd-state/tmp-sweep.lock` — `tmp-sweep.sh`'s atomic claim (a file, created with bash's noclobber `: >`, an O_EXCL open; `mkdir` before 0.109.1, which uutils coreutils does not make atomic) held only between reading and rewriting the stamp, so parallel Bash calls spawn one sweep, not several. One left by a killed hook is cleared once it is older than 60 s.
 - `~/.claude/.claudemd-state/tmp-sweep.last.json` — the detached sweep's JSON result (`scripts/housekeeping.js tmp --apply`), overwritten on each run, so the last sweep's targets, deletions and errors can be read after the fact.
@@ -311,7 +213,6 @@ second is unverified on the trigger that matters.
 - `~/.claude/backup-<ISO>/` — spec backups (last 5 retained)
 - `$TMPDIR/claudemd-sync-<scope>` — `version-sync.sh` once-per-session sentinel. `<scope>` = `CLAUDE_SESSION_ID` if exported, else `.session_id` read off the hook's own stdin event, else the CC process PPID. The stdin leg was added in v0.71.4: CC does not export `CLAUDE_SESSION_ID` to hooks, so the PPID fallback was the *only* live path and "once per session" was in practice once per prompt. Self-GC'd past 24h by the hook itself; `/claudemd-clean-residue` reaps the rest.
 - `$TMPDIR/claudemd-memtags-hay-<rand>` — `hooks/lib/memory-tags.sh` haystack spill past the 128 KiB env-argument cliff (audit-2026-08-22 P1-5). Removed by a trap installed before the mktemp; a SIGKILL at the hooks.json timeout still strands one, which `/claudemd-clean-residue` reaps.
-- `$TMPDIR/claudemd-wtree-<rand>` — the temporary git index `hooks/lib/wtree.sh` stages the working tree into (opt-in `EVIDENCE_WTREE=1`: `verify-log.sh`, and `evidence-gate.sh` at a claim). Removed before the function returns, and by a TERM/INT trap when the 2 s bound stops it (`platform_timeout` sends SIGTERM); only a SIGKILL would strand one.
 - `$TMPDIR/claudemd-test-<rand>` — every sandbox the shell test suites create. Bare `mktemp -d` used to be the norm here, which produces `tmp.XXXXXXXXXX` and so matched NO prefix `/claudemd-clean-residue` looks for: the project's own recycler was blind to the largest residue class the project's own tests produced (2026-09-02 audit R11-38 — 2.6 GB across 524 directories, 150-250 stray directories a day). `tests/lib/mktemp-template.sh` now fails any tracked `.sh` whose `mktemp` call carries no template, and reports how many call sites it judged so a broken matcher cannot pass as "clean". The already-accumulated `tmp.XXXXXXXXXX` entries are counted and sized on every `/claudemd-clean-residue` run and never deleted by it, because nothing can prove they were ours; where they actually accumulate (`~/.claude/tmp/claude-<uid>`, the sandbox's `$TMPDIR`) the retention pass already reaps them by age. Invariants of that pass since 0.72.0: the window is never below one day, and an entry containing the process's own cwd or `$TMPDIR` is never deleted.
 
 The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gated by `tests/scripts/architecture-drift.test.js`, which extracts state paths from `hooks/**/*.sh` and `scripts/**/*.js` (the `logs/` and `backup-` paths match neither shape and are not gated). Before that gate existed (2026-07-28 audit M1) this list documented 6 of the 15 kinds actually written — the same "doc declares itself source-of-truth with nothing checking it" failure the hook-taxonomy table below had, in the same file. Its first draft then missed `vocab-scan-*` because it keyed on the variable name `$STATE_DIR` while that hook uses `$VS_STATE_DIR`; the extractor now matches any variable whose name ends in `STATE_DIR`. All three matchers still keyed on the state DIRECTORY, so the `$TMPDIR/claudemd-*` sentinel family — `claudemd-sync-*` since v0.3.1, `claudemd-memtags-hay-*` since v0.68.2 — was structurally invisible to a gate written to catch undocumented state; audit-2026-08-22 条目 15 added the prefix-keyed matcher that finds it.
@@ -326,30 +227,13 @@ The `~/.claude/.claudemd-state/` and `$TMPDIR/claudemd-*` entries above are gate
 | PreToolUse:Bash | `banned-vocab-check.sh` | git commit message + ship-flow prose §10-V scan | `§10-V` |
 | PreToolUse:Bash | `ship-baseline-check.sh` | git push when base-branch CI is red | `§7-ship-baseline` |
 | PreToolUse:Bash | `memory-read-check.sh` | ship/release require matched MEMORY.md Read | `§11-memory-read` |
-| PreToolUse | `session-extended-read.sh` | enforce extended-spec Read on L3/ship triggers | `§13.1-extended-read` |
-| PostToolUse | `transcript-vocab-scan.sh` | post-hoc §10-V scan of assistant prose | `§10-V` |
-| Stop | `evidence-gate.sh` | G1b: a completion claim in the last assistant message with no non-error Bash result after the last code edit (Edit/Write, or a code file in a Bash result's `bashEditDiff` — that command's own result counts only by its command, not its output) whose command names a runner or whose output carries a runner verdict. Opt-in `EVIDENCE_GATE=1` (§13.3 default-OFF) | `§iron-law-2` |
-| Stop | `ledger-staleness.sh` | G7 iii: a recent `tasks/<slug>-ledger.md` under the event's cwd, a code-file edit in the transcript tail (Edit/Write, or a Bash result's `bashEditDiff`), and no edit of that ledger by either channel in the same span (the window is a staleness threshold, read on both sides). Opt-in `LEDGER_STALENESS=1` (§13.3 default-OFF) | `§11-ledger` |
 | Stop | `reply-language-check.sh` | The last reply has no CJK character and at least 10 words once code, URLs, paths and tags are stripped (an `API Error:` line or a conventional-commit first line is not judged), and the human is 中文: the majority language of the human's newest 20 messages (requests about language are not parsed). Human messages exclude tool results, meta, compact-summary, sidechain rows, rows whose `origin.kind` is not `human`, and machine-prefixed rows (a slash command counts by its arguments; `queued_command` attachments count). Interactive sessions only (entrypoint not `sdk-*`). Returns `{"decision":"block"}` asking for a 中文 restatement, once per turn (`stop_hook_active`). Opt-in `REPLY_LANGUAGE_CHECK=1` or `=log` (§13.3 default-OFF) | `§1-language` |
-| PostToolUse | `rework-breaker.sh` | G2: per-session per-file Edit/Write/Bash-edit tally (Bash via `tool_response.bashEditDiff`, bulk commands over 20 code files skipped); injects one line at each multiple of the pre-registered threshold 8. Opt-in `REWORK_BREAKER=1` (§13.3 default-OFF) | `§1-root-cause` |
 | PostToolUse | `memory-index-lines.sh` | advisory (0.122.0+): an Edit/Write of an auto-memory `MEMORY.md`, or a Bash command naming it, wrote index lines over 150 characters → one line naming each one's length and title; lines already in the file are left to `/claudemd-doctor` | `§11-memory-index` |
-| PostToolUse | `verify-log.sh` | R3, log only: a passing verification command (evidence-gate's T1/T2, `hooks/lib/verify-cmd.sh`) is recorded with the working-tree content fingerprint it ran on (`hooks/lib/wtree.sh`); `evidence-gate.sh` records the fingerprint at each claim. Opt-in `EVIDENCE_WTREE=1` | `§iron-law-2` |
-| PostToolUseFailure | `test-failure-debug.sh` | R6(a): a test runner exited non-zero and `debug.md` is not yet in this session → injects the module (shared once-per-session list with `spec-module-inject.sh`). Opt-in `DEBUG_ON_TEST_FAILURE=1` (§13.3 default-OFF) | `§2.2-modules` |
-| PostToolUseFailure | `branch-prune.sh` | advisory (0.116.0+): a `git branch -d` that exits non-zero → for each branch it named that is still there (`scripts/housekeeping.js refused`), `landed` (its work is on the default branch byte for byte: a copy of each commit by `git patch-id --verbatim` or one squash commit, at the same place by a three-way merge, or the tip is on it) with a `git branch -D` command that first compares the tip with the commit judged, or kept, with up to 3 commits that have no copy or the reason it was not compared (a shallow or partial clone, grafts, no local default branch, merge commits, …); deletes nothing | n/a |
-| PreToolUse | `cross-repo-write-check.sh` | Advisory when an Edit/Write/NotebookEdit target, or a Bash git write after a literal `cd`/`git -C`, belongs to a git repo other than the one owning `cwd` (worktrees and submodules collapse to their owning repo). Once per target repo per session. Opt-in `CROSS_REPO_WRITE=1` (§13.3 default-OFF) | `§5-scope` |
 | PostToolUse:Bash | `tmp-sweep.sh` | reclaims vitest per-run tmp dirs (exact signature only) and `agent-tmp-*` agent temp residue (no mtime or ctime within 72 h, no `.keep`, no socket or FIFO, no mount point) (detached, ≤ once per 10 min) + temp-root pressure advisory | `§8.V4` |
-| PostToolUse:Bash | `branch-prune.sh` | advisory: after git merge/pull/fetch/push or gh pr merge, lists local branches whose upstream is `[gone]` and whose tip is on the default branch (plus `worktree-agent-*` on it), at most 10, with the `git branch -d` command, and (0.116.0+) the gone or `worktree-agent-*` ones whose work is on it byte for byte (`landed`, refused by `-d`) with a checked `git branch -D` command, once per session per set (every call when the claim cannot be written); after a `git branch -d`, a verdict on each branch it left (as on PostToolUseFailure below); deletes nothing | n/a |
-| UserPromptSubmit | `memory-prompt-hint.sh` | proactive matched-MEMORY.md recall hint (advisory) | `§11-memory-hint` |
 | UserPromptSubmit | `spec-module-inject.sh` | injects the spec module(s) a prompt's triggers match (`spec/spec-modules.json`) | `§2.2-modules` |
-| UserPromptSubmit | `deferred-notice.sh` | R5 plan B: delivers, once, the observation a Stop hook queued in `notice-<sid>.<source>` (today `evidence-gate.sh`) with the session's next prompt — no extra model turn, which a Stop-channel note would cost | `§iron-law-2` |
-| PreToolUse (Bash) | `spec-module-gate.sh` | before a release command, checks ship.md reached the session; `log` by default, `advisory` / `deny` opt-in | `§2.2-modules` |
 | UserPromptSubmit | `version-sync.sh` | mid-session manifest sync | n/a |
-| Stop | `residue-audit.sh` | ~/.claude/tmp/ growth advisory | `§7-user-global-state` |
 | Stop | `sandbox-disposal-check.sh` | Test/probe residue that appeared or changed since the session's previous Stop (mtime, not ownership), depth 1: `claudemd-*` / `agent-tmp-*` in `/tmp`; `tmp.*` / `claudemd-*` / `agent-tmp-*` in `~/.claude/tmp` and `/var/tmp`; `~/.claude/projects/` dirs whose encoded cwd is a temp dir and whose every direct entry is newer than that Stop, minus the session's own transcript dir. macOS `/tmp` (a symlink) is not descended. Reported at the session's next Stop if still present (v0.98.0; `SANDBOX_DISPOSAL_IMMEDIATE=1` = at first sight). Advisory; opt-in `SANDBOX_DISPOSAL_BLOCK=1` returns `{"decision":"block"}` once per turn (`stop_hook_active`) | `§8.V4` |
-| Stop | `mem-audit.sh` | MEMORY.md orphan/dangling advisory | `§11-EXT-mem-audit` |
-| Stop | `transcript-structure-scan.sh` | REPORT structure scan (v8 three-part `## 汇报`; v7 four-section) | `§iron-law-2` / `§10-four-section-order` / `§10-honesty` (dynamic) |
-| Stop | `session-summary.sh` | session deny/bypass/warn aggregation | n/a (writes to state file, not jsonl) |
-| SessionStart | `session-start-check.sh` | bootstrap on mismatch + upstream banner + session-summary banner | `§11-post-compaction` (compact-reminder); n/a for the lifecycle events |
-| SessionEnd | `session-end-check.sh` | batch re-review / session-exit checks | `§11-session-exit` / `§13.2-batch-review` |
+| SessionStart | `session-start-check.sh` | bootstrap on mismatch + upstream, drift, paused-checkpoint and compaction banners | `§11-post-compaction` (compact-reminder); n/a for the lifecycle events |
+| SessionEnd | `session-end-check.sh` | session-exit checkpoint for changes after the last validation | `§11-session-exit` |
 
-A hook may emit BOTH null-section lifecycle rows and spec-section rows — `session-start-check` does, so "emits null" is a property of the event, not of the hook. Rows whose section is null are plugin-internal lifecycle, not spec enforcement. The `session-summary` hook is the only one that does NOT call `hook_record` at all — it writes to a separate state file consumed by `session-start-check`'s banner. See `docs/RULE-HITS-SCHEMA.md` for the full event taxonomy.
+A hook may emit BOTH null-section lifecycle rows and spec-section rows — `session-start-check` does, so "emits null" is a property of the event, not of the hook. Rows whose section is null are plugin-internal lifecycle, not spec enforcement. The `spec_section` values are telemetry keys kept from earlier spec versions so old and new rows join; they are not pointers into the v9 text. See `docs/RULE-HITS-SCHEMA.md` for the full event taxonomy.

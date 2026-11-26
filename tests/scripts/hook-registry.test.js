@@ -19,13 +19,13 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('registry has 28 entries and 29 hooks.json registrations', () => {
+test('registry has 12 entries and 12 hooks.json registrations', () => {
   // The install manifest holds one entry per registration (MCOUNT in
   // tests/integration/full-lifecycle.test.sh, manifest.entries.length in
   // tests/scripts/install.test.js), which is HOOK_REGISTRATION_COUNT: one per
-  // hook plus its `alsoOn` events (branch-prune: PostToolUseFailure, 0.116.0).
-  assert.equal(HOOK_REGISTRY.length, 28);
-  assert.equal(HOOK_REGISTRATION_COUNT, 29);
+  // hook plus its `alsoOn` events (none since 0.123.0 removed branch-prune).
+  assert.equal(HOOK_REGISTRY.length, 12);
+  assert.equal(HOOK_REGISTRATION_COUNT, 12);
 });
 
 test('R15: optIn names exactly the hooks whose source exits at an opt-in variable', () => {
@@ -38,7 +38,6 @@ test('R15: optIn names exactly the hooks whose source exits at an opt-in variabl
     const m = fs.readFileSync(path.join(REPO_ROOT, 'hooks', r.basename), 'utf8').match(GATE);
     if (m) derived[r.displayName] = m[1] || m[2];
   }
-  assert.equal(derived['evidence-gate'], 'EVIDENCE_GATE', 'control: a known opt-in hook is derived');
   assert.equal(derived['reply-language'], 'REPLY_LANGUAGE_CHECK', 'control: the case form is derived');
   const declared = Object.fromEntries(
     HOOK_REGISTRY.filter(r => r.optIn).map(r => [r.displayName, r.optIn.env])
@@ -67,11 +66,6 @@ test('registry → hooks.json: every entry registered with same event/matcher/ti
     assert.ok(found.length > 0, `registry entry ${r.basename} not found in hooks/hooks.json`);
     assert.deepEqual(found, declared, `${r.basename}: event/matcher/timeout drift`);
   }
-});
-
-test('branch-prune is registered on PostToolUseFailure too (a refused git branch -d exits 1)', () => {
-  const r = HOOK_REGISTRY.find(h => h.basename === 'branch-prune.sh');
-  assert.deepEqual(r.alsoOn, [{ hookEvent: 'PostToolUseFailure', matcher: 'Bash', timeout: 10 }]);
 });
 
 test('hooks.json → registry: every command points to a registry basename', () => {

@@ -123,54 +123,6 @@ const KEPT = [
     has: `if printf '%s' "$CMD" | grep -qi 'known-red baseline:'; then`,
     why: 'known-red marker: a lost match checks CI',
   },
-  // hooks/transcript-structure-scan.sh — opt-in advisory; every lost match adds a hit.
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `if printf '%s' "$block" | grep -qE`,
-    why: 'evidence fingerprint: a lost match flags the Done block',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$first_line" | grep -qE '^Done:`,
-    why: 'empty-Done skip: a lost match flags it',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$line" | grep -qE '^##[[:space:]]+Uncertain[[:space:]]*$' && continue`,
-    why: 'header skip: a lost match flags it',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$norm" | grep -qE '^Uncertain[[:space:]]*(:|—|-)`,
-    why: 'explicit-none skip: a lost match flags it',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$norm" | grep -qiE '\\b(because|since|due to|owing to)\\b`,
-    why: 'rationale skip: a lost match flags it',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `echo "$norm" | grep -qE '^Uncertain[[:space:]]*$' && continue`,
-    why: 'bare-header skip: a lost match flags it',
-  },
-  {
-    file: 'hooks/transcript-structure-scan.sh',
-    has: `if ! printf '%s' "$SECTION_LIST" | grep -qFx -- "$section"; then`,
-    why: 'section dedup: a lost match lists a section twice',
-  },
-  // hooks/verify-log.sh (EVIDENCE_WTREE=1, opt-in)
-  {
-    file: 'hooks/verify-log.sh',
-    has: `printf '%s' "$OUT" | grep -Eq "$T2_OUT_RE" && TIER=T2-output`,
-    why: 'a lost match records no run, so evidence-gate warns more',
-  },
-  // hooks/evidence-gate.sh (EVIDENCE_GATE=1, opt-in)
-  {
-    file: 'hooks/evidence-gate.sh',
-    has: `printf '%s' "$LAST_MSG" | LC_ALL=C grep -Eq "$DONE_NEG_RE" && exit 0`,
-    why: 'negated-claim veto: a lost match warns',
-  },
 ];
 
 // --- recognizer (the shell reader is tests/lib/shell-scan.mjs) ---------------

@@ -18,7 +18,7 @@ import {
   manifestPath,
   legacyManifestPath,
 } from './lib/paths.js';
-import { HOOK_BASENAMES } from './lib/hook-registry.js';
+import { EVICTABLE_HOOK_BASENAMES } from './lib/hook-registry.js';
 import { remove as removeStatusline } from './lib/statusline.js';
 import { printHelpAndExit, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
 
@@ -369,7 +369,8 @@ export async function uninstall({ specAction = 'keep', confirmHardAuth = false, 
       const s = readSettings();
       const pluginCommands = new Set((m.data?.entries || []).map(e => e.command));
       const r = unmergeHook(s, {
-        commandPredicate: c => pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, HOOK_BASENAMES),
+        commandPredicate: c =>
+          pluginCommands.has(c) || isClaudemdLegacyHookCommand(c, EVICTABLE_HOOK_BASENAMES),
       });
       settingsRemoved = r.removed;
       // Only when something went, as install.js does (defect 158): an unchanged

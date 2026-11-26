@@ -74,15 +74,9 @@ test('scan finds claudemd-sync-* files and claudemd-(mockgh|work).* dirs', () =>
   assert.equal(r.sandboxes.length, 2);
 });
 
-// housekeeping.js judges landed branches in a throwaway repository,
-// `claudemd-landed.XXXXXX`; one a timeout killed is reaped here too. The name
-// is joined to the mkdtemp template so a rename fails here.
-test('scan finds claudemd-landed.* dirs, the template housekeeping.js creates', () => {
-  const src = fs.readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/housekeeping.js'),
-    'utf8'
-  );
-  assert.match(src, /mkdtempSync\(path\.join\(os\.tmpdir\(\), 'claudemd-landed\.'\)\)/);
+// Until 0.123.0 housekeeping.js judged landed branches in a throwaway
+// repository, `claudemd-landed.XXXXXX`; one a timeout killed is still reaped.
+test('scan finds claudemd-landed.* dirs left by the branch-prune hook before 0.123.0', () => {
   fs.mkdirSync(path.join(tmpDir, 'claudemd-landed.AbC123'));
   fs.mkdirSync(path.join(tmpDir, 'claudemd-landed-old'));
   assert.deepEqual(

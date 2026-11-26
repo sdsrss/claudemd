@@ -8,7 +8,6 @@
 //     known to the v0.7.0 hook taxonomy.
 
 import { test } from 'node:test';
-import { isImmutableSection } from '../../scripts/lib/rule-hits-parse.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -395,91 +394,6 @@ test('hard-rules-9: §13 META partition prose matches computed manifest partitio
     actual,
     `§13 META partition prose drifted from spec/hard-rules.json — update the "partitions the N HARD rules" / "Today: …" line in CLAUDE-extended.md to: ` +
       `${actual.total} HARD rules, Today: ${actual.hook} hook / ${actual.self} self / ${actual.both} both / ${actual.external} external`
-  );
-});
-
-test('hard-rules-10: OPERATOR.md §13.1 demote-loop counts match the manifest', () => {
-  // 2026-09-07, v0.80.0 pre-tag review M1. hard-rules-9 gates the §13 partition
-  // prose in CLAUDE-extended.md; OPERATOR.md §13.1 states four more counts about
-  // the same manifest and nothing gated those. v6.28.0 added a 26th rule, updated
-  // the manifest `_doc` and the extended prose, and left OPERATOR.md claiming
-  // "4 of the 25", "the other 21", "12 rules have no hit channel (11 self …)".
-  // OPERATOR.md is not Agent-loaded, but install.js writes it into ~/.claude/, so
-  // the stale numbers ship to users. Same drift class as hard-rules-9, same fix.
-  const m = loadManifest();
-  const op = fs.readFileSync(path.join(ROOT, 'spec/OPERATOR.md'), 'utf8');
-  // The manifest's `_doc` carries a third copy of the ceiling and the union.
-  // The repair taught a test to derive the number and left the file it derives
-  // it FROM asserting a hardcoded one (round-3 M-3).
-  const noChannel = m.rules.filter(r => !r.rule_hits_section);
-  // The ceiling is DERIVED, not typed. v0.80.0's first version of this gate
-  // hardcoded `- 4` and baked the same 4 into its regex, so the one mutation
-  // §13.1 exists to produce — demoting a `both` rule to `self` — left the
-  // ceiling at 4 and OPERATOR.md asserting a candidate list that no longer
-  // held, with the suite green (verification round M-1). The pipeline is
-  // hard-rules-audit's: start from hook ∪ both, drop the §8 safety-class ones.
-  const hookEnforced = m.rules.filter(r => r.enforcement === 'hook' || r.enforcement === 'both');
-  const candidates = hookEnforced.filter(r => !isImmutableSection(r.id));
-  const actual = {
-    total: m.rules.length,
-    ceiling: candidates.length,
-    hookUnion: hookEnforced.length,
-    safetyClass: hookEnforced.filter(r => isImmutableSection(r.id)).length,
-    selfWithChannel: m.rules.filter(r => r.enforcement === 'self' && r.rule_hits_section).length,
-    others: m.rules.length - candidates.length,
-    noChannel: noChannel.length,
-    noChannelSelf: noChannel.filter(r => r.enforcement === 'self').length,
-  };
-  const read = (re, what) => {
-    const hit = op.match(re);
-    assert.ok(hit, `OPERATOR.md §13.1 must state ${what} matching ${re}`);
-    return Number(hit[1]);
-  };
-  const prose = {
-    total: read(/hold \d+ of the (\d+) HARD rules/, 'the manifest total'),
-    ceiling: read(/hold (\d+) of the \d+ HARD rules/, 'the demote ceiling'),
-    hookUnion: read(/starts from the (\d+) `hook`\/`both` rules/, 'the hook ∪ both count'),
-    safetyClass: read(/exempts the (\d+) §8 safety-class ones/, 'the safety-class count'),
-    selfWithChannel: read(/\*\*(\d+) `self` rules DO emit rows\*\*/, 'the self-with-channel count'),
-    others: read(/nothing about the other (\d+)\./, 'the non-candidate count'),
-    noChannel: read(/\*\*(\d+) rules have no hit channel at all\*\*/, 'the no-channel count'),
-    noChannelSelf: read(/no hit channel at all\*\* \((\d+) `self`/, 'the no-channel self count'),
-  };
-  assert.deepEqual(
-    prose,
-    actual,
-    'OPERATOR.md §13.1 counts drifted from spec/hard-rules.json — update them to: ' +
-      `${actual.ceiling} of the ${actual.total} HARD rules, the other ${actual.others}, ` +
-      `${actual.noChannel} rules have no hit channel at all (${actual.noChannelSelf} \`self\` + the 1 \`external\`)`
-  );
-  // The bullet also NAMES the candidates. A demote that changes which rules
-  // qualify leaves the counts intact when one leaves and another arrives, so
-  // the ids are the half that catches a swap.
-  // Set equality against the BULLET, not containment against the file. The first
-  // version scanned all 16KB of OPERATOR.md, so three ids that appear in the
-  // artifact-retention table satisfied it without the bullet naming them, and a
-  // named id that had stopped qualifying was never noticed (round-3 L-2).
-  const bullet = op.split('\n').find(l => l.includes('demoteCandidates` can only ever hold'));
-  assert.ok(bullet, 'OPERATOR.md §13.1 must carry the demoteCandidates bullet');
-  const named = (bullet.match(/§[\w.-]+/g) || []).filter(id => m.rules.some(r => r.id === id));
-  assert.deepEqual(
-    [...new Set(named)].sort(),
-    candidates.map(r => r.id).sort(),
-    'OPERATOR.md §13.1 must name exactly the rules that qualify as demote candidates'
-  );
-  const docSentence = `Only ${actual.ceiling} of the ${actual.total} rules can EVER appear in demoteCandidates: the pipeline takes the ${actual.hookUnion} 'hook'/'both' rules and then exempts the ${actual.safetyClass} §8 safety-class ones`;
-  assert.ok(
-    m._doc.includes(docSentence),
-    `spec/hard-rules.json _doc drifted from its own rules array — it must contain:\n  ${docSentence}`
-  );
-  // …and the clause after it (v0.81.0 pre-tag review, LOW-2). The assertion
-  // above stopped one sentence short, so the `_doc`'s FIFTH copy of
-  // selfWithChannel went unread: demoting a rule left the manifest's own prose
-  // stale with the whole suite green.
-  const docEmitSentence = `and ${actual.selfWithChannel} of them do emit, via rule_hits_section`;
-  assert.ok(
-    m._doc.includes(docEmitSentence),
-    `spec/hard-rules.json _doc drifted from its own rules array — it must also contain:\n  ${docEmitSentence}`
   );
 });
 

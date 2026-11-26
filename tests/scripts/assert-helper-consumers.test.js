@@ -49,25 +49,18 @@ const LEGACY_OWN_ASSERTIONS = [
   // tests/lib/assert.sh, and the suite sources it as of that change. The list
   // only shrinks, so a migrated entry has to come off rather than linger as a
   // standing permission to walk back off the shared helper.
-  'mem-audit.test.sh',
-  'memory-prompt-hint.test.sh',
   'memory-read-check.test.sh',
   'memory-tags-parity.test.sh',
   'platform.test.sh',
   'pre-bash-safety.test.sh',
   'preToolUse-fastpath-order.test.sh',
   'preToolUse-jq-spawn-budget.test.sh',
-  'residue-audit.test.sh',
   'rule-hits.test.sh',
   'sandbox-disposal.test.sh',
   'session-end-check.test.sh',
-  'session-extended-read.test.sh',
   'session-start.test.sh',
-  'session-summary.test.sh',
   'ship-baseline.test.sh',
   'timeout-guard.test.sh',
-  'transcript-structure-scan.test.sh',
-  'transcript-vocab-scan.test.sh',
   'version-sync.test.sh',
 ];
 

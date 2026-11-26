@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v9.0.0 — Extended
+# AI-CODING-SPEC v9.0.1 — Extended
 
 Loaded on demand: core §12 points at the ship module, and the review module loads when reviewing. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -51,8 +51,8 @@ The banned-vocabulary gate (hook-enforced, above) reads `hooks/banned-vocab.patt
 
 ## Recent changes
 
-Full version history: `~/.claude/CLAUDE-changelog.md`. Only the current version's entry lives here.
+Full version history: `~/.claude/CLAUDE-changelog.md`. Only the v9 entries live here.
+
+**v9.0.1 (patch, 2026-11-30)** — no rule text changed. `hard-rules.json`: the two self-checked rules whose telemetry came from hooks plugin 0.123.0 removed (`evidence-gate`, `transcript-structure-scan`) no longer name a log section. `OPERATOR.md`: the demote-loop note and the `Sizing` line are gone with the scripts that served them; hooks are frozen to bug fixes and removals. `CLAUDE-changelog.md` keeps the v9 entries only; older ones are in git history.
 
 **v9.0.0 (major, 2026-11-25)** — core cut from 24,218 bytes (v8.6.0, the last release) to about 2.8 KB, modules from nine to ship and review. The first outcome A/B (hidden tests, 432 runs, `docs/claudemd-value-assessment-2026-11-25.md`) found the v8 spec gave the same or lower correctness than no spec at 1.8–2.4× the cost; the lean text kept correctness (66/72 vs 65/72) at 1.2–1.3×, with a local commit and a `## 汇报` report in 41 to 72 of 72 runs, depending on how the spec was delivered. It missed two bars set before the run, cost ≤ 1.15 (1.17 and 1.26) and ≥ 46/72 commits and reports (41/72 with the spec in the repo); the user accepted that. Pre-tag review now runs only on risky releases. HARD rules: 11 removed with that evidence as the rationale, the §13 30-day grace waived by the user; the rest keep their IDs. Design record `tasks/specs/spec-v9-lean-2026-11-25.md`.
-
-**Sizing** (v9.0.0, 2026-11-25, single post-edit `wc -c`; ±20B self-rewrite envelope): core 24218 → 2792 bytes (Δ -21426); extended 38807 → 6387 bytes (Δ -32420); OPERATOR.md 15423 → 5893 bytes (Δ -9530). Size budget: core 2792/4000 (**1208 bytes headroom**); extended 6387/12000 (**5613 bytes headroom**).

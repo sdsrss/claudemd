@@ -10,14 +10,9 @@
 //   hooks/hooks.json       — drift-tested against this registry
 //   commands/claudemd-toggle.md — display-name list drift-tested
 //
-// Roughly event-ordered for display (SessionStart → UserPromptSubmit →
-// PreToolUse → Stop → SessionEnd), but NOT strictly: transcript-vocab-scan is a
-// PostToolUse hook sitting between two Stop rows, which is where the previous
-// wording — added by the 2026-08-16 C1 fix to replace a different false claim —
-// was false again one line below itself (audit-2026-08-22 条目 22). Nothing
-// depends on the order: execution order comes from hooks/hooks.json alone, the
-// two lists are not order-synchronized, and no test asserts order. Add a row
-// wherever it reads best. Adding a
+// Roughly event-ordered for display, but nothing depends on the order:
+// execution order comes from hooks/hooks.json alone, and no test asserts
+// order. Hooks are frozen (spec/OPERATOR.md §13.3). Adding a
 // hook = one entry here + the hooks.json command + the
 // commands/claudemd-toggle.md list; tests/scripts/hook-registry.test.js fails
 // loudly if membership/event/matcher/timeout drift.
@@ -47,14 +42,6 @@ export const HOOK_REGISTRY = [
     timeout: 2,
   },
   {
-    basename: 'memory-prompt-hint.sh',
-    displayName: 'memory-prompt-hint',
-    envVarSuffix: 'MEMORY_HINT',
-    hookEvent: 'UserPromptSubmit',
-    matcher: '*',
-    timeout: 3,
-  },
-  {
     basename: 'spec-module-inject.sh',
     displayName: 'spec-module-inject',
     envVarSuffix: 'SPEC_MODULE_INJECT',
@@ -66,22 +53,6 @@ export const HOOK_REGISTRY = [
     basename: 'pre-bash-safety-check.sh',
     displayName: 'pre-bash-safety',
     envVarSuffix: 'PRE_BASH_SAFETY',
-    hookEvent: 'PreToolUse',
-    matcher: 'Bash',
-    timeout: 3,
-  },
-  {
-    basename: 'deferred-notice.sh',
-    displayName: 'deferred-notice',
-    envVarSuffix: 'DEFERRED_NOTICE',
-    hookEvent: 'UserPromptSubmit',
-    matcher: '*',
-    timeout: 2,
-  },
-  {
-    basename: 'spec-module-gate.sh',
-    displayName: 'spec-module-gate',
-    envVarSuffix: 'SPEC_MODULE_GATE',
     hookEvent: 'PreToolUse',
     matcher: 'Bash',
     timeout: 3,
@@ -111,71 +82,12 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
-    basename: 'session-extended-read.sh',
-    displayName: 'session-extended-read',
-    envVarSuffix: 'SESSION_EXTENDED_READ',
-    hookEvent: 'PreToolUse',
-    matcher: 'Read',
-    timeout: 3,
-  },
-  {
-    basename: 'residue-audit.sh',
-    displayName: 'residue-audit',
-    envVarSuffix: 'RESIDUE_AUDIT',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 3,
-  },
-  {
     basename: 'sandbox-disposal-check.sh',
     displayName: 'sandbox-disposal-check',
     envVarSuffix: 'SANDBOX_DISPOSAL',
     hookEvent: 'Stop',
     matcher: '*',
     timeout: 3,
-  },
-  {
-    basename: 'mem-audit.sh',
-    displayName: 'mem-audit',
-    envVarSuffix: 'MEM_AUDIT',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 3,
-  },
-  {
-    basename: 'session-summary.sh',
-    displayName: 'session-summary',
-    envVarSuffix: 'SESSION_SUMMARY',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 3,
-  },
-  {
-    basename: 'transcript-vocab-scan.sh',
-    displayName: 'transcript-vocab-scan',
-    envVarSuffix: 'TRANSCRIPT_VOCAB_SCAN',
-    hookEvent: 'PostToolUse',
-    matcher: '*',
-    timeout: 3,
-    optIn: { env: 'TRANSCRIPT_VOCAB_SCAN', values: ['1'] },
-  },
-  {
-    basename: 'evidence-gate.sh',
-    displayName: 'evidence-gate',
-    envVarSuffix: 'EVIDENCE_GATE',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 5,
-    optIn: { env: 'EVIDENCE_GATE', values: ['1'] },
-  },
-  {
-    basename: 'ledger-staleness.sh',
-    displayName: 'ledger-staleness',
-    envVarSuffix: 'LEDGER_STALENESS',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 5,
-    optIn: { env: 'LEDGER_STALENESS', values: ['1'] },
   },
   {
     basename: 'reply-language-check.sh',
@@ -187,15 +99,6 @@ export const HOOK_REGISTRY = [
     optIn: { env: 'REPLY_LANGUAGE_CHECK', values: ['1', 'log'] },
   },
   {
-    basename: 'rework-breaker.sh',
-    displayName: 'rework-breaker',
-    envVarSuffix: 'REWORK_BREAKER',
-    hookEvent: 'PostToolUse',
-    matcher: 'Edit|Write|Bash',
-    timeout: 3,
-    optIn: { env: 'REWORK_BREAKER', values: ['1'] },
-  },
-  {
     basename: 'memory-index-lines.sh',
     displayName: 'memory-index-lines',
     envVarSuffix: 'MEMORY_INDEX_LINES',
@@ -204,58 +107,12 @@ export const HOOK_REGISTRY = [
     timeout: 3,
   },
   {
-    basename: 'cross-repo-write-check.sh',
-    displayName: 'cross-repo-write',
-    envVarSuffix: 'CROSS_REPO_WRITE',
-    hookEvent: 'PreToolUse',
-    matcher: 'Edit|Write|NotebookEdit|Bash',
-    timeout: 3,
-    optIn: { env: 'CROSS_REPO_WRITE', values: ['1'] },
-  },
-  {
     basename: 'tmp-sweep.sh',
     displayName: 'tmp-sweep',
     envVarSuffix: 'TMP_SWEEP',
     hookEvent: 'PostToolUse',
     matcher: 'Bash',
     timeout: 3,
-  },
-  {
-    basename: 'branch-prune.sh',
-    displayName: 'branch-prune',
-    envVarSuffix: 'BRANCH_PRUNE',
-    hookEvent: 'PostToolUse',
-    matcher: 'Bash',
-    timeout: 10,
-    // A refused `git branch -d` exits 1, which fires PostToolUseFailure only.
-    alsoOn: [{ hookEvent: 'PostToolUseFailure', matcher: 'Bash', timeout: 10 }],
-  },
-  {
-    basename: 'verify-log.sh',
-    displayName: 'verify-log',
-    envVarSuffix: 'VERIFY_LOG',
-    hookEvent: 'PostToolUse',
-    matcher: 'Bash',
-    timeout: 3,
-    optIn: { env: 'EVIDENCE_WTREE', values: ['1'] },
-  },
-  {
-    basename: 'test-failure-debug.sh',
-    displayName: 'test-failure-debug',
-    envVarSuffix: 'TEST_FAILURE_DEBUG',
-    hookEvent: 'PostToolUseFailure',
-    matcher: 'Bash',
-    timeout: 3,
-    optIn: { env: 'DEBUG_ON_TEST_FAILURE', values: ['1'] },
-  },
-  {
-    basename: 'transcript-structure-scan.sh',
-    displayName: 'transcript-structure-scan',
-    envVarSuffix: 'TRANSCRIPT_STRUCTURE_SCAN',
-    hookEvent: 'Stop',
-    matcher: '*',
-    timeout: 3,
-    optIn: { env: 'TRANSCRIPT_STRUCTURE_SCAN', values: ['1'] },
   },
   {
     basename: 'session-end-check.sh',
@@ -268,6 +125,29 @@ export const HOOK_REGISTRY = [
 ];
 
 export const HOOK_BASENAMES = HOOK_REGISTRY.map(h => h.basename);
+// Hooks a release removed. A settings.json written by a hand install or by
+// 0.1.2-0.1.4 can still register any of them, and install/uninstall evict
+// legacy entries by basename, so the eviction list is the union of both.
+export const RETIRED_HOOK_BASENAMES = [
+  // 0.123.0
+  'branch-prune.sh',
+  'cross-repo-write-check.sh',
+  'deferred-notice.sh',
+  'evidence-gate.sh',
+  'ledger-staleness.sh',
+  'mem-audit.sh',
+  'memory-prompt-hint.sh',
+  'residue-audit.sh',
+  'rework-breaker.sh',
+  'session-extended-read.sh',
+  'session-summary.sh',
+  'spec-module-gate.sh',
+  'test-failure-debug.sh',
+  'transcript-structure-scan.sh',
+  'transcript-vocab-scan.sh',
+  'verify-log.sh',
+];
+export const EVICTABLE_HOOK_BASENAMES = [...HOOK_BASENAMES, ...RETIRED_HOOK_BASENAMES];
 // hooks/hooks.json registrations, and so install-manifest entries: one per
 // event a hook is registered on (`alsoOn` adds the others).
 export const HOOK_REGISTRATION_COUNT = HOOK_REGISTRY.reduce((n, h) => n + 1 + (h.alsoOn?.length ?? 0), 0);

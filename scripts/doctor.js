@@ -31,27 +31,17 @@ import { compareHooks } from './lib/install-drift.js';
 import { detect as detectStatusline } from './lib/statusline.js';
 import {
   readHits,
-  groupBySection,
-  blockingDenyCount,
   isBlockingDeny,
   excludeTestSessions,
   UNEVALUABLE_FAILOPEN_REASONS,
-  IMMUTABLE_SECTION_RE,
 } from './lib/rule-hits-parse.js';
 import {
   scanMemoryTags,
   scanMemoryIndexSizes,
+  checkMemoryIndexLinks,
   MEMORY_INDEX_BUDGET_BYTES,
   MEMORY_INDEX_LINE_MAX_CHARS,
 } from './lib/memory-tags.js';
-import {
-  memoryMaintenance,
-  CITE_MIN,
-  PROMOTE_MIN_AGE_DAYS,
-  RECALL_MAX_AGE_DAYS,
-  STALE_AGE_DAYS,
-} from './lib/memory-maintenance.js';
-import { scanRunbookReviewSteps } from './lib/runbook-review-check.js';
 import { runHookSelfTests } from './lib/doctor-hook-tests.js';
 import { cleanStateDir, readRetentionFromClaudeMd, DEFAULT_RETENTION_DAYS } from './clean-residue.js';
 import { printHelpAndExit, parsePositiveInt, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
@@ -91,35 +81,11 @@ Exit codes: 0 all checks passed | 1 validation or runtime error (an --ack-fail-o
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// v0.7.1 R-N6 — doctor surfaces §0.1 demotion candidates from v0.7.0's
-// bypass-vs-deny audit data. A spec section whose users override its denies
-// more often than they comply with them is signalling either "rule too strict"
-// or "rule wording confuses". OPERATOR.md §13.1 says core entries
-// with 0 hits in 30d are demotion candidates; this catch is the inverse —
-// hits exist, but they're routinely escape-hatched.
+// Window for the log-derived rows (fail-open, observed memory-tag denies).
 const RULE_USAGE_WINDOW_DAYS = 30;
-// Deferred-work docs untouched this long are a review prompt, not a failure.
-const TASKS_STALE_DAYS = 30;
-const RULE_USAGE_DEMOTION_RATIO = 0.5;
-// Floor below which the bypass:deny ratio is statistically meaningless.
-// 3 events over 30 days is the smallest sample where a 50%+ override rate
-// reliably distinguishes signal from a single-incident artifact.
-const RULE_USAGE_MIN_TOTAL = 3;
-// memory-tag-specificity: a memory file the §11 gate denied this many times in
-// the window is listed first (the same small-sample floor as above).
+// memory-tag-specificity: a memory file the memory-read gate denied this many
+// times in the window is listed first.
 const OBSERVED_TAG_DENY_MIN = 3;
-// v0.23.6 — why this file cares about IMMUTABLE_SECTION_RE (imported above; the
-// pattern itself lives in lib/rule-hits-parse.js since 2026-09-02, audit
-// R11-13c, because hard-rules-audit.js held a byte-identical copy):
-// the §8 SAFETY family is immutable per spec §5.1 Never-downgrade, so a high
-// bypass ratio there is expected ceremony on risky-but-known-safe ops (npx with
-// no lockfile under user trust, rm -rf on a validated var), NOT a "rule too
-// strict → demote" signal. Surface the ratio, never emit the "§0.1 demotion
-// candidate" label — it would recommend an action the policy forbids.
-// Scope is §8-only on purpose: the other §5.1 Never-downgrade sections that own
-// a rule-hits label (§7-user-global-state, §iron-law-2) are advisory
-// Stop-hook-only (warn / structure-advisory, never deny+bypass), so total=0 <
-// RULE_USAGE_MIN_TOTAL and they cannot reach this demote branch at all.
 
 // Advisory checks are operator judgement calls whose steady state is non-zero
 // (generic memory tags, index size over a SOFT budget, promote candidates, a
@@ -196,7 +162,7 @@ const OBSERVED_TAG_DENY_MIN = 3;
 // `hook-drift:upstream` is in the set and `hook-drift` is not, and an edit that
 // moves one is a single `|` from moving both. doctor.test.js asserts both arms.
 const ADVISORY =
-  /^(memory-tag-specificity|memory-index-size|memory-index-lines|memory-maintenance:|rule-usage:|runbook-review-step|state-dir-orphans|tasks-review-cadence|hook-drift:upstream|gh$)/;
+  /^(memory-tag-specificity|memory-index-size|memory-index-lines|memory-index-links|state-dir-orphans|hook-drift:upstream|gh$)/;
 export const isAdvisoryCheck = name => ADVISORY.test(name);
 
 // The exit-code predicate. A row is advisory by NAME (the set above) or, for a
@@ -1128,79 +1094,6 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       detail: `${rhSkipped}/${rhTotal} rule-hits log lines failed JSON.parse (${pct}%); §13.1 audit data is biased. Inspect ~/.claude/logs/claudemd.jsonl for truncated rows.`,
     });
   }
-  // Rule-usage (and its §0.1 demote verdict) must count REAL sessions only,
-  // matching audit.js (excludeTestSessions). readHits returns raw rows; without
-  // this filter, manual-probe / sentinel-session rows (session_id ≤7 chars —
-  // the excludeTestSessions cohort) inflate deny/bypass counts: the 2026-07-03
-  // audit observed ship-baseline deny=17 here vs =9 in audit.js on the same 30d
-  // window. The fail-open check above intentionally stays on raw recentHits —
-  // its rows are session_id:null (excludeTestSessions keeps them) and it
-  // classifies by reason, not session.
-  const realHits = excludeTestSessions(recentHits);
-  const bySection = groupBySection(realHits);
-  for (const section of Object.keys(bySection).sort()) {
-    // v0.9.37: skip all (unset*) variants — `(unset)` (single-bucket legacy)
-    // + `(unset-historical)` / `(unset-current)` (cutover-split). All three
-    // are bookkeeping buckets, not spec rules, and would self-FP as demote
-    // candidates if scored against deny/bypass ratio.
-    if (section === '(unset)' || section.startsWith('(unset-')) continue;
-    const data = bySection[section];
-    // Count the full blocking-deny family (deny + deny-repeat + deny-prose),
-    // not just literal `deny`. Pre-fix this undercounted blocks for §11-memory-
-    // read (deny-repeat) and §10-V (deny-prose), inflating bypass:deny and
-    // FALSELY flagging healthy rules as §0.1 demote candidates.
-    const deny = blockingDenyCount(data.byEvent);
-    const bypass = data.byEvent['bypass-escape-hatch'] || 0;
-    const total = deny + bypass;
-    if (total < RULE_USAGE_MIN_TOTAL) continue;
-    const ratio = bypass / total;
-    const ratioPct = (ratio * 100).toFixed(0);
-    if (ratio > RULE_USAGE_DEMOTION_RATIO && IMMUTABLE_SECTION_RE.test(section)) {
-      // §8 SAFETY is §5.1 Never-downgrade — a high bypass ratio is expected
-      // ceremony on known-safe ops, NOT a demote signal. Surface for visibility,
-      // but never the "§0.1 demotion candidate" label (an action policy forbids).
-      // Low-ratio §8 falls through to the normal healthy branch below.
-      push(
-        `rule-usage:${section}`,
-        true,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, immutable §8 SAFETY — high bypass is known-safe-op ceremony, not a §0.1 demote signal)`
-      );
-      continue;
-    }
-    if (ratio > RULE_USAGE_DEMOTION_RATIO) {
-      // R-N6+: per-token breakdown of the section's bypass events. Sort by
-      // count desc, secondary alpha so output is deterministic across runs.
-      const tokens = {};
-      for (const h of realHits) {
-        if (h.event !== 'bypass-escape-hatch') continue;
-        if ((h.spec_section || '(unset)') !== section) continue;
-        const tok = h.extra?.token || '(unspecified)';
-        tokens[tok] = (tokens[tok] || 0) + 1;
-      }
-      const tokenList = Object.entries(tokens)
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .map(([tok, n]) => `[${tok}]×${n}`)
-        .join(', ');
-      // v0.57.0 — label corrected. This branch used to read "§0.1 demotion
-      // candidate", citing a rule the spec does not contain: §0.1 demotes on
-      // ZERO hits, and a bypass-rate threshold appears in the spec only as a
-      // §13.3 PROMOTION gate (<10% to advance). A high override rate is a real
-      // signal, but the action it licenses is a review, not a demotion — and
-      // the mislabel cost the operator a full re-adjudication every run
-      // (2026-07-25 audit; `tasks/banned-vocab-demote-evaluation-2026-07-25.md`
-      // settled the same question for §10-V). Since v0.57.0 `banned-vocab`
-      // bypass rows carry `extra.matched`, so the review can act per-term.
-      push(
-        `rule-usage:${section}`,
-        false,
-        `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, high override — take to the §13.2 batch review; ` +
-          `no demote-by-bypass-rate rule exists, so this is not a demotion candidate); bypass via ${tokenList}`
-      );
-    } else {
-      push(`rule-usage:${section}`, true, `30d deny=${deny} bypass=${bypass} (ratio ${ratioPct}%, healthy)`);
-    }
-  }
-
   // v0.9.35 — §11-EXT Tag-specificity (SHOULD) static check. Scans
   // ~/.claude/projects/*/memory/MEMORY.md for tags that substring-match
   // incidental release-notes / commit-message prose at ship time. Same FP
@@ -1214,6 +1107,7 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
   // denied: per (project, file) in this window, ≥ OBSERVED_TAG_DENY_MIN times,
   // with the matched tags when the rows carry `extra.tags` (rows written before
   // that field have only the file).
+  const realHits = excludeTestSessions(recentHits);
   const observed = new Map();
   for (const h of realHits) {
     if (h.hook !== 'memory-read-check' || !isBlockingDeny(h.event)) continue;
@@ -1278,55 +1172,6 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
         `Fix: rename to multi-word plugin-specific (e.g. \`impact\`→\`impact-analysis\`, \`refs\`→\`find-references\`).`
     );
   }
-
-  // v0.30.0 E2 — cross-layer memory maintenance (plan P5). Wrong-layer
-  // placement fails silently; this surfaces candidates only — migration is a
-  // §5-scoped write and stays the operator's call. See lib/memory-maintenance.js.
-  const mm = await memoryMaintenance();
-  const promoteDetail = mm.promoteSkipped
-    ? `skipped: ${mm.promoteSkipped}`
-    : mm.promoteToDurable.length === 0
-      ? `0 candidates (mem-lite lessons cited ≥${CITE_MIN}× alive ≥${PROMOTE_MIN_AGE_DAYS}d)`
-      : `${mm.promoteToDurable.length} promote-to-durable candidate(s) — high-frequency recall is de-facto ` +
-        `long-term knowledge; consider a MEMORY.md entry (operator's call, no auto-migration): ` +
-        mm.promoteToDurable
-          .slice(0, 5)
-          .map(c => `#${c.id} "${c.title}" (cited ${c.citedCount}×)`)
-          .join(', ');
-  // A SKIPPED check is not a PASSED check — but "optional dependency absent" is
-  // not a broken check either. claude-mem-lite is a separate plugin and Node
-  // 20–22.4 (the declared engines floor, and a CI matrix leg) has no node:sqlite,
-  // so failing on those would report a broken install to every user without the
-  // plugin and set exit 3 on a healthy machine. Only an unreadable DB is a real
-  // failure; the two absence reasons stay ok with the reason in the detail.
-  const promoteUnavailable =
-    mm.promoteSkipped != null && /DB not found|node:sqlite unavailable/.test(mm.promoteSkipped);
-  const promoteOk = promoteUnavailable || (mm.promoteSkipped == null && mm.promoteToDurable.length === 0);
-  push('memory-maintenance:promote', promoteOk, promoteDetail);
-  push(
-    'memory-maintenance:recall-repatriation',
-    mm.recallRepatriation.length === 0,
-    mm.recallRepatriation.length === 0
-      ? `0 recall_*.md older than ${RECALL_MAX_AGE_DAYS}d in ${mm.memDir}`
-      : `${mm.recallRepatriation.length} plugin-absent fallback file(s) linger past ${RECALL_MAX_AGE_DAYS}d — ` +
-          `migrate into claude-mem-lite or delete: ` +
-          mm.recallRepatriation
-            .slice(0, 5)
-            .map(c => `${c.file} (${c.ageDays}d)`)
-            .join(', ')
-  );
-  push(
-    'memory-maintenance:stale',
-    mm.staleDurable.length === 0,
-    mm.staleDurable.length === 0
-      ? `0 durable files >${STALE_AGE_DAYS}d without a telemetry keyword mention (${mm.scannedDurableFiles} scanned)`
-      : `${mm.staleDurable.length} durable file(s) >${STALE_AGE_DAYS}d old with zero keyword mentions in the ` +
-          `telemetry window — review tags or retire: ` +
-          mm.staleDurable
-            .slice(0, 5)
-            .map(c => `${c.file} (${c.ageDays}d)`)
-            .join(', ')
-  );
 
   // v0.35.0 R2 — Tier-2 index size budget (soft). See lib/memory-tags.js
   // MEMORY_INDEX_BUDGET_BYTES for rationale (2026-07-11 spec-audit R2: the
@@ -1408,15 +1253,31 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
           "(operator's call, no auto-trim)."
   );
 
-  // v0.61.0 — ship-runbook review-step presence (advisory). Origin: the
-  // 2026-07-27 v0.60.0 incident sweep found ALL SIX projects' ship runbooks
-  // lacked a review-before-tag step (§EXT §12 Author ≠ reviewer) — and this
-  // check's first live run caught a SEVENTH the manual sweep missed (gsd,
-  // filename had neither "runbook" nor "ship"). Detection is ABSENCE of a
-  // review-step fingerprint in runbook-classified files, never a keyword hit
-  // on "self-review" (fixed runbooks legitimately contain that word as a
-  // named degrade). Listing only — rewriting a runbook is a §5-scoped write
-  // to user-authored memory (tasks/deferred-2026-07-27-doctor-runbook-review-check.md).
+  // MEMORY.md ↔ memory files for the project doctor runs in (moved from the
+  // retired /claudemd-analyze in 0.123.0). Advisory.
+  {
+    const links = checkMemoryIndexLinks(process.cwd());
+    if (links.status === 'ok') {
+      const bad = links.dangling.length + links.orphans.length;
+      push(
+        'memory-index-links',
+        bad === 0,
+        bad === 0
+          ? `${links.indexedCount} index line(s) in ${links.memDir}/MEMORY.md, each with its file; no unindexed memory file`
+          : [
+              links.dangling.length
+                ? `MEMORY.md names missing file(s): ${links.dangling.slice(0, 5).join(', ')}`
+                : '',
+              links.orphans.length
+                ? `memory file(s) no index line names: ${links.orphans.slice(0, 5).join(', ')}`
+                : '',
+            ]
+              .filter(Boolean)
+              .join('; ') + ` (${links.memDir})`
+      );
+    }
+  }
+
   // v0.65.0 — state-dir orphan visibility (2026-07-28 audit H3). The plugin's
   // own state dir accumulated 39 orphans (oldest 79 days) while sitting outside
   // every cleaner AND every health check: this file had zero references to it,
@@ -1532,69 +1393,6 @@ export async function doctor({ pruneBackups: prune, hookSelfTests = true, ackFai
       true,
       `could not be measured (${e && e.message ? e.message : e}) — this check reported nothing, ` +
         `which is not the same as a clean state dir. Advisory: this never fails the doctor exit code.`
-    );
-  }
-
-  // tasks/ review cadence (Round-14 audit REL-L4). The repo's deferred-work
-  // docs had no review rhythm at all: 25 files, 10 of them untouched for over a
-  // month while their subject was still live in the code, and 4 already closed
-  // but still named `*-deferred.md`. Nothing read the directory — not this
-  // tool, not any gate — so "deferred" and "forgotten" were the same state.
-  //
-  // Advisory and count-only. Which of them are stale is a judgement no
-  // mtime can make; the number is what makes the question come up at all.
-  try {
-    const tasksDir = path.join(process.cwd(), 'tasks');
-    const cutoff = Date.now() - TASKS_STALE_DAYS * 86400000;
-    let total = 0;
-    const stale = [];
-    for (const name of fs.existsSync(tasksDir) ? fs.readdirSync(tasksDir) : []) {
-      if (!name.endsWith('.md')) continue;
-      let st;
-      try {
-        st = fs.statSync(path.join(tasksDir, name));
-      } catch {
-        continue;
-      }
-      if (!st.isFile()) continue;
-      total += 1;
-      if (st.mtimeMs < cutoff) stale.push(name);
-    }
-    if (total > 0) {
-      const sample = stale.slice(0, 5).join(', ');
-      push(
-        'tasks-review-cadence',
-        stale.length === 0,
-        stale.length === 0
-          ? `${total} doc(s) in ${tasksDir}, none untouched for ${TASKS_STALE_DAYS}+ days`
-          : `${stale.length} of ${total} doc(s) in ${tasksDir} untouched for ${TASKS_STALE_DAYS}+ days` +
-              `${sample ? ` (${sample}${stale.length > 5 ? ', …' : ''})` : ''} — re-read or close them. ` +
-              `Advisory: this never fails the doctor exit code.`
-      );
-    }
-  } catch {
-    /* no tasks/ dir, or unreadable — nothing to report */
-  }
-
-  const rrs = scanRunbookReviewSteps({});
-  if (rrs.missing.length === 0) {
-    push(
-      'runbook-review-step',
-      true,
-      `${rrs.scannedRunbooks} ship-runbook file(s) scanned, all carry a review-before-tag step`
-    );
-  } else {
-    const sample = rrs.missing
-      .slice(0, 4)
-      .map(m => `${m.project.replace(/^-.*-projects-/, '')}/${m.file} [${m.tier}]`)
-      .join(', ');
-    const more = rrs.missing.length > 4 ? ` +${rrs.missing.length - 4} more` : '';
-    push(
-      'runbook-review-step',
-      false,
-      `${rrs.missing.length}/${rrs.scannedRunbooks} ship-runbook file(s) lack a review-before-tag step: ${sample}${more}. ` +
-        `Add the §EXT §12 Author ≠ reviewer line at the decision point (rule text loaded ≠ enforced — ` +
-        `the checklist wins); operator edit, no auto-rewrite.`
     );
   }
 

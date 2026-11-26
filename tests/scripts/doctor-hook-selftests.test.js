@@ -98,7 +98,7 @@ test('doctor self-tests: the shipped hooks deny every synthetic trigger', () => 
   // Floors on the judged set: "all green" and "there was nothing to run" print
   // the same pass otherwise.
   assert.ok(deny.length >= 4, `expected >=4 deny self-tests, got ${deny.length}`);
-  assert.ok(live.length >= 10, `expected >=10 liveness probes, got ${live.length}`);
+  assert.ok(live.length >= 7, `expected >=7 liveness probes, got ${live.length}`);
 
   const failed = rows.filter(r => !r.ok).map(r => `${r.name}: ${r.detail}`);
   assert.deepEqual(failed, [], `doctor self-tests report a broken hook:\n  ${failed.join('\n  ')}`);
@@ -158,7 +158,7 @@ test('doctor self-tests: a missing hook tree fails closed on every row', () => {
   // report red rows, not an empty check list that reads as healthy. No spawns —
   // every row short-circuits on the existence check.
   const rows = collect(box.home);
-  assert.ok(rows.length >= 14, `expected a row per hook even when absent, got ${rows.length}`);
+  assert.ok(rows.length >= 11, `expected a row per hook even when absent, got ${rows.length}`);
   const notMissing = rows.filter(r => r.ok || !/hook missing at/.test(r.detail)).map(r => r.name);
   assert.deepEqual(
     notMissing,

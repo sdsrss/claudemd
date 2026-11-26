@@ -69,7 +69,7 @@ test('offline-eval: task-output cleanup removes its own dir only (sandbox)', () 
 test('offline-eval: hooks run from this repo with the sandbox HOME; install hooks are left out', () => {
   const h = sandboxHooks(REPO, '/sbx/home');
   const cmds = Object.values(h).flatMap(gs => gs.flatMap(g => g.hooks.map(x => x.command)));
-  assert.ok(cmds.length >= 15, `expected the plugin's hooks, got ${cmds.length}`);
+  assert.ok(cmds.length >= 8, `expected the plugin's hooks, got ${cmds.length}`);
   for (const c of cmds) {
     assert.ok(c.startsWith("HOME='/sbx/home' "), c);
     assert.ok(!c.includes('${CLAUDE_PLUGIN_ROOT}'), c);
@@ -389,7 +389,7 @@ test('offline-eval: runs do not inherit claudemd hook switches; an arm sets them
     EVIDENCE_GATE: '1',
     EVIDENCE_WTREE: '1',
     TRANSCRIPT_STRUCTURE_SCAN: '1',
-    DISABLE_REWORK_BREAKER_HOOK: '1',
+    DISABLE_BANNED_VOCAB_HOOK: '1',
     DISABLE_RULE_HITS_LOG: '1',
     CLAUDEMD_LOG_MAX_MB: '9',
     // Claude Code's own switch, not claudemd's: it must reach claude.

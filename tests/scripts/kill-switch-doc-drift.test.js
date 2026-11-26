@@ -68,23 +68,18 @@ test('README per-hook kill-switch list matches hook_kill_switch calls', () => {
 
 test('hook_kill_switch arg in each hook matches its filename family', () => {
   // Defends against the v0.9.23 bug specifically: README annotated
-  // DISABLE_USER_PROMPT_SUBMIT_HOOK as "transcript-vocab-scan" because the
+  // DISABLE_USER_PROMPT_SUBMIT_HOOK as "transcript-vocab-scan" (a hook since removed) because the
   // env var name doesn't obviously map to its owning hook. Lock the mapping
   // here so renames stay coherent.
   const expected = expectedKillSwitchVars();
   // Pinned mapping — env var → owning hook basename.
   const pinned = {
     DISABLE_BANNED_VOCAB_HOOK: 'banned-vocab-check.sh',
-    DISABLE_MEM_AUDIT_HOOK: 'mem-audit.sh',
     DISABLE_MEMORY_READ_HOOK: 'memory-read-check.sh',
     DISABLE_PRE_BASH_SAFETY_HOOK: 'pre-bash-safety-check.sh',
-    DISABLE_RESIDUE_AUDIT_HOOK: 'residue-audit.sh',
     DISABLE_SANDBOX_DISPOSAL_HOOK: 'sandbox-disposal-check.sh',
     DISABLE_SESSION_START_HOOK: 'session-start-check.sh',
-    DISABLE_SESSION_SUMMARY_HOOK: 'session-summary.sh',
     DISABLE_SHIP_BASELINE_HOOK: 'ship-baseline-check.sh',
-    DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK: 'transcript-structure-scan.sh',
-    DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK: 'transcript-vocab-scan.sh',
     DISABLE_USER_PROMPT_SUBMIT_HOOK: 'version-sync.sh',
   };
   for (const [envVar, hook] of Object.entries(pinned)) {

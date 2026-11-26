@@ -19,7 +19,7 @@ Usage:
 - Default (keep spec, keep state + log):
   `node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
-- Also drop `~/.claude/.claudemd-state/` and the rule-hits log — opt-in, and NOT recoverable (the log is the §13.1 demote-review corpus):
+- Also drop `~/.claude/.claudemd-state/` and the rule-hits log — opt-in, and NOT recoverable (the log is the record `/claudemd-audit` reads):
   `CLAUDEMD_PURGE=1 node ${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.js`
 
 - Restore your pre-claudemd `~/.claude/CLAUDE*.md` from the newest backup that is not a spec backup (a `/claudemd-update` before 0.68.3 wrote spec backups there; restore passes over a newer dir that holds one or more spec files and nothing else, with or without a `CLAUDE.md` (a spec file with your notes added under its heading still counts), leaves it in place and lists it in `skippedSpecOnly`, and uses the newest backup when every one is such a dir):

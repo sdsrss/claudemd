@@ -71,10 +71,10 @@ test('README hooks table: every opt-in gated hook with a table row says Opt-in',
     .filter(f => f.endsWith('.sh'))
     .filter(f => {
       const src = fs.readFileSync(path.join(hooksDir, f), 'utf8');
-      return /\[\[ "\$\{[A-Z0-9_]+:-0\}" == "1" \]\] \|\| exit 0/.test(src);
+      return /\[\[ "\$\{[A-Z0-9_]+:-0\}" == "1" \]\] \|\| exit 0|^case "\$\{[A-Z0-9_]+:-0\}" in$/m.test(src);
     })
     .map(f => f.replace(/\.sh$/, ''));
-  assert.ok(optInHooks.length >= 2, `expected ≥2 opt-in gated hooks, found: ${optInHooks}`);
+  assert.ok(optInHooks.length >= 1, `expected ≥1 opt-in gated hook, found: ${optInHooks}`);
 
   // "what fires when" table rows: | trigger | `hook-name` ... | description |
   const tableRows = README.split('\n').filter(l => /^\|.+\|.+\|.+\|$/.test(l));
@@ -112,60 +112,6 @@ const codeOf = src =>
     .split('\n')
     .filter(l => !/^\s*#/.test(l))
     .join('\n');
-
-test('FLW-M3: README states what happens to an already-installed spec, pinned whole-line', () => {
-  // Round-17 FLW-M3. README said an already-installed claudemd spec is
-  // "overwritten **without** a backup". True until v0.83.0, false after it:
-  // install.js's overwrite-spec branch copies the existing spec files to
-  // `spec-backup-<ISO>/` whenever they do not match the shipped ones. The
-  // v0.23.11 half of the sentence — that it stays OUT of the personal
-  // `backup-<ISO>/` namespace, so `restore` cannot return a stale spec — is
-  // still true and is kept.
-  //
-  // 0.92.0 pre-ship review, two defects in one pin.
-  //
-  // (1) The matcher was `l.includes(CLAIM)` while the comment above it claimed a
-  // whole-line pin. A substring test cannot fail on appended text, so the exact
-  // mutation bb242c4's commit message offers as its evidence — appending
-  // "and is overwritten without a backup" takes readme-drift to 7/8 — could not
-  // have happened. Measured at that commit and at HEAD: it stays 8/8.
-  //
-  // (2) The v0.23.11 half was narrower than it read. "the sole entry in that
-  // namespace is always your own content" is false in the letter: install.js's
-  // user-content branch sweeps all four home spec files, so the personal dir does
-  // hold CLAUDE-extended.md, CLAUDE-changelog.md and OPERATOR.md beside the user's
-  // own CLAUDE.md. The invariant the code holds, and the one `restore` depends on,
-  // is that no directory there has the SPEC as its CLAUDE.md.
-  //
-  // The pin is now the whole PARAGRAPH LINE, byte for byte, exactly once. That is
-  // stricter than pinning the sentence: the two sentences sharing the line —
-  // backup-before-overwrite ahead of it, uninstall keep/restore/delete after it —
-  // are inside the pin rather than beside it. Sentence-scoped pins are how a
-  // repair lands correctly and its neighbour stays wrong.
-  const CLAIM_LINE =
-    'Install backs up a hand-written `~/.claude/CLAUDE.md` (any file without the `# AI-CODING-SPEC` H1) to `~/.claude/backup-<ISO>/` before overwriting (last 5 kept automatically). An already-installed claudemd spec never enters `backup-<ISO>/` — deliberate (v0.23.11): install never puts the spec in that namespace, so on a machine that never ran `/claudemd-update` before 0.68.3 `restore` cannot return a stale spec instead (for that older layout, see the `restore` row below). (The user-content sweep does move `CLAUDE-extended.md`, `CLAUDE-changelog.md` and `OPERATOR.md` along beside your own file, so the directory is not literally yours alone — the `CLAUDE.md` in it is.) It is not discarded either (v0.83.0): unless it already matches the shipped spec byte for byte, it is copied to `spec-backup-<ISO>/`, a separate namespace `restore` does not read (last 5 kept). Uninstall offers `keep / restore / delete`; `delete` requires an extra confirmation.';
-  const hits = README.split('\n').filter(l => l.trimEnd() === CLAIM_LINE);
-  assert.equal(hits.length, 1, `README.md must carry this line verbatim, exactly once:\n  ${CLAIM_LINE}`);
-
-  // Joined to the code, so the sentence cannot outlive the branch it describes.
-  const install = fs.readFileSync(path.join(REPO_ROOT, 'scripts/install.js'), 'utf8');
-  assert.match(
-    install,
-    /BACKUP_LABELS\.spec/,
-    'install.js no longer writes the spec-backup namespace the README promises'
-  );
-  assert.match(
-    install,
-    /homeSpecMatchesShipped\(pluginRoot\)/,
-    'install.js no longer has the byte-comparison the README calls the exemption'
-  );
-  const backup = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lib/backup.js'), 'utf8');
-  assert.match(
-    backup,
-    /spec: 'spec-backup'/,
-    'the spec-backup label the README names by path is gone from backup.js'
-  );
-});
 
 test('R10-14: README does not claim a PreToolUse:Bash hook lacks the readonly fast-path', () => {
   const withFastPath = hookSources()

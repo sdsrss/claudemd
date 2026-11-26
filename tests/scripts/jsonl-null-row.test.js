@@ -30,8 +30,6 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { parseTranscript, countStringContentAssistantRows } from '../../scripts/lib/lint.js';
 import { readLogRows, readHits } from '../../scripts/lib/rule-hits-parse.js';
-import { readTranscript, wasApplied } from '../../scripts/lesson-bypass-audit.js';
-import { samplingAudit } from '../../scripts/sampling-audit.js';
 
 const assistantRow = t =>
   JSON.stringify({
@@ -87,39 +85,6 @@ test('ALG-M1: rule-hits readLogRows counts a bare null line as corrupt', () => {
     // readHits is the consumer `claudemd audit` actually calls.
     const hits = readHits(logPath, 3650);
     assert.equal(hits.hits.length, 2);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('ALG-M1: lesson-bypass readTranscript/wasApplied survive a bare null line', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-nullrow-lb-'));
-  try {
-    const p = path.join(dir, 't.jsonl');
-    fs.writeFileSync(p, transcriptWithNulls());
-    const integrity = {};
-    const rows = readTranscript(p, integrity);
-    assert.equal(integrity.badLines, NON_OBJECT_LINES.length);
-    // wasApplied walks every row and reads `row.timestamp`.
-    assert.equal(wasApplied(rows, '2000-01-01T00:00:00Z', 'feedback_x.md'), false);
-    const withHit = rows.concat([
-      { timestamp: new Date().toISOString(), type: 'assistant', message: { content: 'read feedback_x.md' } },
-    ]);
-    assert.equal(wasApplied(withHit, '2000-01-01T00:00:00Z', 'feedback_x.md'), true);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('ALG-M1: samplingAudit survives a bare null line and counts it malformed', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-nullrow-sa-'));
-  try {
-    fs.writeFileSync(path.join(dir, 'nulls.jsonl'), transcriptWithNulls());
-    const r = await samplingAudit({ projectsDir: dir, days: 3650 });
-    assert.equal(r.scannedTranscripts, 1);
-    assert.equal(r.totalAssistantTextRows, 2, 'the two real turns still scanned');
-    assert.equal(r.malformedTranscripts.length, 1);
-    assert.equal(r.malformedTranscripts[0].lines, NON_OBJECT_LINES.length);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -199,12 +164,6 @@ const DECLARED = [
     'not-a-row',
     'package.json',
   ],
-  [
-    'scripts/lesson-bypass-audit.js',
-    'const row = JSON.parse(line);',
-    'jsonl-row',
-    'readTranscript — case above',
-  ],
   ['scripts/lib/lint.js', 'row = JSON.parse(lines[i]);', 'jsonl-row', 'parseTranscript — case above'],
   [
     'scripts/lib/lint.js',
@@ -213,13 +172,6 @@ const DECLARED = [
     'countStringContentAssistantRows — case above',
   ],
   ['scripts/lib/rule-hits-parse.js', 'row = JSON.parse(line);', 'jsonl-row', 'readLogRows — case above'],
-  [
-    'scripts/safety-coverage-audit.js',
-    "manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));",
-    'not-a-row',
-    'plugin manifest',
-  ],
-  ['scripts/sampling-audit.js', 'obj = JSON.parse(line);', 'jsonl-row', 'samplingAudit — case above'],
   [
     'scripts/version-cascade-check.js',
     "return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));",

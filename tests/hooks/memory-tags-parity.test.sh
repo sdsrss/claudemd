@@ -251,10 +251,10 @@ while IFS= read -r _c; do
   [[ -n "$_c" ]] && CONSUMERS+=("$_c")
 done < <(grep -l -F 'MEM_INDEX' "$HOOKS_DIR"/*.sh 2>/dev/null | sort)
 
-if (( ${#CONSUMERS[@]} >= 2 )); then
+if (( ${#CONSUMERS[@]} >= 1 )); then
   pass "consumer-set floor (${#CONSUMERS[@]} MEMORY.md-index hooks derived from source)"
 else
-  fail "consumer-set floor (expected >= 2, found ${#CONSUMERS[@]}) — grep or glob broke"
+  fail "consumer-set floor (expected >= 1, found ${#CONSUMERS[@]}) — grep or glob broke"
 fi
 
 # What counts as "calls it" needs two exclusions, and each was established by a

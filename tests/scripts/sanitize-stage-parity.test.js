@@ -1,14 +1,8 @@
-// The identifier-strip (sanitize) stage exists in THREE engines: the blocking
-// Path 2 in hooks/banned-vocab-check.sh, the advisory Stop scan in
-// hooks/transcript-vocab-scan.sh, and scripts/lib/lint.js#stripIdentifiers.
-// The 2026-08-16 audit (F1) found the bare `name.ext` strip clause present in
-// two of them but missing from the ONLY blocking engine — an assistant turn
-// mentioning `comprehensive-parser.js` would deny the next ship-flow command
-// (the v0.23.19 field-report deny-loop class, resurrected on one engine).
-//
-// This gate parses the sed program out of each hook source (no hand-copied
-// mirror — the mirror comment in transcript-vocab-scan.sh:84 was itself wrong
-// while the engines diverged) and runs all three engines over shared probes.
+// The identifier-strip (sanitize) stage exists in two engines: the blocking
+// Path 2 in hooks/banned-vocab-check.sh and scripts/lib/lint.js#stripIdentifiers.
+// The 2026-08-16 audit (F1) found the bare `name.ext` strip clause missing from
+// the blocking engine. This gate parses the sed program out of the hook source
+// and runs both engines over shared probes.
 // banned-vocab-engine-parity.test.js covers the PATTERN engines; this file
 // covers the sanitize stage those patterns run after.
 import { test } from 'node:test';
@@ -78,7 +72,6 @@ function hookSanitize(sedProgram, text) {
 
 const ENGINES = () => ({
   'banned-vocab-check.sh': t => hookSanitize(sedProgramOf('hooks/banned-vocab-check.sh'), t),
-  'transcript-vocab-scan.sh': t => hookSanitize(sedProgramOf('hooks/transcript-vocab-scan.sh'), t),
   'lint.js#stripIdentifiers': t => stripIdentifiers(t),
 });
 
@@ -103,7 +96,7 @@ const PROBES = [
 
 const HIGH_FIRE = /\b(comprehensive|robust)\b/i;
 
-test('sanitize stage: all three engines agree on every probe shape', () => {
+test('sanitize stage: the hook and lint.js agree on every probe shape', () => {
   const engines = ENGINES();
   for (const [input, survives] of PROBES) {
     for (const [name, run] of Object.entries(engines)) {
@@ -119,7 +112,6 @@ test('sanitize stage: all three engines agree on every probe shape', () => {
   }
 });
 
-test('sanitize stage: both bash engines run the shared fence program, not a copy', () => {
+test('sanitize stage: the bash engine runs the shared fence program, not a copy', () => {
   assertUsesSharedFenceAwk('hooks/banned-vocab-check.sh');
-  assertUsesSharedFenceAwk('hooks/transcript-vocab-scan.sh');
 });

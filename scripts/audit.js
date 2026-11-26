@@ -16,7 +16,6 @@ import {
   logFirstTs,
 } from './lib/rule-hits-parse.js';
 import { printHelpAndExit, resolveDaysFlag, invokedAsMain, parseStrictOrExit } from './lib/argv.js';
-import { samplingAudit, PRECISION_GATE } from './sampling-audit.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
@@ -110,46 +109,6 @@ export async function audit({ days = 30, trendDays = DEFAULT_TREND_DAYS } = {}) 
     // excludes deny-prose-dry-run which doesn't block). See byProjectClass +
     // isBlockingDeny + classifyProject in rule-hits-parse.js.
     denyByProjectClass: byProjectClass(realHits, { mode: 'deny' }),
-    // v0.28.0 A5 — self-enforced-rule compliance from the retrospective
-    // transcript scan (current project, same window). A4 pre-registered gate:
-    // a rule's `rate` stays null (withheld) until hand-labeled precision ≥
-    // PRECISION_GATE — heuristic counts are collected, not presented, before
-    // calibration. See scripts/sampling-audit.js header + plan A2/A4.
-    selfCompliance: await selfCompliance(days),
-  };
-}
-
-async function selfCompliance(days) {
-  const sa = await samplingAudit({ days });
-  const rules = {};
-  for (const [k, v] of Object.entries(sa.byRule)) {
-    const calibrated = v.precision != null && v.precision >= PRECISION_GATE;
-    // Honor the CALIBRATION record's status verbatim (2026-07-25 audit,
-    // loop-F1): recomputing from precision alone showed permanently-CLOSED
-    // detectors as 'collecting' — advertising exactly the "keep collecting"
-    // posture the 2026-07-24 labeling pass rejected. Rate stays A4-withheld
-    // for closed detectors (their precision upper bounds sit below the gate).
-    rules[k] = {
-      opportunities: v.opportunities,
-      violations: v.violations,
-      rate:
-        calibrated && v.opportunities > 0 ? Math.round((v.violations / v.opportunities) * 1000) / 1000 : null,
-      precision: v.precision,
-      status:
-        v.status === 'closed'
-          ? 'closed'
-          : calibrated
-            ? 'calibrated'
-            : `collecting (rate withheld until hand-labeled precision >= ${PRECISION_GATE})`,
-      ...(v.closedReason ? { closedReason: v.closedReason } : {}),
-    };
-  }
-  return {
-    windowDays: sa.windowDays,
-    scannedTranscripts: sa.scannedTranscripts,
-    totalAssistantTextRows: sa.totalAssistantTextRows,
-    metricContract: sa.metricContract,
-    rules,
   };
 }
 

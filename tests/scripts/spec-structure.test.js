@@ -105,49 +105,6 @@ test('the spec names no skill by plugin prefix: skill choice reads the harness l
   );
 });
 
-test('§13.1 demote window: one number, and no cadence word standing in for it', () => {
-  // hard-rules.json's `_doc` said "quarterly demote (rules with 0 hits in 90d)"
-  // while OPERATOR.md §13.1 and scripts/hard-rules-audit.js both used 30d — a
-  // 3× difference between the manifest's own description and the tool that reads
-  // it, with a cadence word ("quarterly") doing duty for a window size. Three
-  // more copies of "quarterly" had spread to the audit script's USAGE, the
-  // sparkline command doc and rule-hits-parse's header.
-  const LIVE = [
-    'spec/hard-rules.json',
-    'spec/OPERATOR.md',
-    'spec/CLAUDE.md',
-    'spec/CLAUDE-extended.md',
-    'scripts/hard-rules-audit.js',
-    'scripts/doctor.js',
-    'scripts/lib/doctor-hook-tests.js',
-    'scripts/lib/rule-hits-parse.js',
-    'commands/claudemd-rules.md',
-    'commands/claudemd-sparkline.md',
-    'commands/claudemd-doctor.md',
-  ];
-  // The changelog and docs/ are historical records and keep their original wording.
-  const offenders = LIVE.filter(f => /quarterly/i.test(fs.readFileSync(f, 'utf8')));
-  assert.deepEqual(
-    offenders,
-    [],
-    `"quarterly" appears in live spec/tooling text: ${offenders.join(', ')}. The demote WINDOW is 30d ` +
-      '(OPERATOR.md §13.1) and the review CADENCE is every 20 L2+ tasks or 30 days (§13.2). Neither is quarterly.'
-  );
-
-  const manifest = fs.readFileSync('spec/hard-rules.json', 'utf8');
-  assert.match(
-    JSON.parse(manifest)._doc,
-    /with 0 fired rows, `hits\.fired`, in 30d/,
-    'hard-rules.json `_doc` no longer states the 30d demote window (counted in fired rows, D#399) it is the manifest for.'
-  );
-  const auditSrc = fs.readFileSync('scripts/hard-rules-audit.js', 'utf8');
-  assert.match(
-    auditSrc,
-    /DEFAULT_WINDOW_DAYS\s*=\s*30\b/,
-    'scripts/hard-rules-audit.js no longer defaults to the 30d window the spec text promises.'
-  );
-});
-
 // WHY THESE ARE EXACT-TEXT PINS AND NOT SEMANTIC ASSERTIONS.
 // Two drafts tried to assert what the rules MEAN. The 0.78.0 pre-tag review
 // broke the first with five mutations and the second with seven more, all of
@@ -318,19 +275,19 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '1bf38b959ac17b19' },
+  { file: CORE, heading: '', sha256: '8b39dabbf85ffde4' },
   { file: CORE, heading: '## §1 Language', sha256: '46c8d2f548466dbb' },
   { file: CORE, heading: '## §5 Ask first', sha256: 'adfe140aa8a8f14c' },
   { file: CORE, heading: '## §7 Commit and verify', sha256: '850f3016f4bc154d' },
   { file: CORE, heading: '## §8 Safety', sha256: '270147649a41cec8' },
   { file: CORE, heading: '## §10 Report', sha256: '3ed30c588fb11d9e' },
   { file: CORE, heading: '## §12 Ship', sha256: '598ac5b7bf729032' },
-  { file: EXT, heading: '', sha256: 'b1663b6a33229ed3' },
+  { file: EXT, heading: '', sha256: '36c055352ada3103' },
   { file: EXT, heading: '## §12 Ship', sha256: 'd486479b17aa5bd6' },
   { file: EXT, heading: '## §12-R Review', sha256: 'd4e07537d967abdc' },
   { file: EXT, heading: '## §13 META', sha256: '7c714d9c7de3fb34' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: 'a83549d78ed73f7f' },
-  { file: EXT, heading: '## Recent changes', sha256: '626b5aee4779db00' },
+  { file: EXT, heading: '## Recent changes', sha256: '96efb10d99b4c7f1' },
 ];
 
 const headingLevel = line => {
@@ -372,8 +329,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 7, sha256: '8f6aa06a8614730a' },
-  { file: EXT, count: 9, sha256: 'eeb7f11f716a39da' },
+  { file: CORE, count: 7, sha256: '9adc183ec0a28595' },
+  { file: EXT, count: 9, sha256: 'aa6732a722219528' },
 ];
 
 for (const inv of HEADING_INVENTORY) {
@@ -552,3 +509,12 @@ for (const pin of PINS) {
     );
   });
 }
+
+// extended §13 §0.1 caps, in bytes: the core loads every turn of every session.
+// Held here since 0.123.0 retired spec-coherence-audit.js, which enforced them.
+test('§0.1 caps: core ≤ 4,000 bytes, extended ≤ 12,000 bytes', () => {
+  const core = fs.statSync(CORE).size;
+  const ext = fs.statSync(EXT).size;
+  assert.ok(core <= 4000, `${CORE} is ${core} bytes, over the 4,000 cap`);
+  assert.ok(ext <= 12000, `${EXT} is ${ext} bytes, over the 12,000 cap`);
+});

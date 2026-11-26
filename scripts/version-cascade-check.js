@@ -1,15 +1,9 @@
-// version-cascade-check — pre-tag sanity for spec ship pipeline. Two checks:
+// version-cascade-check — pre-tag sanity for spec ship pipeline. Two checks
+// (the Sizing-line check that sat between them went with the line, 0.123.0):
 //
 //   1. Minor-version cascade: every `v6.\d+(?:\.\d+)?` token in README.md +
 //      `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` MUST
 //      match (at minor granularity) `spec/hard-rules.json#spec_version`.
-//
-//   2. Spec sizing drift (v0.21.2): the **Sizing** line in
-//      `spec/CLAUDE-extended.md` claims byte counts for core / extended /
-//      OPERATOR.md; actual `fs.statSync` sizes MUST be within ±20B of those
-//      claims. Drift envelope is the ±20B from `feedback_spec_sizing_
-//      recursive_rewrite.md` (writing the Sizing line itself changes
-//      extended.md's byte count, hence the floor isn't 0).
 //
 //   3. Plugin semver agreement (v0.47.4): the plugin's own semver MUST be
 //      identical in `package.json#version`, `.claude-plugin/plugin.json#version`,
@@ -39,52 +33,40 @@
 //   - v0.19.0 minor-bump shipped with README.md (7 v6.11 mentions) and
 //     marketplace.json description (2 v6.11 mentions) stale; a docs-only
 //     catch-up commit (d044194) repaired them after the fact.
-//   - v6.11.12 + v6.13.1 (multiple sessions): operator wrote the Sizing line,
-//     post-edit `wc -c` showed claim diverged from actual by 100-400 bytes;
-//     iterated to convergence by hand. `feedback_spec_sizing_recursive_rewrite.md`
-//     flagged option 1 (accept ±20B) or option 2 (mechanical check). This
-//     script is option 2.
-//
 // The feedback is the rule; this script is the mechanical enforcement.
 //
 // What it does NOT check:
 //   - spec/CLAUDE*.md cascade tokens (the spec is its own source of truth —
 //     version line inside the spec IS the canonical, not a derived copy).
-//     The Sizing-drift branch DOES read spec/CLAUDE-extended.md, but only
-//     the **Sizing** line and only against fs.statSync output.
 //   - spec/CLAUDE-changelog.md (historical entries reference prior versions
 //     intentionally and forever).
 //   - tests/* (test fixtures may pin historical versions in upgrade-lifecycle
 //     phase setup; tests/scripts/spec-structure.test.js already asserts the
 //     current version explicitly).
 //
-// Exit codes: 0 ok | 1 cascade or sizing drift found | 2 argv-shape error.
+// Exit codes: 0 ok | 1 cascade or semver drift found | 2 argv-shape error.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePluginRoot } from './lib/paths.js';
 import { parseStrict, ArgvError, printHelpAndExit, invokedAsMain } from './lib/argv.js';
-import { SIZING_TARGETS, findSizingLine, extractSizingClaim } from './lib/spec-sizing.js';
 
 const USAGE = `Usage: node scripts/version-cascade-check.js [--json]
 
-Pre-tag guard. Verifies three invariants:
+Pre-tag guard. Verifies two invariants:
 
-  1. Spec minor version (v6.X) is consistent across README.md, plugin.json,
+  1. Spec minor version (vX.Y) is consistent across README.md, plugin.json,
      and marketplace.json (vs. spec/hard-rules.json#spec_version).
-  2. Spec **Sizing** line in spec/CLAUDE-extended.md matches actual byte
-     counts of spec/CLAUDE.md, spec/CLAUDE-extended.md, spec/OPERATOR.md
-     within ±20B (the recursive-rewrite drift envelope).
-  3. Plugin semver agrees across package.json, .claude-plugin/plugin.json,
+  2. Plugin semver agrees across package.json, .claude-plugin/plugin.json,
      both .claude-plugin/marketplace.json sites
      and every claudemd-cli@X.Y.Z pin in README.md — a PATCH-level check the
-     v6.X comparison in (1) structurally cannot make.
+     vX.Y comparison in (1) structurally cannot make.
 
 Options:
   --json       Emit JSON instead of human-readable.
   --help, -h   Print this message and exit.
 
-Exit codes: 0 success | 1 cascade or sizing drift | 2 argv-shape error.`;
+Exit codes: 0 success | 1 cascade or semver drift | 2 argv-shape error.`;
 
 const SCANNED_FILES = ['README.md', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];
 
@@ -225,86 +207,6 @@ export function runVersionCascadeCheck({ root }) {
   };
 }
 
-// v0.21.2 — spec **Sizing** line drift check. Asserts actual fs.statSync sizes
-// are within ±20B of what the canonical Sizing line in spec/CLAUDE-extended.md
-// claims. The parser, the targets and the tolerance moved to
-// scripts/lib/spec-sizing.js on 2026-09-02 (audit R11-13a): spec-coherence-audit
-// had its own regex for the same line, with a different idea of what shapes are
-// legal, so the two ship gates could return different verdicts about one line.
-
-export function runSpecSizingCheck({ root }) {
-  const extPath = path.join(root, 'spec/CLAUDE-extended.md');
-  if (!fs.existsSync(extPath)) {
-    // ok:false, not a skip (2026-07-25 audit). This runs as the pre-tag ship
-    // gate; returning ok:true meant a missing spec file passed with exit 0,
-    // while the sibling failure two branches down (sizing-line-missing) already
-    // treated a spec it could not read as a failure.
-    return {
-      ok: false,
-      drifts: [],
-      error: `spec/CLAUDE-extended.md missing at ${extPath} — cannot verify sizing`,
-    };
-  }
-  const content = fs.readFileSync(extPath, 'utf8');
-  const sizingLine = findSizingLine(content);
-  if (sizingLine == null) {
-    return {
-      ok: false,
-      drifts: [],
-      skipped: 'sizing-line-missing',
-      detail: 'no `**Sizing**` line found in spec/CLAUDE-extended.md — was it removed?',
-    };
-  }
-  const drifts = [];
-  for (const t of SIZING_TARGETS) {
-    const claim = extractSizingClaim(sizingLine, t.name);
-    if (claim == null) {
-      drifts.push({
-        name: t.name,
-        file: t.file,
-        claimed: null,
-        actual: null,
-        delta: null,
-        threshold: t.threshold,
-        reason: 'claim-parse-failed',
-      });
-      continue;
-    }
-    const claimed = claim.value;
-    const abs = path.join(root, t.file);
-    if (!fs.existsSync(abs)) {
-      drifts.push({
-        name: t.name,
-        file: t.file,
-        claimed,
-        actual: null,
-        delta: null,
-        threshold: t.threshold,
-        reason: 'file-missing',
-      });
-      continue;
-    }
-    const actual = fs.statSync(abs).size;
-    const delta = actual - claimed;
-    if (Math.abs(delta) > t.threshold) {
-      drifts.push({
-        name: t.name,
-        file: t.file,
-        claimed,
-        actual,
-        delta,
-        threshold: t.threshold,
-        reason: 'over-threshold',
-        suggested: {
-          old: claim.matched,
-          new: claim.suggestReplacement(actual),
-        },
-      });
-    }
-  }
-  return { ok: drifts.length === 0, drifts };
-}
-
 // CLI wrapper — only fires when invoked directly, not on import.
 if (invokedAsMain(import.meta.url)) {
   try {
@@ -312,9 +214,8 @@ if (invokedAsMain(import.meta.url)) {
     const argv = parseStrict(process.argv.slice(2), { bools: ['--json'] });
     const root = resolvePluginRoot(import.meta.url);
     const cascadeResult = runVersionCascadeCheck({ root });
-    const sizingResult = runSpecSizingCheck({ root });
     const semverResult = runPluginSemverCheck({ root });
-    const overallOk = cascadeResult.ok && sizingResult.ok && semverResult.ok;
+    const overallOk = cascadeResult.ok && semverResult.ok;
 
     if (argv.bools.has('--json')) {
       process.stdout.write(
@@ -322,7 +223,6 @@ if (invokedAsMain(import.meta.url)) {
           {
             ok: overallOk,
             cascade: cascadeResult,
-            sizing: sizingResult,
             pluginSemver: semverResult,
           },
           null,
@@ -332,7 +232,6 @@ if (invokedAsMain(import.meta.url)) {
     } else if (overallOk) {
       process.stdout.write(
         `version-cascade-check: ok (${cascadeResult.expectedMinor} consistent across ${cascadeResult.filesChecked.length} file(s); ` +
-          `Sizing drift within ±20B for ${SIZING_TARGETS.length} target(s); ` +
           `plugin semver ${semverResult.expected} consistent across ${semverResult.sites.length} site(s))\n`
       );
     } else {
@@ -369,41 +268,6 @@ if (invokedAsMain(import.meta.url)) {
         process.stderr.write(
           `\nFix cascade: update each line to use ${cascadeResult.expectedMinor}, or move historical refs into CLAUDE-changelog.md.\n`
         );
-      }
-      if (!sizingResult.ok) {
-        if (sizingResult.skipped) {
-          process.stderr.write(
-            `\nspec-sizing-check: skipped (${sizingResult.skipped}${sizingResult.detail ? ` — ${sizingResult.detail}` : ''}).\n`
-          );
-        } else {
-          process.stderr.write(
-            `\nspec-sizing-check: ${sizingResult.drifts.length} drift(s) beyond ±20B envelope:\n`
-          );
-          for (const d of sizingResult.drifts) {
-            if (d.reason === 'claim-parse-failed') {
-              process.stderr.write(
-                `  ${d.file}: Sizing-line claim for "${d.name}" not parseable (regex miss)\n`
-              );
-            } else if (d.reason === 'file-missing') {
-              process.stderr.write(`  ${d.file}: claimed ${d.claimed}B, actual <file missing>\n`);
-            } else {
-              const sign = d.delta > 0 ? '+' : '';
-              process.stderr.write(
-                `  ${d.file}: claimed ${d.claimed}B, actual ${d.actual}B (Δ ${sign}${d.delta}B, exceeds ±${d.threshold}B)\n`
-              );
-              if (d.suggested) {
-                process.stderr.write(`    Suggested edit in **Sizing** line:\n`);
-                process.stderr.write(`      OLD: ${d.suggested.old}\n`);
-                process.stderr.write(`      NEW: ${d.suggested.new}\n`);
-              }
-            }
-          }
-          process.stderr.write(
-            `\nFix sizing: apply the "Suggested edit" OLD→NEW pairs above to the **Sizing** line in spec/CLAUDE-extended.md. ` +
-              `A single corrective pass typically lands inside the ±20B envelope. ` +
-              `Re-run \`node scripts/version-cascade-check.js\` to confirm exit 0.\n`
-          );
-        }
       }
     }
     process.exit(overallOk ? 0 : 1);

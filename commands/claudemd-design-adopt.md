@@ -64,7 +64,7 @@ No CLAUDE.md → create one containing only this block. Placement: repo root; wh
 
 ## Step 4 — consent gate (always)
 
-Show the full DESIGN.md draft + the CLAUDE.md diff BEFORE writing, ask once, then write both files in the same turn. This gate applies even under `AUTONOMY_LEVEL: aggressive` — these files steer every future session (LLM-visible context).
+Show the full DESIGN.md draft + the CLAUDE.md diff BEFORE writing, ask once, then write both files in the same turn. This gate always applies — these files steer every future session (LLM-visible context).
 
 ## Step 5 — verify + report
 

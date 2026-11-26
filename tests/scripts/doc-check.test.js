@@ -28,9 +28,11 @@ function makeRepo() {
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
   fs.writeFileSync(path.join(root, 'spec/CLAUDE.md'), '# core\n\n## §7 VALIDATE\n\n### §2.1 ROUTE\n');
-  fs.writeFileSync(path.join(root, 'spec/CLAUDE-extended.md'), '# ext\n\n## §12 PLUGINS\n');
+  fs.writeFileSync(
+    path.join(root, 'spec/CLAUDE-extended.md'),
+    '# ext\n\n## §12 PLUGINS\n\n## §10-V Banned-vocab\n'
+  );
   fs.writeFileSync(path.join(root, 'spec/hard-rules.json'), '{"rules":[{"id":"§iron-law-2"}]}\n');
-  fs.writeFileSync(path.join(root, 'scripts/sampling-audit.js'), '// §10-V\n');
   fs.writeFileSync(path.join(root, 'scripts/real-file.js'), '// exists\n');
   return root;
 }
@@ -152,7 +154,7 @@ test('doc-check: a §-ref to one of the document own numbered headings resolves,
     assert.deepEqual(own.problems, []);
     assert.match(
       own.lines.join('\n'),
-      /anchors: 6 distinct §-refs resolved against 4 spec source\(s\); 1 by the document's own headings/
+      /anchors: 6 distinct §-refs resolved against 3 spec source\(s\); 1 by the document's own headings/
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -333,21 +335,4 @@ test('doc-check CLI: --help exits 0, a bogus flag exits 2, a missing doc exits 2
   assert.equal(r().status, 2);
   assert.match(r().stderr, /Missing argument/);
   assert.equal(r('docs/nope-not-here.md').status, 2);
-});
-
-test('doc-check CLI: the tracked roadmap passes its own self-check', () => {
-  // The document this script was extracted from. Run with
-  // --allow-untracked-missing because it cites tasks/sampling-audit-2026-09-07.md,
-  // a local-only analysis file that is deliberately not in git — the four checks
-  // that catch prose drift (anchors / G-refs / ratios / retracted claims) are
-  // unaffected by the flag, and path existence is verified strictly on the
-  // operator's machine where those files live.
-  const doc = 'docs/spec-optimization-roadmap-2026-09-21.md';
-  assert.ok(fs.existsSync(path.join(REPO_ROOT, doc)), `${doc} must be tracked for this gate to run`);
-  const res = spawnSync(process.execPath, [CLI, doc, '--allow-untracked-missing'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    timeout: 20000,
-  });
-  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 });

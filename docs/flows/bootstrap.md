@@ -115,9 +115,9 @@ Since the versions agree, any `bootstrap-failed` sentinel is stale — the state
 out-of-band, e.g. a manual `/claudemd-refresh`. Cleared silently, through the shared
 `hook_install_sentinel_clear` rather than a private `rm`.
 
-**9. Merge five banner candidates** — `hooks/session-start-check.sh` → `merge_banners "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json"`
+**9. Merge five banner candidates** — `hooks/session-start-check.sh` → `merge_banners "$stale_json" "$up_json" "$drift_json" "$uc_json" "$_pz_json"`
 
-Stale-cache check, upstream check, session summary, spec drift, and user-content, folded into
+Stale-cache check, upstream check, spec drift, user-content, and paused checkpoints, folded into
 **one** object. The upstream check runs only when the stale check produced nothing, or the user
 gets two banners about the same thing.
 
@@ -134,8 +134,8 @@ through to the install block.
 
 **12. Collect banners before installing** — `hooks/session-start-check.sh` → `_bf_json=$(emit_bootstrap_failed_banner)`
 
-Two of these helpers **consume** state the bootstrap is about to rewrite, so the candidate set is
-computed first. `uc` stays empty here; only the synchronous branch can fill it.
+The bootstrap-failed helper **consumes** state the bootstrap is about to rewrite, so the candidate
+set is computed first. `uc` stays empty here; only the synchronous branch can fill it.
 
 **13. No node** — `hooks/session-start-check.sh` → `[[ "$HAVE_NODE" == 1 ]] || { emit_tail_banners; exit 0; }`
 
@@ -189,11 +189,6 @@ always exits 0.**
 
 ## Shapes that look like detours and are not
 
-- **`emit_session_summary_banner` has two call sites**, one in the version-match branch and one
-  in the bootstrap tail. The second was added deliberately by the 2026-07-26 audit: before it,
-  the session following every upgrade and every fresh install showed nothing at all, and the
-  state file was not consumed either, so the prior session's summary surfaced one session late
-  rather than at all. The two paths are mutually exclusive.
 - **The match branch merges five candidates, the bootstrap tail merges three.** The tail skips
   the spec-drift and upstream checks on purpose: an upgrade is in flight, so drift is expected
   and an outward check is noise on top of a local change already happening.

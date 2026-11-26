@@ -4,7 +4,7 @@
 // The index format is `- [Title](file.md) [tags] — hook`, so the entry's own
 // file is the target of the FIRST `](….md)` on the line. Reproduced 2026-10-20
 // with `- [A](feedback_a.md) — supersedes [old](feedback_old.md)`: mem-audit
-// read feedback_a.md, while spec-coherence-audit took the LAST `(….md)` and
+// read feedback_a.md, while the coherence audit took the LAST `(….md)` and
 // reported feedback_old.md as dangling and feedback_a.md as not indexed, and
 // parseMemoryIndex (the doctor's tag scan) attributed the entry's tags to
 // feedback_old.md.
@@ -19,8 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useHomeSandbox } from '../lib/home-sandbox.mjs';
-import { indexEntryFile, parseMemoryIndex } from '../../scripts/lib/memory-tags.js';
-import { auditSpecCoherence } from '../../scripts/spec-coherence-audit.js';
+import { indexEntryFile, parseMemoryIndex, checkMemoryIndexLinks } from '../../scripts/lib/memory-tags.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(
@@ -47,23 +46,21 @@ test('item 169: parseMemoryIndex names the first `](….md)` as the entry file',
   assert.deepEqual(got, want);
 });
 
-test('item 169: spec-coherence-audit indexes the first `](….md)` of each line', () => {
+test('item 169: the doctor link check indexes the first `](….md)` of each line', () => {
   const cwd = '/work/memlinks-proj';
   const memDir = box.claude('projects', cwd.replace(/[^a-zA-Z0-9-]/g, '-'), 'memory');
   fs.mkdirSync(memDir, { recursive: true });
   fs.writeFileSync(path.join(memDir, 'MEMORY.md'), INDEX_TEXT);
   for (const f of FIXTURE.onDisk) fs.writeFileSync(path.join(memDir, f), 'x\n');
 
-  const check = auditSpecCoherence({ pluginRoot: REPO_ROOT, projectCwd: cwd }).checks.find(
-    c => c.name === 'memory-index'
-  );
-  assert.equal(check.stats.memDir, memDir, 'the check read a memory dir outside the sandbox');
+  const check = checkMemoryIndexLinks(cwd);
+  assert.equal(check.memDir, memDir, 'the check read a memory dir outside the sandbox');
   assert.deepEqual(
-    check.findings.map(f => f.detail),
+    [...check.dangling, ...check.orphans],
     [],
     'every line names an existing file, and every file is named by one line'
   );
-  assert.equal(check.stats.indexedCount, new Set(FIXTURE.lines.map(l => l.file)).size);
+  assert.equal(check.indexedCount, new Set(FIXTURE.lines.map(l => l.file)).size);
 });
 
 // 0.115.0 pre-tag review M1: a line with no `](….md)` link keeps the reading it

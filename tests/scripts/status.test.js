@@ -242,9 +242,6 @@ test('status({verbose:true}) emits per-hook kill-switch table covering every shi
   for (const h of r.verbose.killSwitches.perHook) {
     assert.ok(registryNames.has(h.displayName), `perHook lists unknown hook ${h.displayName}`);
   }
-  // A hook registered on a second event says so (branch-prune, 0.116.0).
-  const bp = r.verbose.killSwitches.perHook.find(h => h.displayName === 'branch-prune');
-  assert.deepEqual([bp.event, bp.alsoOn], ['PostToolUse', ['PostToolUseFailure']]);
   const sample = r.verbose.killSwitches.perHook.find(h => h.displayName === 'banned-vocab');
   assert.ok(sample, 'banned-vocab hook must appear in perHook');
   assert.equal(sample.envVar, 'DISABLE_BANNED_VOCAB_HOOK');
@@ -385,81 +382,6 @@ test('status.features.bashSafetyIndirectCall honors explicit opt-out =0 (v0.21.8
   } finally {
     if (saved === undefined) delete process.env.BASH_SAFETY_INDIRECT_CALL;
     else process.env.BASH_SAFETY_INDIRECT_CALL = saved;
-  }
-});
-
-test('status.features.batchCadenceAdvisory defaults TRUE when env var unset (v0.20.1)', async () => {
-  // v0.20.1 I3 — sub-feature flag surfaced. Default ON (DISABLE_*=1 turns off).
-  const saved = process.env.DISABLE_BATCH_CADENCE_ADVISORY;
-  try {
-    delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
-    const r = await status();
-    assert.equal(r.features.batchCadenceAdvisory, true);
-  } finally {
-    if (saved === undefined) delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
-    else process.env.DISABLE_BATCH_CADENCE_ADVISORY = saved;
-  }
-});
-
-test('status.features.batchCadenceAdvisory honors DISABLE_BATCH_CADENCE_ADVISORY=1 (v0.20.1)', async () => {
-  const saved = process.env.DISABLE_BATCH_CADENCE_ADVISORY;
-  try {
-    process.env.DISABLE_BATCH_CADENCE_ADVISORY = '1';
-    const r = await status();
-    assert.equal(r.features.batchCadenceAdvisory, false);
-  } finally {
-    if (saved === undefined) delete process.env.DISABLE_BATCH_CADENCE_ADVISORY;
-    else process.env.DISABLE_BATCH_CADENCE_ADVISORY = saved;
-  }
-});
-
-test('status names the batch-cadence toggle without the removed OPERATOR §13.2', async () => {
-  const r = await status({ verbose: true });
-  const t = r.verbose.killSwitches.subFeature.find(s => s.envVar === 'DISABLE_BATCH_CADENCE_ADVISORY');
-  assert.equal(t.disables, 'the batch-review cadence advisory only');
-});
-
-test('status.features.batchCadenceThreshold defaults to 20 when env unset (v0.20.1)', async () => {
-  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
-  try {
-    delete process.env.CLAUDEMD_BATCH_THRESHOLD;
-    const r = await status();
-    assert.equal(r.features.batchCadenceThreshold, 20);
-  } finally {
-    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
-    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
-  }
-});
-
-test('status.features.batchCadenceThreshold honors positive-int override (v0.20.1)', async () => {
-  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
-  try {
-    process.env.CLAUDEMD_BATCH_THRESHOLD = '5';
-    assert.equal((await status()).features.batchCadenceThreshold, 5);
-    process.env.CLAUDEMD_BATCH_THRESHOLD = '100';
-    assert.equal((await status()).features.batchCadenceThreshold, 100);
-  } finally {
-    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
-    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
-  }
-});
-
-test('status.features.batchCadenceThreshold falls back to 20 on invalid input (v0.20.1)', async () => {
-  // Non-numeric / zero / negative / float → default 20. Matches the env guard
-  // in session-end-check.sh (CLAUDEMD_BATCH_THRESHOLD requires ^[1-9][0-9]*$).
-  const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
-  try {
-    for (const bad of ['0', '-5', '2.5', 'abc', '']) {
-      process.env.CLAUDEMD_BATCH_THRESHOLD = bad;
-      assert.equal(
-        (await status()).features.batchCadenceThreshold,
-        20,
-        `bad input '${bad}' must fall back to default 20`
-      );
-    }
-  } finally {
-    if (saved === undefined) delete process.env.CLAUDEMD_BATCH_THRESHOLD;
-    else process.env.CLAUDEMD_BATCH_THRESHOLD = saved;
   }
 });
 

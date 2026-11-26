@@ -56,7 +56,7 @@ hook_record_plugin_root "$PLUGIN_ROOT" "$SESSION_ID" 2>/dev/null || true
 # (docs: code.claude.com/docs/en/hooks). Core §11 post-compaction re-read is a
 # self-enforced rule guarding exactly the state where model attention is least
 # reliable; this banner makes it hook-assisted. Compact events exit here —
-# bootstrap / upgrade-banner / summary-banner are session-START concerns, and
+# bootstrap and upgrade banners are session-START concerns, and
 # running install.js mid-session on a compaction event is never desirable.
 #
 # The banner text is DERIVED from §11 and must track it. v0.27.0 wrote
@@ -94,100 +94,6 @@ merge_banners() {
       end' 2>/dev/null || true
 }
 
-# --- G7: the long-task ledger ------------------------------------------------
-#
-# `tasks/<slug>-ledger.md`, five fixed sections (docs/ARCHITECTURE.md, "Long-task
-# ledger"). Compaction destroys the two that are expensive to reconstruct:
-# `Decisions`, which is filled once at task start and is precisely what a later
-# turn cannot re-derive, and `Next`. Both are re-injected here rather than left
-# to the agent to remember to re-read — §11 already tells it to re-read the task's spec file,
-# and the 2026-09-21 measurement is that self-enforced reminders are the class
-# that does not hold.
-#
-# Bounded three ways, because this lands in context on every compaction: newest
-# ledger only, mtime within LEDGER_MAX_AGE_DAYS, and the extracted text capped at
-# LEDGER_MAX_BYTES. An unbounded read here would spend on a stale ledger exactly
-# the context the compaction was trying to recover.
-LEDGER_MAX_BYTES="${CLAUDEMD_LEDGER_MAX_BYTES:-1600}"
-LEDGER_MAX_AGE_DAYS="${CLAUDEMD_LEDGER_MAX_AGE_DAYS:-14}"
-# Both knobs reach jq / arithmetic, so a non-integer is not merely ignored. The
-# cap is the sharper case: it is passed as `--argjson`, and jq reads `.[0:-5]`
-# as "all but the last 5" with `length > -5` always true — so ONE negative
-# character restores the exact unbounded-injection defect this cap exists to
-# close (pre-ship review, behaviour L7). Same guard shape as
-# EVIDENCE_GATE_WINDOW's.
-[[ "$LEDGER_MAX_BYTES" =~ ^[0-9]+$ ]] || LEDGER_MAX_BYTES=1600
-[[ "$LEDGER_MAX_AGE_DAYS" =~ ^[0-9]+$ ]] || LEDGER_MAX_AGE_DAYS=14
-
-ledger_banner() {
-  [[ "${DISABLE_LEDGER_INJECT:-0}" == "1" ]] && return 0
-  command -v jq >/dev/null 2>&1 || return 0
-  local dir="$1"
-  [[ -n "$dir" && -d "$dir/tasks" ]] || return 0
-
-  # Newest by mtime, through hook_newest_ledger (hook-common.sh), the resolver
-  # ledger-staleness.sh calls too: the two arms name the same file. Its rules —
-  # glob not `ls -t`, ties, no pick without platform_stat_mtime — live there. An
-  # unreadable newest ledger means no banner rather than an older ledger
-  # presented as the newest, and the age check reuses the mtime it read.
-  hook_newest_ledger "$dir" || return 0
-  local newest="$HOOK_LEDGER" newest_mt="$HOOK_LEDGER_MTIME"
-  [[ -r "$newest" ]] || return 0
-
-  local now age
-  (( newest_mt >= 0 )) || return 0
-  now=$(date +%s 2>/dev/null) || return 0
-  [[ "$now" =~ ^[0-9]+$ ]] || return 0
-  age=$(((now - newest_mt) / 86400))
-  (( age <= LEDGER_MAX_AGE_DAYS )) || return 0
-
-  # `## Decisions` and `## Next` only, each up to the next `## `. A ledger whose
-  # headings were renamed yields nothing and the banner is skipped — silence
-  # rather than a banner carrying the wrong half of the file.
-  #
-  # The cap is applied INSIDE jq, by character. `cut -c1-N` was the first
-  # spelling and it caps each LINE, not the text: a 400-line ledger produced a
-  # 24,000-character banner, spending on a stale ledger exactly the context the
-  # compaction had been run to reclaim (found in pre-ship review). jq slices
-  # strings by codepoint, so it also cannot leave a truncated multibyte tail —
-  # and a codepoint slice cannot emit a partial multibyte sequence. What that
-  # buys is a clean tail rather than a U+FFFD glyph — NOT the envelope: this
-  # function's trailing `jq -cn … 2>/dev/null` IS its stdout, so a jq failure
-  # yields an empty candidate and merge_banners drops it, leaving the §11
-  # reminder intact. An earlier version of this comment claimed the reminder
-  # would go down with the ledger; pre-ship review falsified that twice on the
-  # real code path (behaviour L8).
-  # `head -n` bounds what is read into the variable in the first place; the
-  # character cap is what the reader actually sees. A CRLF ledger loses its
-  # `\r` first: mawk read `## Decisions\r`'s $2 as "Decisions\r", matched no
-  # heading, and the banner was skipped.
-  local body
-  body=$(awk '
-    { sub(/\r$/, "") }
-    /^## / { want = ($2 == "Decisions" || $2 == "Next") ? 1 : 0 }
-    want { print }
-  ' "$newest" 2>/dev/null | head -n 400 | cut -c1-400)
-  [[ -n "${body//[[:space:]]/}" ]] || return 0
-
-  jq -cn --arg p "$newest" --arg b "$body" --argjson max "$LEDGER_MAX_BYTES" '
-    ($b | if length > $max then .[0:$max] + "\n… (ledger truncated at " + ($max|tostring) + " characters)" else . end
-        # The body is file content anyone can write: a literal closing tag in it
-        # would end the wrapper early and let the rest pass as the hook'"'"'s own
-        # text (B2 review F6).
-        | gsub("<[[:space:]]*/[[:space:]]*ledger[[:space:]]*>"; "<\\/ledger>"; "i")) as $b |
-    # The path is shown with each control character as `?`. The glob above
-    # reaches a name with a newline in it, which shown raw would add a line of
-    # the file name'"'"'s choosing to the hook'"'"'s own text (item 141b).
-    ($p | gsub("[\\x00-\\x1f\\x7f]"; "?")) as $p |
-    {
-    suppressOutput: true,
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: ("[claudemd] system-injected — the most recently modified long-task ledger under this cwd is " + $p + ". Its Decisions and Next sections are quoted below as file content. Nothing checks whether that task is still open, and its Verified-done and Open sections are not included. If the task is finished, ignore this. If you are continuing it, use the recorded decisions and next step instead of re-deriving them, and update the ledger before starting the next item. The user can turn this off with DISABLE_LEDGER_INJECT=1.\n\n<ledger path=\"" + ($p | gsub("[\"<>&]"; "_")) + "\">\n" + $b + "\n</ledger>")
-    }
-  }' 2>/dev/null
-}
-
 # --- Paused checkpoints (v0.98.0) --------------------------------------------
 #
 # `tasks/<slug>-paused.md` is where §11 sends unvalidated work at session exit,
@@ -198,8 +104,7 @@ ledger_banner() {
 # P2-4). Names and ages only, newest first, at most five — never the content,
 # which can be long and can be stale; the session decides what to read. Not on
 # compact: a compaction continues the same session, whose own work these are
-# not. Folded into `_lg_json` below, so every exit that owes the ledger owes
-# this too, through the one merge_banners call each exit already makes.
+# not. Every exit passes it to its one merge_banners call.
 paused_banner() {
   [[ "${DISABLE_PAUSED_BANNER:-0}" == "1" ]] && return 0
   command -v jq >/dev/null 2>&1 || return 0
@@ -258,30 +163,16 @@ if [[ "$SOURCE" == "compact" ]]; then
     }' 2>/dev/null)
     hook_record session-start compact-reminder null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
   fi
-  # G7. Through merge_banners, not a second `jq -cn`: two objects on stdout are
-  # invalid JSON and CC drops BOTH silently, which would take the re-read
-  # reminder down with the ledger (docs/HOOK-PROTOCOL.md).
-  _lg_json=$(ledger_banner "$EVT_CWD")
-  [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
   # Spec modules injected before the compaction are gone from context; forget
   # them so spec-module-inject.sh can inject them again (tasks/specs/spec-modules.md).
   [[ "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]] && rm -f "$HOME/.claude/.claudemd-state/modinj-$SESSION_ID.list" 2>/dev/null
-  merge_banners "$_cr_json" "$_lg_json"
+  merge_banners "$_cr_json"
   exit 0
 fi
 
-# `resume` reopens a session whose context was never in this process either, so
-# the ledger is worth the same re-injection. It does NOT take the early exit
-# above: bootstrap, version and drift checks are session-start concerns and a
-# resume is a session start. The banner joins the candidate lists below.
-_lg_json=""
-if [[ "$SOURCE" == "resume" ]]; then
-  _lg_json=$(ledger_banner "$EVT_CWD")
-  [[ -n "$_lg_json" ]] && hook_record session-start ledger-inject null '§11-post-compaction' "$SESSION_ID" 2>/dev/null || true
-fi
-# Paused checkpoints ride in the same candidate (see paused_banner).
+# Paused checkpoints: one candidate, passed to every merge_banners call below
+# so each exit path emits it.
 _pz_json=$(paused_banner "$EVT_CWD")
-[[ -n "$_pz_json" ]] && _lg_json=$(merge_banners "$_lg_json" "$_pz_json")
 
 MANIFEST_NEW="$HOME/.claude/.claudemd-manifest.json"
 MANIFEST_OLD="$HOME/.claude/.claudemd-state/installed.json"
@@ -311,66 +202,6 @@ if [[ "$FRESH_INSTALL" == "0" && -f "$MANIFEST_NEW" ]] && command -v jq >/dev/nu
   jq -e . "$MANIFEST_NEW" >/dev/null 2>&1 || FRESH_INSTALL=1
 fi
 
-
-# v0.8.0 R-N4 — emit last-session summary banner via additionalContext when
-# session-summary.sh wrote one on the prior Stop. Always returns 0 (fail-open).
-# Sentinel: consumed by the `rm` at the end of this function, so the banner
-# fires once. (Said "rename" until 2026-09-14; that idiom was replaced in
-# R10-21e because the renamed file is the state nothing reaps.) Skipped on:
-# DISABLE_SESSION_SUMMARY_BANNER=1, jq missing, file absent, total=0.
-emit_session_summary_banner() {
-  [[ "${DISABLE_SESSION_SUMMARY_BANNER:-0}" == "1" ]] && return 0
-  local f="$HOME/.claude/.claudemd-state/last-session-summary.json"
-  [[ -f "$f" ]] || return 0
-  command -v jq >/dev/null 2>&1 || return 0
-
-  local denies bypasses warns top_section window
-  denies=$(jq -r '.denies // 0' "$f" 2>/dev/null) || return 0
-  window=$(jq -r '.window // ""' "$f" 2>/dev/null) || window=""
-  bypasses=$(jq -r '.bypasses // 0' "$f" 2>/dev/null) || return 0
-  warns=$(jq -r '.warns // 0' "$f" 2>/dev/null) || return 0
-  top_section=$(jq -r '.top_section // ""' "$f" 2>/dev/null) || return 0
-
-  # Numeric-guard before arithmetic. jq's `// 0` only substitutes on null /
-  # missing, NOT on a wrong-typed value: a corrupt summary whose `denies` is a
-  # JSON string ("oops") flows through, and `$((oops + ...))` treats it as an
-  # unbound varname under `set -u` → the banner fn crashes the SessionStart
-  # hook (exit 1, not fail-open). Coerce any non-integer to 0.
-  [[ "$denies"   =~ ^[0-9]+$ ]] || denies=0
-  [[ "$bypasses" =~ ^[0-9]+$ ]] || bypasses=0
-  [[ "$warns"    =~ ^[0-9]+$ ]] || warns=0
-
-  # Suppress empty banner — session-summary.sh skips writing on total=0,
-  # but defensive against partial writes.
-  local total=$((denies + bypasses + warns))
-  (( total > 0 )) || return 0
-
-  # "since last turn", not "last session" (audit R11-33). The window this counts
-  # runs from the previous Stop-hook touch to the Stop that wrote the file, and
-  # Stop fires at every turn boundary — so what a fresh session sees here is the
-  # PREVIOUS SESSION'S LAST TURN, not its whole run. The old label invited the
-  # reader to treat one turn's denies as a session total.
-  #
-  # A session's FIRST Stop has no per-session ref, so session-summary.sh counts
-  # its 24 h fallback over every session's rows (R15). Labelled "since last
-  # turn", that told the model a session with 0 rows had 34 denies.
-  local label="since last turn"
-  [[ "$window" == "24h" ]] && label="last 24 h, all sessions"
-  local msg="[claudemd] ${label}: ${denies} denies, ${bypasses} bypasses, ${warns} warns"
-  [[ -n "$top_section" && "$top_section" != "null" ]] && msg+=", top: ${top_section}"
-  msg+=". The user can turn this off with DISABLE_SESSION_SUMMARY_BANNER=1"
-
-  jq -cn --arg ctx "$msg" '{
-    suppressOutput: true,
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: $ctx
-    }
-  }' 2>/dev/null
-
-  # Consumed, one line down. Next Stop writes a fresh summary; this one is done.
-  rm -f "$f" 2>/dev/null
-}
 
 # spec_drift_check — 2026-07-27 audit (M6). The ONLY automatic install-integrity
 # check was `INSTALLED_VER == PLUGIN_VER`, a version-number comparison: a spec
@@ -792,10 +623,8 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
   # .version (pre-0.1.9), jq absent, unreadable package.json, etc. — to avoid
   # a re-bootstrap loop on broken state. No upstream check on broken state.
   if [[ -z "$PLUGIN_VER" || -z "$INSTALLED_VER" ]]; then
-    # The ledger is still owed on this path: a manifest with no .version says
-    # nothing about whether the session is resuming a long task. This was a
-    # bare `exit 0` and dropped it (pre-ship review, behaviour M1).
-    merge_banners "$_lg_json"
+    # The paused-checkpoint banner is still owed on this path.
+    merge_banners "$_pz_json"
     exit 0
   fi
   # Match: local install is current. Run upstream check before exiting — this
@@ -815,8 +644,8 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     # Both helpers can emit a SessionStart additionalContext JSON object. CC
     # parses hook stdout with a strict single-value JSON.parse, so printing two
     # objects back-to-back is INVALID JSON and BOTH banners are silently dropped
-    # — the upgrade notice vanishes exactly when the user also had session
-    # activity (a summary to show). Capture each (side effects — sentinel touch,
+    # — the upgrade notice vanishes exactly when another banner fires too.
+    # Capture each (side effects — sentinel touch,
     # sentinel removal, hook_record — still run inside the command substitution) and
     # emit at most ONE object, merging additionalContext when both fire.
     stale_json=$(stale_cache_check)
@@ -824,14 +653,13 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     # Cache already newer than the running root → the remote check is
     # redundant this session (and would double-banner); skip it.
     [[ -z "$stale_json" ]] && up_json=$(upstream_check)
-    sum_json=$(emit_session_summary_banner)
     drift_json=$(spec_drift_check)
     # Reached here when a PRIOR session's install left the sentinel behind and
     # could not surface it in-session — the detached bootstrap, i.e. the
     # CLAUDEMD_FORCE_ASYNC_BOOTSTRAP path. The fresh path emits it at the tail,
     # in the same session as the overwrite.
     uc_json=$(emit_user_content_banner)
-    merge_banners "$stale_json" "$up_json" "$sum_json" "$drift_json" "$uc_json" "$_lg_json"
+    merge_banners "$stale_json" "$up_json" "$drift_json" "$uc_json" "$_pz_json"
     exit 0
   fi
   # v0.36.0 — direction gate. INSTALLED_VER newer than this hook's own
@@ -848,16 +676,13 @@ if [[ "$FRESH_INSTALL" == "0" ]]; then
     if [[ "$NEWER" == "$INSTALLED_VER" ]]; then
       mkdir -p "$HOME/.claude/logs" 2>/dev/null || true
       ( echo "[claudemd] $(date -u +%Y-%m-%dT%H:%M:%SZ) stale plugin root: hook v$PLUGIN_VER < installed v$INSTALLED_VER — auto-sync skipped (would downgrade)" ) 2>/dev/null >> "$HOME/.claude/logs/claudemd-bootstrap.log" || true
-      # Through merge_banners with the ledger candidate, not a bare `jq -cn`.
-      # This is the session being told to run /claudemd-refresh, i.e. a long
-      # one, i.e. one that will compact — exactly when the ledger is owed. It
-      # emitted its own single object and exited, so a `resume` here lost the
-      # ledger silently (pre-ship review, behaviour M1).
+      # Through merge_banners with the paused-checkpoint candidate, not a bare
+      # `jq -cn`: two objects on stdout are invalid JSON and both are dropped.
       _stale_json=$(jq -cn --arg old "$PLUGIN_VER" --arg new "$INSTALLED_VER" '{
         suppressOutput: true,
         systemMessage: ("[claudemd] stale plugin registration: hooks are running from v" + $old + " but v" + $new + " is installed. Auto-sync skipped (a sync from the old dir would downgrade the spec). Fix: run /claudemd-refresh, then restart Claude Code.")
       }' 2>/dev/null)
-      merge_banners "$_stale_json" "$_lg_json"
+      merge_banners "$_stale_json" "$_pz_json"
       STALE_EXTRA=$(jq -cn --arg h "$PLUGIN_VER" --arg i "$INSTALLED_VER" '{hook_version:$h, installed_version:$i}' 2>/dev/null) || STALE_EXTRA='null'
       hook_record session-start stale-root "$STALE_EXTRA" '' "$SESSION_ID" 2>/dev/null || true
       exit 0
@@ -875,16 +700,9 @@ fi
 # path — exactly the states a prior failed background install leaves behind.
 # Banner it before retrying.
 #
-# The session-summary banner is emitted here too (2026-07-26 audit). Its only
-# call site used to be inside the version-MATCH branch, so the session right
-# after every upgrade — and every fresh install — silently showed nothing; the
-# state file is not consumed either, so the prior session's summary surfaced one
-# session late rather than at all. Two possible writers now, so merge through
-# `jq -s` exactly as the match branch does: the hook must emit ONE JSON object.
-#
-# v0.75.0 — the emit MOVED to the end of the hook (emit_tail_banners below).
-# The banner set is computed here, before the bootstrap, because two of these
-# helpers CONSUME state the bootstrap is about to rewrite; but on the fresh
+# The emit is at the end of the hook (emit_tail_banners below). The banner set
+# is computed here, before the bootstrap, because the bootstrap-failed helper
+# CONSUMES state the bootstrap is about to rewrite; but on the fresh
 # path the bootstrap itself produces a third banner (install.js moved the
 # user's own ~/.claude/CLAUDE.md aside), and CC parses hook stdout with a
 # strict single-value JSON.parse — printing a second object here and another
@@ -894,11 +712,10 @@ fi
 HAVE_NODE=0
 command -v node >/dev/null 2>&1 && HAVE_NODE=1
 _bf_json=$(emit_bootstrap_failed_banner)
-_sum_json=$(emit_session_summary_banner)
 _uc_json=""
 
 emit_tail_banners() {
-  merge_banners "$_bf_json" "$_sum_json" "$_uc_json" "$_lg_json"
+  merge_banners "$_bf_json" "$_uc_json" "$_pz_json"
 }
 
 # node required to run install.js — silent no-op if absent. The banners still

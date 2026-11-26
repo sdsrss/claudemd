@@ -221,8 +221,8 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
   // introduced jq/syntax error, an unbound var under `set -u`) was invisible to
   // doctor — before OBS-2 it self-tested only the two deny-emitting hooks. Each entry feeds a synthetic
   // event of the hook's registered type under an ISOLATED mkdtemp HOME (so the
-  // state-writing hooks — residue-audit / session-summary / mem-audit /
-  // sandbox-disposal — can't touch the real ~/.claude) and asserts the hook
+  // state-writing hooks, such as sandbox-disposal, can't touch the real
+  // ~/.claude) and asserts the hook
   // exits 0 with no shell-crash signature on stderr. Hooks left out of the table
   // are enumerated with their reason in LIVENESS_SKIPPED below.
   const CRASH_RE = /: line \d+:|syntax error|unbound variable|: command not found/;
@@ -261,8 +261,6 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
     'pre-bash-safety-check.sh':
       'a blocking PreToolUse gate whose no-op path needs a real Bash event; tests/hooks/pre-bash-safety.test.sh drives 598 corpus rows against it',
     'banned-vocab-check.sh': 'same blocking-gate shape; tests/hooks/banned-vocab.test.sh covers it',
-    'spec-module-gate.sh':
-      'a PreToolUse gate that stays silent unless the command is a release; tests/hooks/spec-module-gate.test.sh covers every mode',
     'tmp-sweep.sh':
       'spawns a deleting sweep against the REAL temp root — an isolated HOME does not isolate $TMPDIR or /tmp, so a health command must not trigger it; tests/hooks/tmp-sweep.test.sh covers it',
   };
@@ -278,104 +276,12 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
       event: { session_id: 'doctor-selftest', tool_name: 'Bash', tool_input: { command: 'true' } },
     },
     {
-      hook: 'session-extended-read.sh',
-      ks: ksFor('session-extended-read.sh'),
-      event: { session_id: 'doctor-selftest', tool_name: 'Read', tool_input: { file_path: '/tmp/none' } },
-    },
-    {
-      hook: 'transcript-vocab-scan.sh',
-      ks: ksFor('transcript-vocab-scan.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Bash',
-        tool_input: { command: 'true' },
-        tool_response: {},
-      },
-    },
-    // The doctor probe drives it ONCE, so it lands at edit 1 of 8 and must exit
-    // 0 having said nothing — which is the liveness question here. This comment
-    // sits ABOVE the brace on purpose: the partition gate in
-    // tests/scripts/subject-set-drift.test.js extracts rows with
-    // `/\{\s*hook:\s*'…'/`, so a comment between `{` and `hook:` makes the row
-    // invisible to it and the hook reads as covered by neither list.
-    {
-      hook: 'rework-breaker.sh',
-      ks: ksFor('rework-breaker.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Edit',
-        tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
-        tool_response: {},
-      },
-    },
-    // Default OFF, so the probe reaches the opt-in exit and must say nothing;
-    // opted in, a /tmp target is under the scratch exclusion. Either way the
-    // liveness question is exit 0 with a clean stderr.
-    {
-      hook: 'cross-repo-write-check.sh',
-      ks: ksFor('cross-repo-write-check.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Edit',
-        cwd: '/tmp',
-        tool_input: { file_path: '/tmp/doctor-selftest-none.js' },
-      },
-    },
-    // Default OFF, so the probe reaches the opt-in exit; opted in, `true` is not a
-    // verification command. Either way: exit 0, nothing said.
-    {
-      hook: 'verify-log.sh',
-      ks: ksFor('verify-log.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Bash',
-        cwd: '/tmp',
-        tool_input: { command: 'true' },
-        tool_response: { stdout: '' },
-      },
-    },
-    // With no notice queued it exits at its first glob, before sourcing anything.
-    {
-      hook: 'deferred-notice.sh',
-      ks: ksFor('deferred-notice.sh'),
-      event: { session_id: 'doctor-selftest', prompt: 'doctor self-test' },
-    },
-    // Default OFF, so the probe reaches the opt-in exit; opted in, `true` is not
-    // a test runner. Either way the liveness question is exit 0, nothing said.
-    {
-      hook: 'test-failure-debug.sh',
-      ks: ksFor('test-failure-debug.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Bash',
-        tool_input: { command: 'true' },
-        error: 'Exit code 1',
-        is_interrupt: false,
-      },
-    },
-    {
-      hook: 'branch-prune.sh',
-      ks: ksFor('branch-prune.sh'),
-      event: {
-        session_id: 'doctor-selftest',
-        tool_name: 'Bash',
-        tool_input: { command: 'true' },
-        tool_response: {},
-      },
-    },
-    {
       hook: 'session-end-check.sh',
       ks: ksFor('session-end-check.sh'),
       event: { session_id: 'doctor-selftest', hook_event_name: 'SessionEnd' },
     },
-    { hook: 'evidence-gate.sh', ks: ksFor('evidence-gate.sh'), event: stopEvt },
-    { hook: 'ledger-staleness.sh', ks: ksFor('ledger-staleness.sh'), event: stopEvt },
     { hook: 'reply-language-check.sh', ks: ksFor('reply-language-check.sh'), event: stopEvt },
-    { hook: 'session-summary.sh', ks: ksFor('session-summary.sh'), event: stopEvt },
-    { hook: 'mem-audit.sh', ks: ksFor('mem-audit.sh'), event: stopEvt },
-    { hook: 'residue-audit.sh', ks: ksFor('residue-audit.sh'), event: stopEvt },
     { hook: 'sandbox-disposal-check.sh', ks: ksFor('sandbox-disposal-check.sh'), event: stopEvt },
-    { hook: 'transcript-structure-scan.sh', ks: ksFor('transcript-structure-scan.sh'), event: stopEvt },
     {
       hook: 'memory-index-lines.sh',
       ks: ksFor('memory-index-lines.sh'),
@@ -387,11 +293,6 @@ export function runHookSelfTests({ push, which, pluginRoot }) {
         tool_input: { command: 'tail -1 MEMORY.md' },
         tool_response: {},
       },
-    },
-    {
-      hook: 'memory-prompt-hint.sh',
-      ks: ksFor('memory-prompt-hint.sh'),
-      event: { session_id: 'doctor-selftest', hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
     },
     {
       hook: 'spec-module-inject.sh',

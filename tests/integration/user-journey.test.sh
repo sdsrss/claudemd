@@ -259,13 +259,17 @@ assert_contains "upgrade-available banner shown" "v199.0.0 available" "$OUT"
 OUT2=$(DISABLE_UPSTREAM_CHECK=0 CLAUDEMD_LS_REMOTE_CMD="bash $STUB" CLAUDEMD_CACHE_PARENT="$CACHE_PARENT" fire_session_start "$NEXT_ROOT")
 assert_not_contains "second session skips the network probe" "v199.0.0 available" "$OUT2"
 
-# Two banners at once must merge into ONE object, not two.
+# Two banners at once must merge into ONE object, not two: the upgrade notice
+# and the installed-spec drift banner (an edited ~/.claude/CLAUDE.md, restored
+# right after).
 rm -f "$HOME/.claude/.claudemd-state/upstream-check.lastrun"
-printf '{"denies":3,"bypasses":1,"warns":2,"top_section":"§10-V"}' > "$HOME/.claude/.claudemd-state/last-session-summary.json"
+cp "$HOME/.claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md.journey-orig"
+printf '\nMERGE PROBE\n' >> "$HOME/.claude/CLAUDE.md"
 OUT3=$(DISABLE_UPSTREAM_CHECK=0 CLAUDEMD_LS_REMOTE_CMD="bash $STUB" CLAUDEMD_CACHE_PARENT="$CACHE_PARENT" fire_session_start "$NEXT_ROOT")
-assert_single_json "upstream + summary merge into ONE object" "$OUT3"
+mv -f "$HOME/.claude/CLAUDE.md.journey-orig" "$HOME/.claude/CLAUDE.md"
+assert_single_json "upstream + spec-drift merge into ONE object" "$OUT3"
 assert_contains "merged banner keeps the upgrade notice" "v199.0.0 available" "$OUT3"
-assert_contains "merged banner keeps the session summary" "since last turn: 3 denies" "$OUT3"
+assert_contains "merged banner keeps the spec-drift notice" "installed spec differs" "$OUT3"
 
 ########################################################################
 phase "Phase 7 — self-heal"
