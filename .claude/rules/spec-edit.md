@@ -5,8 +5,8 @@ paths:
 
 # Editing the spec in this repo
 
-- `spec/CLAUDE*.md` is the text every user's agent reads. A change to it is L3 (core §2, LLM-visible metadata) and follows §EXT §13 META: show the diff and get the user's go-ahead, unless the current plan already authorizes it.
-- A spec edit is not finished until the tree is consistent: the spec version bumped (`node scripts/version-cascade-check.js` names every stale site), an entry in `spec/CLAUDE-changelog.md` and in extended's Recent changes, and the Sizing line solved to its fixed point (`node scripts/spec-coherence-audit.js --strict` shows no drift).
-- `spec/spec-modules/*.md` are build outputs of `spec/CLAUDE-extended.md`: edit the source, then run `node scripts/build-spec-modules.js` (`tests/scripts/spec-modules.test.js` fails `npm run check` when the committed modules differ from the build).
-- `tests/scripts/spec-structure.test.js` pins each section by hash. Read each changed section's diff and confirm its pinned rules still mean what they meant, then update `PINNED_BLOCKS` / `HEADING_INVENTORY` in the same commit.
-- A rule is often written in several places: core, §EXT §4 and §12, `spec/OPERATOR.md`, `spec/hard-rules.json`, `commands/*.md`, README. Grep the old wording across all of them before committing; a copy you did not change is a contradiction you shipped.
+- `spec/CLAUDE.md` loads into every turn of every user's agent, and the ship and review modules load on demand. A new or stricter rule ships only after an outcome run (extended §13 §0.1, `spec/OPERATOR.md` §13.1); show the user the diff before committing it.
+- A spec edit is finished when `node scripts/version-cascade-check.js` names no stale site after the version bump, and `spec/CLAUDE-changelog.md` and extended's `Recent changes` carry the new entry.
+- `spec/spec-modules/*.md` are build outputs of `spec/CLAUDE-extended.md`: edit the source, then run `node scripts/build-spec-modules.js` (`tests/scripts/spec-modules.test.js` fails when the committed modules differ from the build).
+- `tests/scripts/spec-structure.test.js` pins sections by hash: confirm each changed section still means what its pin says, then update the pin in the same commit.
+- A rule can be written in several places: core, extended §12 and §13, `spec/OPERATOR.md`, `spec/hard-rules.json`, `commands/*.md`, README. Grep the old wording across all of them before committing.
