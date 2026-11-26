@@ -1,6 +1,6 @@
 # 0.122.0：规范 v9.0.0（核心 24 KB → 2.8 KB，模块 9 → 2）
 
-状态：进行中
+状态：已完成
 
 ## 背景与目标
 
@@ -21,12 +21,12 @@
 
 ## 计划
 
-- [ ] S1：从 `next-release` 切出 `release/v0.122.0`；五处版本号；CHANGELOG 条目单独扫描
-- [ ] S2：`npm run check`、`npm run smoke`、bash 3.2 运行检查
-- [ ] S3：提交、推送、开 draft PR；PR CI 全绿
-- [ ] S4：发版前评审（新开的评审代理；本次改了已发布包的默认行为，按新 ship 模块也属必审）
-- [ ] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
-- [ ] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支
+- [x] S1：从 `next-release` 切出 `release/v0.122.0`；五处版本号；CHANGELOG 条目单独扫描
+- [x] S2：`npm run check`、`npm run smoke`、bash 3.2 运行检查
+- [x] S3：提交、推送、开 draft PR；PR CI 全绿
+- [x] S4：发版前评审（新开的评审代理；本次改了已发布包的默认行为，按新 ship 模块也属必审）
+- [x] S5：合入 `main`、带注释的 tag、GitHub Release；main 的 ci、npm-publish、`npm view`、`_npmUser`
+- [x] S6：`next-release` 快进到 `main` 并推送；删除已合并的本地分支
 
 ## 决策与进展
 
@@ -56,3 +56,12 @@
 - `npm run smoke` → 通过（2/2）
 - `BASH32_BIN=<3.2.57> CLAUDEMD_BASH32_REQUIRED=1 bash tests/lib/bash32-runtime.sh` → 通过（45/45 个套件）
 - 沙箱 HOME 装在 v8 之上（预置 9 个旧模块）→ 通过：装完只剩 `review.md`、`ship.md`，核心 v9.0.0、2,792 字节
+- PR #38 CI：57b70dd 运行 45715985993、78cba9c 运行 45722438237、95318d4 运行 45725137137 → 都是 completed success
+- 评审修复后的树（95318d4）`npm run check` → 通过：node 1,758 项，1,755 通过、0 失败、3 跳过；全部 shell 套件；shellcheck 96 个文件
+- bash 3.2.57 运行检查（78cba9c 的树）→ 通过（45/45）；`npm run smoke` → 通过（2/2）
+- 标签修复的红灯先行：新断言在 4d4e1e4 的匹配器上失败（parity 直接断言 phrase=[] joined=[npmrunlint]；memory-read-check case 75 无拒绝；engine-parity 失败），修复后通过；第 1 轮的 hook 文字断言在 57b70dd 的 hook 上失败
+- 真实命令回放（3,376 条）→ 两版 127 拒绝 / 3,249 放行，0 条判定变化
+- `main` 推到 95318d4（本地 `main` 上有一个从未推送的 657d19e，补丁与 ce66c39 相同、父提交就是 origin/main，`main` 直接指向发版分支头，远端是快进）；tag `v0.122.0`（带注释，`-F` 文件）；GitHub Release https://github.com/sdsrss/claudemd/releases/tag/v0.122.0 ；PR #38 显示 MERGED
+- main 的 ci 运行 45726978687 → completed success
+- npm-publish 运行 45726995068 → completed success，日志有 `+ claudemd-cli@0.122.0`；registry `dist-tags.latest` 第 5 次轮询变为 0.122.0；`npm view claudemd-cli@0.122.0 _npmUser` → `GitHub Actions <npm-oidc-no-reply@github.com>`
+- `next-release` 快进到 95318d4 并推送；本地 `release/v0.122.0` 已用 `git branch -d` 删除
