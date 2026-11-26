@@ -8,6 +8,24 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.123.0] - 2026-11-30
+
+**Removes 16 hooks and 5 commands that served rules spec v9.0.0 deleted, or did nothing by default. The hooks that block (`pre-bash-safety`, `ship-baseline`, `memory-read-check`, `banned-vocab`) decide exactly as before. Spec v9.0.1: no rule text changed.**
+
+**What changes for users.**
+- Hooks removed. On by default: `session-summary`, `mem-audit`, `residue-audit`, `session-extended-read`, `memory-prompt-hint`, `branch-prune`, `spec-module-gate` and `deferred-notice`. Opt-in: `evidence-gate`, `verify-log`, `rework-breaker`, `ledger-staleness`, `transcript-structure-scan`, `transcript-vocab-scan`, `cross-repo-write-check`, `test-failure-debug`. Each Stop now runs 2 hooks instead of 8, and a successful Bash call 6 instead of 12.
+- Session start no longer injects a `tasks/*-ledger.md` after a compaction or resume, or prints the last-session summary; session end no longer prints the batch-review cadence note.
+- Commands removed: `/claudemd-analyze`, `/claudemd-rules`, `/claudemd-sparkline`, `/claudemd-sampling-audit`, `/claudemd-bypass-audit`. `/claudemd-audit` drops its `selfCompliance` block. `/claudemd-doctor` drops `rule-usage`, `memory-maintenance:*`, `runbook-review-step` and `tasks-review-cadence`, and gains `memory-index-links` (MEMORY.md lines naming a missing file, and memory files no line names).
+- The `DISABLE_*` switches of removed hooks, `DISABLE_SESSION_SUMMARY_BANNER`, `DISABLE_LEDGER_INJECT` and `DISABLE_BATCH_CADENCE_ADVISORY` now do nothing; leaving them set is harmless.
+- `~/.claude/CLAUDE-changelog.md` shrinks from 221 KB to 6 KB (v9 entries only).
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back, install 0.122.1 as `docs/ROLLBACK.md` describes ("Local machine needs the previous version back").
+
+**Not changed.**
+- Every allow or deny decision of the four blocking hooks, their escape tokens and kill switches, and the `spec_section` IDs they log.
+- Install and uninstall still remove a `settings.json` entry left by an old hand install of any removed hook.
+- `banned-vocab` and the `claudemd-cli` package stay until the re-measure after 2026-12-01.
+
 ## [0.122.1] - 2026-11-26
 
 **Hook messages that still named spec v8 sections now point at text spec v9.0.0 has. No hook allows or blocks anything differently, and the spec is unchanged (v9.0.0).**
