@@ -18,14 +18,12 @@ name: ci
 # "this repo uses lightweight tags" is not a fact you can carry from one tag to
 # the next. Two sources, every time.
 #
-# No tag trigger (removed 2026-11-10; added in v0.50.0 so a tagged commit
-# carried a check status). The ship flow pushes main and the tag at the same
-# commit (v0.117.7–v0.120.1: 5/5 SHAs equal), and GitHub attaches the main
-# run's checks to that commit, so a tag run repeated the full matrix. With
-# npm-publish's own macOS leg that was 7 macOS jobs against a concurrency of 5,
-# and npm-publish waited 13–17 min in the queue on every release. npm-publish.yml
-# keeps its own test jobs ahead of `publish` and refuses a tag whose commit is
-# not on main. tests/scripts/workflow-step-exec.test.js pins this block.
+# One full run per release (0.123.0). A release is a pull request from
+# `next-release`; the pull_request run is the whole gate (static + the three
+# test legs), and npm-publish.yml publishes a tag only when its commit carries
+# that green run. A push to main is the fast-forward to a commit that run
+# already tested, so it gets `static` alone. No tag trigger (removed
+# 2026-11-10). tests/scripts/workflow-step-exec.test.js pins this block.
 on:
   push:
     branches: [main]
@@ -97,19 +95,28 @@ jobs:
         run: node --test tests/scripts/baseline-metrics.test.js
 
   test:
+    # Pull requests only: see the header.
+    if: github.event_name == 'pull_request'
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        # 20 = engines floor (node:sqlite absent — exercises the degradation
-        # path where memory-maintenance self-skips); 22 = node:sqlite present —
-        # exercises the real cross-layer query. With only [20] the actual SQL
-        # path was CI-invisible: a query/schema regression shipped green while
-        # the suite reported the test as skipped (2026-07-17 audit).
-        # 24 = the maintainer's actual runtime (2026-08-16 audit PROC-7):
-        # engines declares ">=20" open-ended, and npm 12 (bundled with 24)
-        # changed `npm pack --json` from array to object — a green matrix
-        # that stops at 22 never executes the versions users actually run.
-        node: [20, 22, 24]
+        # Three legs (six until 0.123.0). ubuntu node 20 = the engines floor,
+        # and the leg that builds a real bash 3.2 to parse and run the hooks;
+        # ubuntu node 24 = the maintainer's runtime, whose npm 12 changed
+        # `npm pack --json` (2026-08-16 audit PROC-7); macOS node 24 = Apple's
+        # /bin/bash 3.2 and BSD tools, the platform the bash-3.2 gates exist
+        # for. node 22 was there for node:sqlite, which only the
+        # memory-maintenance check used, and that went in 0.123.0. What is
+        # given up: macOS under node 20 and 22. The five test-leg failures in
+        # the 30 days to 2026-11-25 (three of them on those two legs) were new
+        # tests flaking on macOS and one runner-image change, none a product
+        # defect (docs/architecture-audit-2026-11-25.md §2.4).
+        include:
+          - os: ubuntu-latest
+            node: 20
+          - os: ubuntu-latest
+            node: 24
+          - os: macos-latest
+            node: 24
     runs-on: ${{ matrix.os }}
     env:
       # Single source for the pinned bash-3.2 build: the cache key below and the

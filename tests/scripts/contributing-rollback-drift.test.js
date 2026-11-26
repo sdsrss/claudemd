@@ -79,62 +79,19 @@ test('REL-L1: CONTRIBUTING does not claim docs/ is wholly untracked', () => {
   );
 });
 
-test('REL-H1: ROLLBACK states the npm gate that npm-publish.yml actually declares — both ways', () => {
-  // ANCHORED on the sentence that names the workflow (v0.81.0 round-3 review,
-  // MEDIUM-1). The forward half searched the whole doc for any `needs:` line
-  // carrying the job name and the over-state half read the doc's FIRST
-  // `needs: [...]` phrase, so adding one plausible sentence about a different
-  // workflow let the headline drift to `needs: [test]` with both halves green.
-  // One extraction, one set comparison, so under- and over-stating both fail.
-  const declared = publishNeeds(read('.github/workflows/npm-publish.yml'));
-  const m = read('docs/ROLLBACK.md').match(/needs:\s*\[([^\]]*)\][^\n]*npm-publish\.yml/);
-  assert.ok(
-    m,
-    'docs/ROLLBACK.md no longer describes the npm-publish gate with a `needs: [...]` phrase naming the workflow'
-  );
-  const named = m[1]
-    .split(',')
-    .map(x => x.trim())
-    .filter(Boolean);
-  assert.ok(named.length > 0, 'the doc names no jobs — this check would pass over nothing');
-  assert.deepEqual(
-    named.slice().sort(),
-    declared.slice().sort(),
-    `docs/ROLLBACK.md and npm-publish.yml disagree about the publish gate: doc says [${named}], workflow requires [${declared}]`
-  );
-});
-
-function publishNeeds(wf) {
+test('REL-H1: ROLLBACK names every check the publish job runs before publishing', () => {
+  // From 0.123.0 the publish job has no `needs:`: it re-ran no tests and checks
+  // the release PR's green ci run instead. The doc names each `Verify …` step
+  // the job declares, so a check added or dropped there is a red here.
+  const wf = read('.github/workflows/npm-publish.yml');
   const publishIdx = wf.indexOf('\n  publish:');
   assert.notEqual(publishIdx, -1, 'npm-publish.yml has no `publish:` job');
-  // `[^\\S\\n]*`, not `\\s*`: the latter spans the newline, so a `needs:` written
-  // as a YAML block sequence captured only its first item with the `- ` marker
-  // and the failure blamed the doc (v0.81.0 round-3 review, LOW-1). Refusing to
-  // match across a line makes the assert below fire honestly instead.
-  const m = wf.slice(publishIdx).match(/^ {4}needs:[^\S\n]*(\S[^\n]*)$/m);
-  assert.ok(m, 'npm-publish.yml: no `needs:` on the publish job');
-  return m[1]
-    .replace(/[[\]]/g, '')
-    .split(',')
-    .map(x => x.trim())
-    .filter(Boolean);
-}
-
-test('REL-H1: the publish-job anchoring ignores a `needs:` on an earlier job', () => {
-  // A resident case, not a one-time mutation of the real file (v0.81.0 round-2
-  // review, LOW-2): reverting the anchoring to the first-match regex it replaced
-  // left the whole node leg green, so nothing held the repair in place.
-  const decoy = [
-    'jobs:',
-    '  static:',
-    '    needs: [decoy-should-not-be-read]',
-    '    runs-on: ubuntu-latest',
-    '  publish:',
-    '    needs: [test, static]',
-    '    runs-on: ubuntu-latest',
-    '',
-  ].join('\n');
-  assert.deepEqual(publishNeeds(decoy), ['test', 'static']);
+  const steps = [...wf.slice(publishIdx).matchAll(/^ {6}- name: (Verify [^\n]+)$/gm)].map(m => m[1].trim());
+  assert.ok(steps.length >= 3, `only ${steps.length} Verify step(s) found — the extraction broke`);
+  const doc = read('docs/ROLLBACK.md').replace(/\s+/g, ' ');
+  for (const step of steps) {
+    assert.ok(doc.includes(`"${step}"`), `docs/ROLLBACK.md does not name the publish check "${step}"`);
+  }
 });
 
 test('0.82.0: ROLLBACK names the rulesets it describes, and their load-bearing rules', () => {

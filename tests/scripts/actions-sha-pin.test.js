@@ -283,8 +283,9 @@ test('M1: every npm install / npm ci in a workflow passes --ignore-scripts', () 
       if (NPM_INSTALL_RE.test(code)) installs.push({ at: `${f}:${line}`, code: code.trim() });
     }
   }
+  // One since 0.123.0: npm-publish.yml no longer has a static job of its own.
   assert.ok(
-    installs.length >= 2,
+    installs.length >= 1,
     `only ${installs.length} npm install step(s) found — the scan is not reading them`
   );
   assert.deepEqual(

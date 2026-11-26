@@ -2,10 +2,11 @@
 
 The atomic ship pipeline (commit → push → tag → push tag → `gh release create` → CI watch)
 can fail at any step, and the two distribution channels are asymmetric: npm publish is
-gated by `needs: [test, static]` in `npm-publish.yml` (the full suite on three Linux Node
-legs plus one macOS leg, eslint/prettier/metrics, a tag↔package.json version match and a
-tag-is-on-`origin/main` ancestry check), while the **marketplace channel serves the pushed
-commit immediately — CI validates after the fact**. The v0.58.1 / v0.59.1 macOS hotfixes
+gated in `npm-publish.yml` by three steps that run before `npm publish` — "Verify the tagged
+commit is on main", "Verify package.json version matches the tag" and "Verify the commit
+passed ci as a pull request" (the release PR's `ci` run: eslint/prettier/metrics and the full
+suite on ubuntu node 20 and 24 and macOS node 24) — while the **marketplace channel serves
+the pushed commit immediately**; the release PR's CI is what ran before it. The v0.58.1 / v0.59.1 macOS hotfixes
 are recorded instances of releases crossing that window.
 
 **The marketplace channel still has no *green-CI* gate**, and by design will not get one.

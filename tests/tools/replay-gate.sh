@@ -2,8 +2,7 @@
 # replay-gate.sh — drive real recorded Bash commands through two revisions of a
 # PreToolUse gate and count verdict flips in each direction.
 #
-# NOT wired into any runner, by design — same standing as
-# tests/tools/spec-pin-mutations.py. It reads the operator's own transcript
+# NOT wired into any runner, by design. It reads the operator's own transcript
 # history, so it has no fixed expected output and nothing for CI to assert.
 # It exists because the repo's rule for gate changes requires it and, until
 # round-16, nothing implemented it.

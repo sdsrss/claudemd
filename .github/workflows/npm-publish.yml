@@ -31,28 +31,15 @@ name: npm-publish
 #   or 404 check the five settings above and the job's permissions; do not
 #   add a token back.
 #
-# Pre-publish gate: `publish` needs BOTH the `static` job and every leg of the
-# `test` matrix — three Linux node legs plus one macOS leg (Round-14 audit
-# REL-H2/M5; the header below described a narrower gate than the file now
-# declares, in the same commit that widened it). node 20 is the engines floor (node:sqlite absent — exercises
-# the degradation path); node 22 has node:sqlite, so it is the only leg that
-# runs the real cross-layer SQL query. Gating on node 20 alone (through v0.57.0)
-# left that query invisible to the publish gate while ci.yml — which does run it
-# — has no `needs:` relationship to this workflow and can still be executing, or
-# already red, when the tarball reaches npm (2026-07-25 audit).
-# node 24 joined for audit-2026-08-22 条目 10: it bundles npm 12, and npm 12 is
-# what surfaced the `npm pack --json` array→object change (F-npm12) — whose
-# regression test then ran only under npm 10/11 in this gate. A publish gate
-# that never executes the maintainer's own runtime is the shape that let that
-# through, and it is the runtime `engines: >=20` invites users onto.
-# ONE macOS leg is in, on node 24. macOS is the whole reason the bash-3.2 gates
-# exist — /bin/bash there is 3.2 — and it was the leg red on v0.73.0, v0.74.0 and
-# v0.75.0, all three of which published anyway. One leg rather than three: macOS
-# runners are ~4x slower at process creation and this gate blocks a release.
-#
-# fetch-depth: 0 — tests/integration/upgrade-lifecycle.test.sh needs tag v0.2.3
-# reachable; under the previous shallow checkout it loud-skipped, so the publish
-# gate was silently running a smaller suite than CI.
+# Pre-publish gate (0.123.0): the tagged commit must already carry a green
+# `ci` run triggered by a pull request. The release flow builds every release
+# as a pull request from `next-release`, and `ci.yml` runs the full gate there
+# (static + three test legs: ubuntu node 20 with the real bash 3.2 checks,
+# ubuntu node 24, macOS node 24); GitHub attaches that run to the PR's head
+# commit, which is the commit `main` fast-forwards to and the tag names. Until
+# 0.122.1 this workflow re-ran static and four test legs on that same commit,
+# and `ci.yml` ran a third copy on the main push: three full runs per release
+# for one tree. A tag on a commit no pull request tested is refused below.
 #
 # Idempotency: if NPM has already received this version, `npm publish` exits
 # non-zero with E_PUBLISH_ALREADY_PUBLISHED. The job fails loudly rather than
@@ -81,83 +68,19 @@ concurrency:
   cancel-in-progress: false
 
 # `id-token: write` is granted to the publish job only (below): with npm
-# trusted publishing it is the publish credential, the static job installs
-# devDependencies whose own dependencies are not locked (D#612), and both
-# gates run third-party code (0.117.2 pre-tag review M1).
+# trusted publishing it is the publish credential.
 permissions:
   contents: read
 
 jobs:
-  # Mirrors ci.yml's `static` job, and exists because this gate did not run it
-  # (Round-14 audit REL-M5). eslint, prettier and the real-tree metrics
-  # assertions — including `cycles.count === 0`, which ARCHITECTURE.md cites —
-  # were reachable only from ci.yml, and the two workflows have no `needs:` or
-  # `workflow_run` relationship, so ci.yml can still be executing, or already
-  # red, when the tarball reaches npm. That is not hypothetical: the tags for
-  # v0.73.0 / v0.74.0 / v0.75.0 all published while their `ci` run was red.
-  static:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 24
-      # No lockfile is tracked (D#612): see ci.yml's static job.
-      - run: npm install --ignore-scripts --no-audit --no-fund
-      - name: eslint (blocking)
-        run: npm run lint:js
-      - name: prettier (blocking)
-        run: npm run format:check
-      - name: Real-tree metrics assertions
-        env:
-          CLAUDEMD_DEVDEPS_REQUIRED: '1'
-        run: node --test tests/scripts/baseline-metrics.test.js
-
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        node: [20, 22, 24]
-        # One macOS leg in the publish gate (Round-14 audit REL-H2). macOS is
-        # the whole reason the bash-3.2 gates exist — /bin/bash there is 3.2 —
-        # and it was the leg red on the three tags that published anyway. The
-        # matrix stays asymmetric on purpose: macOS runners are ~4x slower at
-        # process creation and this gate blocks a publish, so it buys the
-        # platform signal at one leg rather than three.
-        include:
-          - os: macos-latest
-            node: 24
-      fail-fast: true
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: ${{ matrix.node }}
-
-      - name: Install jq + shellcheck (test prereqs)
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install jq shellcheck coreutils
-            echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
-          else
-            sudo apt-get update -y && sudo apt-get install -y jq shellcheck
-          fi
-
-      - name: Run test suite (publish gate)
-        run: bash tests/run-all.sh
-
   publish:
-    needs: [test, static]
     runs-on: ubuntu-latest
     # npm exchanges this job's OIDC token for a short-lived publish credential
     # (trusted publishing) and signs the provenance attestation with it.
+    # `actions: read` lets the ci-gate step list this commit's workflow runs.
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -213,6 +136,24 @@ jobs:
             exit 1
           fi
           echo "tag $GITHUB_REF_NAME matches package.json version $pkg"
+
+      - name: Verify the commit passed ci as a pull request
+        # The gate that replaced this workflow's own test jobs (see the
+        # header). `head_sha` of a pull_request run is the PR's head commit,
+        # which is GITHUB_SHA here when main was fast-forwarded to it.
+        # tests/scripts/workflow-step-exec.test.js executes this body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&event=pull_request&status=success&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "ci")] | length')
+          if [ "${n:-0}" -ge 1 ]; then
+            echo "OK: $GITHUB_SHA has a green ci run from a pull request"
+          else
+            echo "::error::no green pull_request ci run on $GITHUB_SHA — release it through a pull request from next-release, or re-run that pull request's ci"
+            exit 1
+          fi
 
       - name: Publish to npm
         # The dist-tag is DERIVED from the version, never defaulted (round-17

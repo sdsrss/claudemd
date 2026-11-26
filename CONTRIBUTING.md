@@ -11,9 +11,10 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
   a plugin whose root has one, devDependencies included, so a tracked one put eslint, c8,
   prettier and jscpd in every user's plugin cache (D#612). package.json pins each
   devDependency to an exact version instead, and the lockfile a local `npm install` writes
-  is gitignored. `npm run lint` (= `lint:argv` · `version-check` · `lint:sh` shellcheck warning+ ·
-  `lint:js` eslint · `format:check` prettier — in that order, so the two ship gates run
-  before the slow ones and are not stranded behind a failure), `npm run format` to fix
+  is gitignored. `npm run lint` (= `lint:argv` · `version-check` · `lint:js` eslint ·
+  `format:check` prettier — in that order, so the two ship gates run before the slow ones
+  and are not stranded behind a failure; shellcheck runs once, inside `npm test`, and
+  `npm run lint:sh` runs it alone), `npm run format` to fix
   formatting, `npm run test:coverage` (c8 around the node leg), `npm run metrics`
   (`scripts/baseline-metrics.js` — files/lines, functions over 50 lines, jscpd duplication,
   import cycles, and the lint results as one report; `--skip-coverage` for a ~10 s run).

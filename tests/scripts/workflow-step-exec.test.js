@@ -249,6 +249,46 @@ test('REL-M5: the version-match step compares the tag against package.json', () 
   }
 });
 
+// 0.123.0: the publish gate is the release PR's green ci run, read from the
+// Actions API. Executed with a stub `gh` on PATH that answers the run count and
+// records the query, so both verdicts and the query shape are checked.
+function ciGateRun(count) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-wfstep-'));
+  const bin = path.join(root, 'bin');
+  fs.mkdirSync(bin);
+  const log = path.join(root, 'gh.args');
+  fs.writeFileSync(
+    path.join(bin, 'gh'),
+    `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > '${log}'\necho '${count}'\n`,
+    { mode: 0o755 }
+  );
+  try {
+    const r = runStep(stepBody('Verify the commit passed ci as a pull request'), root, {
+      PATH: `${bin}:${process.env.PATH}`,
+      GITHUB_REPOSITORY: 'o/r',
+      GITHUB_SHA: 'abc123',
+      GH_TOKEN: 'x',
+    });
+    return { r, args: fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '' };
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test('0.123.0: the ci-gate step passes with a green pull_request ci run on the SHA', () => {
+  const { r, args } = ciGateRun(1);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /OK: abc123 has a green ci run from a pull request/);
+  assert.match(args, /repos\/o\/r\/actions\/runs\?head_sha=abc123&event=pull_request&status=success/);
+  assert.match(args, /select\(\.name == "ci"\)/);
+});
+
+test('0.123.0: the ci-gate step refuses a SHA no pull request tested', () => {
+  const { r } = ciGateRun(0);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /::error::no green pull_request ci run on abc123/);
+});
+
 test('REL-M5: the publish job checks out full history, which merge-base needs', () => {
   // Anchored on the CHECKOUT STEP, not on a range (v0.81.0 round-3 review,
   // HIGH-1). The first draft sliced from `publish:` to the first NAMED step —
@@ -355,9 +395,8 @@ test('ci.yml runs on main pushes and pull requests, not on tag pushes', () => {
   // 5/5 SHAs equal), so a tag-triggered run repeated the main run's matrix. With
   // npm-publish's own macOS leg that was 7 macOS jobs against a concurrency of 5,
   // and npm-publish waited 13–17 min in the queue on every release
-  // (docs/claudemd-optimization-review-2026-11-10.md §2). GitHub attaches the
-  // main run's checks to the commit the tag names; npm-publish.yml keeps its own
-  // test jobs before `publish` (contributing-rollback-drift.test.js pins `needs:`).
+  // (docs/claudemd-optimization-review-2026-11-10.md §2). From 0.123.0 the
+  // release PR's run is the gate: npm-publish.yml checks it instead of testing.
   const src = fs
     .readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8')
     .split('\n')
