@@ -1,16 +1,11 @@
 .code-graph/
 
-# gstack project artifacts (security reports, plans, telemetry) — local-only, may
-# leak attack-path summaries onto a public repo if accidentally git-add'd.
+# gstack project artifacts — local-only; may hold attack-path summaries.
 .gstack/
 
-# Claude Code workspace state (sessions, permission grants, local hooks) — user-specific + transient.
-# Exceptions every contributor needs: .claude/rules/ holds path-scoped rules for
-# agents editing spec/ and hooks/ (docs/audit/20260926-180700.md E6), and
-# .claude/agents/ the release-reviewer subagent definition (same doc, 9.6 D1),
-# and .claude/settings.json the claudeMdExcludes that keep spec/CLAUDE.md and
-# the tasks/ fixtures from loading as instructions (also in clones and worktrees).
-# Only at the repo root: a .claude/ anywhere else stays ignored.
+# Claude Code workspace state stays local. Tracked at the repo root only:
+# .claude/rules/ (path-scoped agent rules), .claude/agents/ (release-reviewer),
+# .claude/settings.json (claudeMdExcludes for spec/ and tasks/ fixtures).
 .claude/
 !/.claude/
 /.claude/*
@@ -18,143 +13,102 @@
 !/.claude/agents/
 !/.claude/settings.json
 
-# docs/ is local-only by default. Tracked + shipped exceptions (functional
-# reference docs that adopters / contributors need):
-#  - docs/superpowers/ (design + implementation plan). 10 files, 363 KiB, of
-#    which 3 are linked from shipped prose (README + ARCHITECTURE point at the
-#    plugin, memory-layer-routing and statusline-coexistence design docs) and 7
-#    are the plans those designs were executed from. Kept deliberately, not by
-#    inertia: they are the only record of WHY the three-layer split, the memory
-#    routing table and the statusline guest-provider model came out the way
-#    they did, and this repo's recurring defect is prose that outlives its
-#    subject — deleting the rationale would make that worse, not better. They
-#    are marketplace-clone content only; .npmignore keeps all of docs/ out of
-#    the npm tarball (audit-2026-08-22 条目 25).
-#  - docs/ADDING-NEW-HOOK.md (external contract: how to add a hook)
-#  - docs/RULE-HITS-SCHEMA.md (external contract: JSONL schema)
-#  - docs/cross-project-pilot.md (external contract: portability checklist for adopters)
-#  - docs/ARCHITECTURE.md (three-layer design + hook taxonomy reference)
-#  - docs/HOOK-PROTOCOL.md (hook stdin/stdout I/O contract)
-#  - docs/ROLLBACK.md (release rollback runbook — referenced by CONTRIBUTING)
-#  - docs/spec-optimization-plan-2026-07-10.md (cited by shipped code:
-#    sampling-audit.js emits the path in its report output; memory-maintenance.js
-#    header cites it — a clone without it dangles those references; 2026-08-16 audit D1)
-# Historical / analysis scratch stays local: claude-spec-hooks-PLAN.md,
-# spec-audit-*.md, and the *.txt review reports.
+# docs/ and tasks/ are local working space. A file is tracked only when shipped
+# text, a script or a test reads it (project CLAUDE.md); each one is listed
+# here. Records nothing reads stay on the maintainer's disk and in git history.
 docs/*
-!docs/superpowers/
+tasks/*
+!docs/flows/
+!tasks/s8-tokenizer/
 !docs/ADDING-NEW-HOOK.md
-!docs/RULE-HITS-SCHEMA.md
-!docs/cross-project-pilot.md
 !docs/ARCHITECTURE.md
 !docs/HOOK-PROTOCOL.md
 !docs/ROLLBACK.md
-!docs/spec-optimization-plan-2026-07-10.md
-#  - docs/spec-optimization-roadmap-2026-09-21.md (same provenance rule as the
-#    07-10 plan above: scripts/sampling-audit.js cites it as the pre-registration
-#    for its behaviorMetrics block, the CHANGELOG cites it by name, and
-#    tests/scripts/doc-check.test.js runs scripts/doc-check.mjs against it — a
-#    clone without the file dangles all three.)
-!docs/spec-optimization-roadmap-2026-09-21.md
-#  - docs/claude-session-analysis-2026-09-26.md (same provenance rule: hooks,
-#    scripts and tests changed in 0.98.0 cite it by section — B1/B3/B5/B7/B8 —
-#    as the source of their numbers; pre-tag review L3 found the citations
-#    dangling in a clone.)
-!docs/claude-session-analysis-2026-09-26.md
-#  - docs/spec-optimization-plan-2026-09-29.md (same provenance rule: the 0.107.0
-#    CHANGELOG entry and tasks/specs/v7.2-core.md cite it as the evidence and plan
-#    behind spec v7.2.0; the release-reviewer's clone reads it as the contract.)
-!docs/spec-optimization-plan-2026-09-29.md
-#  - docs/S8-RESIDUALS.md (the registry of accepted §8 residual families). Read by
-#    the release-reviewer agent (.claude/agents/release-reviewer.md), whose
-#    private clone holds only the tracked tree; an ignored registry would not be
-#    there to read.
+!docs/RULE-HITS-SCHEMA.md
 !docs/S8-RESIDUALS.md
-#  - docs/audit/*.md (round reports + the metric baseline they compare against).
-#    Same provenance rule as the tasks/ audit-deferred files below: CHANGELOG
-#    entries from 0.68.0 on cite docs/audit/… by name, and the round that ran on
-#    2026-09-05 found none of them on disk — the reports are what "mark each
-#    prior issue as solved / open / regressed" reads, so a machine without them
-#    reconstructs the prior round from release prose (2026-09-05 audit P2-3).
-#    The generated metrics JSON stays local: `npm run metrics` reproduces it.
+!docs/architecture-audit-2026-11-25.md
 !docs/audit/
-docs/audit/*.json
-#  - docs/flows/*.md (step-by-step expansions of the ARCHITECTURE "Main flows"
-#    entries). Tracked because they are read BEFORE the source, like the other
-#    reference docs above, and because the thing that makes them worth keeping —
-#    every step cites a verbatim anchor that tests/scripts/flow-doc-anchors.test.js
-#    re-resolves on each run — only works if CI can see the file.
-!docs/flows/
-
-# tasks/ is a local-only working space by default (audit / analysis / planning
-# scratch — not project function; npm tarball already excludes it via .npmignore).
-# Tracked + shipped exceptions are ONLY the working docs that a distributed artifact
-# cites as provenance (so the reference does not dangle) plus the §13.4 / §2.S
-# convention files:
-#  - tasks/specs/ (§2.S SPEC ARTIFACT — persistent design record per feature)
-#  - tasks/s8-tokenizer/ (CHANGELOG equivalence-proof harness)
-#  - tasks/rule-candidates-2026-04.md (§13.2 + hard-rules.json); tasks/lessons.md was
-#    retired with spec v8.0.0 (0.109.0) and is in git history
-#  - the audit-deferred / evaluation / provenance files cited by spec CLAUDE-extended.md,
-#    hooks/scripts comments, or CHANGELOG.
-# NEW working docs stay local unless added here. Rule: feedback_docs_tasks_local_only.
-tasks/*
-!tasks/specs/
-!tasks/s8-tokenizer/
-!tasks/rule-candidates-2026-04.md
+docs/audit/*
+!docs/audit/00-baseline.md
+!docs/audit/20260926-180700.md
+!docs/claude-session-analysis-2026-09-26.md
+!docs/claudemd-value-assessment-2026-11-25.md
+!docs/cross-project-pilot.md
+!docs/spec-model-capability-review-2026-10-15.md
+!docs/spec-optimization-plan-2026-07-10.md
+!docs/spec-optimization-plan-2026-09-29.md
+!docs/spec-optimization-roadmap-2026-09-21.md
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-04-21-claudemd-plugin.md
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/2026-04-21-claudemd-plugin-design.md
 !tasks/audit-2026-07-15-deferred.md
 !tasks/audit-2026-07-25-deferred.md
-!tasks/deferred-2026-07-27-doctor-runbook-review-check.md
 !tasks/audit-2026-07-26-deferred.md
 !tasks/banned-vocab-demote-evaluation-2026-07-25.md
 !tasks/banned-vocab-sanitizer-siblings.md
+!tasks/changelog-mutation-control-content-coupling.md
+!tasks/claudemd-value-2026-11-25/
+tasks/claudemd-value-2026-11-25/*
+!tasks/claudemd-value-2026-11-25/PREREG.md
+!tasks/claudemd-value-2026-11-25/analyze.py
+!tasks/claudemd-value-2026-11-25/artifact.py
+!tasks/claudemd-value-2026-11-25/check-fixtures.mjs
+!tasks/claudemd-value-2026-11-25/lean/
+tasks/claudemd-value-2026-11-25/lean/*
+!tasks/claudemd-value-2026-11-25/lean/CLAUDE.md
+!tasks/claudemd-value-2026-11-25/lean/spec-modules/
+tasks/claudemd-value-2026-11-25/lean/spec-modules/*
+!tasks/claudemd-value-2026-11-25/lean/spec-modules/review.md
+!tasks/claudemd-value-2026-11-25/lean/spec-modules/ship.md
+!tasks/claudemd-value-2026-11-25/overhead.py
+!tasks/claudemd-value-2026-11-25/repin.mjs
+!tasks/claudemd-value-2026-11-25/run.mjs
+!tasks/claudemd-value-2026-11-25/tasks.mjs
 !tasks/core-net-delete-candidates-v6.14.md
+!tasks/deferred-2026-07-27-doctor-runbook-review-check.md
 !tasks/design-adopt-review-findings-2026-07-05.md
+!tasks/home-unset-per-hook-writers-2026-09-13.md
+!tasks/hook-budget-reach-discrimination.md
+!tasks/hook-drift-plugin-cache-basis-not-verified.md
 !tasks/improvement-candidates-2026-05.md
+!tasks/legacy-spec-backup-migration.md
 !tasks/manifest-pluginroot-stale-cache.md
 !tasks/memory-read-check-transcript-lag.md
+!tasks/npm-download-attribution-2026-08-24.md
 !tasks/project-audit-findings-2026-07-03.md
+!tasks/rule-candidates-2026-04.md
 !tasks/s8-false-negative-audit-2026-07-03.md
 !tasks/s8-npx-message-fp-deferred.md
+!tasks/s8-provenance-residuals-2026-09-08.md
 !tasks/s8-sanitize-brace-heredoc.md
+!tasks/s8-sanitize-escaped-quote-gap.md
 !tasks/sampling-detector-labeling-2026-07-24.md
 !tasks/spec-audit-2026-07-11.md
+!tasks/specs/
+tasks/specs/*
+!tasks/specs/batch-residuals-2026-11-03.md
+!tasks/specs/design-adopt.md
+!tasks/specs/doctor-fail-open-ack.md
+!tasks/specs/memory-index-write-check-2026-11-25.md
+!tasks/specs/reply-language.md
+!tasks/specs/restore-skip-spec-only.md
+!tasks/specs/routing-single-source.md
+!tasks/specs/s8-literal-provenance.md
+!tasks/specs/s8-shared-tokenizer.md
+!tasks/specs/skill-routing-trim.md
+!tasks/specs/spec-modules.md
+!tasks/specs/spec-v9-lean-2026-11-25.md
+!tasks/specs/v7.1-core.md
+!tasks/specs/v7.2-core.md
 !tasks/statusline-host-wrap-deferred.md
 !tasks/tmp-retention-followup.md
-# Both cited from shipped code AND the CHANGELOG (0.68.3): hook-budget.test.sh +
-# perf-baseline.sh stdout point at the first; backup.js, install.js and doctor.js
-# point at the second. An ignored file behind a shipped citation is a dangling
-# reference — the P1-4 defect class this same release fixed in the spec.
-!tasks/hook-budget-reach-discrimination.md
-# Cited by the v0.69.1 CHANGELOG entry. Each is the written adjudication for a
-# decision that entry states but does not argue: why the npm download figure is
-# not adoption evidence, and why the §8 escaped-quote gap was assessed and not
-# implemented. Without these the citations dangle.
-!tasks/npm-download-attribution-2026-08-24.md
-!tasks/s8-sanitize-escaped-quote-gap.md
-!tasks/s8-provenance-residuals-2026-09-08.md
-!tasks/legacy-spec-backup-migration.md
-!tasks/changelog-mutation-control-content-coupling.md
-# Cited by hooks/lib/hook-common.sh's HOME-bind comment and by the 0.88.0
-# CHANGELOG entry, so it is provenance and must not dangle.
-!tasks/home-unset-per-hook-writers-2026-09-13.md
-#  - tasks/hook-drift-plugin-cache-basis-not-verified.md (decision record cited by
-#    scripts/doctor.js since 0.117.0)
-!tasks/hook-drift-plugin-cache-basis-not-verified.md
 
-# dev tooling (eslint / prettier / c8 / jscpd / acorn) — devDependencies only,
-# never shipped: .npmignore whitelists the tarball. The marketplace clone is the
-# whole repo, and Claude Code installs its dependencies (devDependencies
-# included, `npm ci` on a rebuilt package.json and lockfile in a temp folder)
-# whenever a package-lock.json is tracked at the root, so none is (D#612,
-# 0.117.2): the devDependencies are pinned to exact versions in package.json,
-# and a local `npm install` writes a package-lock.json that stays untracked.
 /node_modules/
 /package-lock.json
 /coverage/
-
-# tests/tools/ holds python harnesses. Running one as __main__ writes no
-# bytecode, but IMPORTING it does, and the suite has a hard gate that fails when
-# the working tree changed — reported as "the suite changed the real working
-# tree" with no hint of the cause (0.78.0 round-3 review, LOW-4).
 __pycache__/

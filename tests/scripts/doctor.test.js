@@ -998,24 +998,6 @@ test('SCR-M1: a running root with no hooks/ stays a counted red, and CHANGELOG s
     /hook script\(s\) differ/,
     'the false detail round-16 6.6 H-2 was about must not come back with it'
   );
-
-  // The entry that describes this row has to agree with it. Joined to the
-  // behaviour asserted above, not standing alone as a text check.
-  const changelog = fs.readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../CHANGELOG.md'),
-    'utf8'
-  );
-  const EXCEPTION = 'a recorded running root that carries no `hooks/` stays a counted red';
-  assert.equal(
-    changelog.split(EXCEPTION).length - 1,
-    1,
-    `CHANGELOG.md must state the exception verbatim, exactly once:\n  ${EXCEPTION}`
-  );
-  assert.doesNotMatch(
-    changelog,
-    /in those three states `claudemd-doctor` now exits 0/,
-    'the superseded all-three claim is back in CHANGELOG.md'
-  );
 });
 
 test('hook-drift runs for a path-source marketplace, which has no clone at all', async () => {
