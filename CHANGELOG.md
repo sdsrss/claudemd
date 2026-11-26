@@ -8,6 +8,23 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.122.1] - 2026-11-26
+
+**Hook messages that still named spec v8 sections now point at text spec v9.0.0 has. No hook allows or blocks anything differently, and the spec is unchanged (v9.0.0).**
+
+**What changes for users.**
+- Session-end checkpoint: `tasks/session-end-<sid>-paused.md` is titled "session ended with unverified changes" and says no check ran after the last mutation; the end-of-session line reads `session-exit checkpoint:` instead of `mid-SPINE session-exit:`.
+- The batch-review cadence note counts sessions with a gate deny or warning and points at `/claudemd-rules` (OPERATOR.md §13.1). It no longer recommends `/claudemd-sampling-audit` for the removed §13.2 promotion gates. `/claudemd-status --verbose` describes its switch, `DISABLE_BATCH_CADENCE_ADVISORY`, without §13.2.
+- The temp-pressure note leaves the agent what this task created rather than this session, in line with v9's ask-before-deleting line (core §5).
+- Section names in other messages: `spec-module-gate` (advisory or deny mode only) cites core §12 Ship; `sandbox-disposal-check` and `residue-audit` cite core §8, temporary files; `mem-audit` and the opt-in `ledger-staleness` name the hook instead of §11-EXT or §11; the opt-in `transcript-vocab-scan` cites extended §10-V.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back, install 0.122.0 as `docs/ROLLBACK.md` describes ("Local machine needs the previous version back").
+
+**Not changed.**
+- Every allow or deny decision, event name and kill switch, and the `spec_section` IDs written to `~/.claude/logs/claudemd.jsonl`.
+- The opt-in `evidence-gate` still writes "§7 Iron Law #2": v9 keeps §7 and the `§iron-law-2` rule ID.
+- `pre-bash-safety` keeps allowing exact-version npx such as `npx pkg@1.2.3`; the decision and its numbers are in `docs/S8-RESIDUALS.md` F17.
+
 ## [0.122.0] - 2026-11-25
 
 **Spec v9.0.0: the core drops from 24 KB to 2.8 KB and the spec modules from nine to two. An A/B on coding tasks judged by hidden tests found that the v8 spec gave the same or lower correctness than no spec, at 1.8–2.4 times the cost. Also: MEMORY.md tags with a space now match, a new `memory-index-lines` hook, and a `/claudemd-clean-residue` fix.**
