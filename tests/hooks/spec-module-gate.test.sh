@@ -38,6 +38,12 @@ OUT3=$(run deny 'gh release create v1.0.0')
 if [[ "$(decision "$OUT2")" == advise && "$(decision "$OUT3")" == deny ]] && grep -q 'spec-modules/ship.md' <<<"$OUT2$OUT3"; then
   ok "2 advisory adds context, deny refuses, both name ship.md"
 else ng "2 modes wrong: advisory=$(decision "$OUT2") deny=$(decision "$OUT3")"; fi
+# 2b. v9 core points at ship.md from §12 Ship; §2.2 is gone.
+if grep -qF 'Read ~/.claude/spec-modules/ship.md (core §12 Ship) before tagging' <<<"$OUT2" \
+   && grep -qF 'Read ~/.claude/spec-modules/ship.md (core §12 Ship) before tagging' <<<"$OUT3" \
+   && ! grep -q '§2\.2' <<<"$OUT2$OUT3"; then
+  ok "2b both modes cite core §12 Ship, not the removed §2.2"
+else ng "2b section cite: advisory=${OUT2:0:300} deny=${OUT3:0:300}"; fi
 
 # 4. injected this session: silent even in deny.
 printf 'ship\n' >"$HOME/.claude/.claudemd-state/modinj-g4.list"

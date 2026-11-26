@@ -288,7 +288,7 @@ rm -f "$STAMP"
 OUT=$(CLAUDEMD_TMP_PRESSURE_PCT=0 TMPDIR="$ROOT" bash "$HOOK" <<<"$EVT" 2>/dev/null)
 CTX=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" 2>/dev/null)
 if [[ "$CTX" == *"agent-tmp-* dirs without a .keep (idle 72 h) are swept automatically"* &&
-  "$CTX" == *"what this session created is yours to clean up; anything an earlier session left, an agent-tmp-* dir or an ended session's scratchpad included, is the user's call: ask first, one report line each."* &&
+  "$CTX" == *"what this task created is yours to clean up; anything else, an earlier task's or session's leftovers, an agent-tmp-* dir or an ended session's scratchpad included, is the user's call: ask first, one report line each."* &&
   "$CTX" != *"auth.md"* ]]; then
   ok "13 the advisory names the agent-tmp-* sweep and leaves an earlier session's leftovers to the user"
 else

@@ -147,7 +147,7 @@ printf '[claudemd] §10-V drift detected in agent text:\n' >&2
 for i in "${!HITS[@]}"; do
   printf '  - %s  (%s)\n' "${HITS[$i]}" "${REASONS[$i]}" >&2
 done
-printf '  Spec: §10 Specificity (HARD). Cite absolute number or baseline ratio.\n' >&2
+printf '  Spec: extended §10-V (banned-vocab reference list). Cite an absolute number or a ratio with its baseline.\n' >&2
 printf '  Disable: TRANSCRIPT_VOCAB_SCAN=0 or DISABLE_TRANSCRIPT_VOCAB_SCAN_HOOK=1.\n' >&2
 
 exit 0

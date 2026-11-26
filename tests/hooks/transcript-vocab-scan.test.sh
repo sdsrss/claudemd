@@ -71,6 +71,13 @@ if echo "$OUT" | grep -q '§10-V drift detected' \
    && echo "$OUT" | grep -qi 'significantly' \
    && [[ "$HITS" == "1" && "$EVENT_TYPE" == "advisory" ]]; then
   ok "3: banned word in prose → advisory + log event=advisory"
+  # v9.0.0: the rule's text lives in extended §10-V; core §10 has no Specificity line.
+  if echo "$OUT" | grep -qF 'Spec: extended §10-V (banned-vocab reference list). Cite an absolute number or a ratio with its baseline.' \
+     && ! echo "$OUT" | grep -q 'Specificity'; then
+    ok "3b: the advisory cites extended §10-V"
+  else
+    ng "3b: spec line: $(echo "$OUT" | grep 'Spec:')"
+  fi
 else
   ng "3: advisory wrong (out: $OUT, hits: $HITS, event: $EVENT_TYPE)"
 fi

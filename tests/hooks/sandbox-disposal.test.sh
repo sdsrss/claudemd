@@ -46,6 +46,10 @@ mkdir -p "$HOME/.claude/tmp/tmp.abc123"
 STDERR=$(bash "$HOOK" <<<'{}' 2>&1)
 echo "$STDERR" | grep -q "sandbox disposal" && echo "PASS: 3 warn on mkdtemp residue" \
   || { echo "FAIL: 3 (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
+# Case 3b (v9.0.0): the warn names core §8's temporary-files line; §8.V4 is gone from the core.
+echo "$STDERR" | grep -qF "[claudemd] sandbox disposal (core §8, temporary files): 1 temp directories" \
+  && ! echo "$STDERR" | grep -q '§8\.V4' && echo "PASS: 3b warn cites core §8, not §8.V4" \
+  || { echo "FAIL: 3b (stderr: $STDERR)"; FAIL=$((FAIL+1)); }
 
 # Case 4: kill-switch
 STDERR=$(DISABLE_SANDBOX_DISPOSAL_HOOK=1 bash "$HOOK" <<<'{}' 2>&1)

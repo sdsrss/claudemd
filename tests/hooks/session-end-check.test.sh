@@ -75,7 +75,7 @@ reset_cwd
 T="$TMP_HOME/case1.jsonl"
 make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$test_call" "$TR_OK"
 run_hook "$T"
-if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]] && ! grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+if [[ -z "$(ls -A "$TMP_CWD/tasks" 2>/dev/null)" ]] && ! grep -q "session-exit checkpoint" "$TMP_HOME/stderr" 2>/dev/null; then
   ok "Case 1: Edit + test-runner → no warn, no paused.md"
 else
   ng "Case 1: false-positive (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
@@ -86,7 +86,7 @@ reset_cwd
 T="$TMP_HOME/case2.jsonl"
 make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK"
 run_hook "$T"
-if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "session-exit checkpoint:" "$TMP_HOME/stderr" 2>/dev/null; then
   ok "Case 2: Edit alone → warn + paused.md"
 else
   ng "Case 2: missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
@@ -98,8 +98,12 @@ fi
 # session at text it cannot find. Reads Case 2's file.
 P2C=$(compgen -G "$TMP_CWD/tasks/*-paused.md" | head -1)
 if [[ -n "$P2C" ]] && grep -q 'Per the session-exit checkpoint rule (HARD, hook-enforced; ~/.claude/CLAUDE-extended.md' "$P2C" \
-  && ! grep -q 'Per spec §11' "$P2C"; then
-  ok "Case 2c: checkpoint cites extended §13, not the removed core §11"
+  && ! grep -q 'Per spec §11' "$P2C" \
+  && grep -q '^# Paused — session ended with unverified changes$' "$P2C" \
+  && grep -q 'no check ran after the last mutation' "$P2C" \
+  && grep -q 'changes made after the last check are not done until a check runs after them' "$P2C" \
+  && ! grep -qE 'SPINE|VALIDATE' "$P2C"; then
+  ok "Case 2c: checkpoint cites extended §13, not the removed core §11, in v9 words"
 else
   ng "Case 2c: checkpoint text (file=${P2C:-<none>}: $(grep -n 'Per ' "${P2C:-/dev/null}" 2>/dev/null))"
 fi
@@ -112,7 +116,7 @@ reset_cwd
 T="$TMP_HOME/case2b.jsonl"
 make_transcript "$T" "$USER_MSG_STR" "$edit_call" "$TR_OK"
 run_hook "$T"
-if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "session-exit checkpoint:" "$TMP_HOME/stderr" 2>/dev/null; then
   ok "Case 2b: string-content user + Edit → warn + paused.md"
 else
   ng "Case 2b: string-content user missed (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null), stderr=$(cat "$TMP_HOME/stderr"))"
@@ -246,7 +250,8 @@ printf '2' > "$HOME/.claude/.claudemd-state/l2-task-counter"
 printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 bash "$HOOK" 2>"$TMP_HOME/stderr.11"
 COUNTER11=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null || echo "?")
 if [[ "$COUNTER11" == "0" ]] \
-   && grep -q "§13.2 batch-review cadence" "$TMP_HOME/stderr.11" \
+   && grep -qF "[claudemd] batch-review cadence: 3 sessions with a gate deny or warning since the last reset — \`/claudemd-rules\` lists demote candidates (OPERATOR.md §13.1, Demote-loop coverage)." "$TMP_HOME/stderr.11" \
+   && ! grep -qE "§13\.2|sampling-audit|L2\+" "$TMP_HOME/stderr.11" \
    && grep -q '"event":"batch-cadence-advisory"' "$LOG" \
    && grep -q '"spec_section":"§13.2-batch-review"' "$LOG"; then
   ok "Case 11 (B1): threshold trip → advisory + counter reset + audit row"
@@ -270,7 +275,7 @@ printf '2' > "$HOME/.claude/.claudemd-state/l2-task-counter"
 printf '%s' "$event" | CLAUDEMD_BATCH_THRESHOLD=3 DISABLE_BATCH_CADENCE_ADVISORY=1 bash "$HOOK" 2>"$TMP_HOME/stderr.12"
 COUNTER12=$(cat "$HOME/.claude/.claudemd-state/l2-task-counter" 2>/dev/null || echo "?")
 if [[ "$COUNTER12" == "2" ]] \
-   && ! grep -q "§13.2 batch-review cadence" "$TMP_HOME/stderr.12" \
+   && ! grep -q "batch-review cadence" "$TMP_HOME/stderr.12" \
    && ! grep -q '"event":"batch-cadence-advisory"' "$LOG"; then
   ok "Case 12 (B1): DISABLE_BATCH_CADENCE_ADVISORY=1 → counter untouched, no advisory"
 else
@@ -307,7 +312,7 @@ echo_commit_call='{"type":"assistant","message":{"role":"assistant","content":[{
 T="$TMP_HOME/case14.jsonl"
 make_transcript "$T" "$USER_MSG" "$edit_call" "$TR_OK" "$echo_commit_call" "$TR_OK"
 run_hook "$T"
-if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "mid-SPINE" "$TMP_HOME/stderr" 2>/dev/null; then
+if compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null && grep -q "session-exit checkpoint:" "$TMP_HOME/stderr" 2>/dev/null; then
   ok "Case 14: echo mentioning 'git commit' does NOT count as validate → paused.md written"
 else
   ng "Case 14: substring FN — checkpoint suppressed by a mere mention (paused.md=$(ls "$TMP_CWD/tasks" 2>/dev/null))"
@@ -857,7 +862,7 @@ else
   ROW30=$(grep '"hook":"session-end-check"' "$LOG" | tail -1)
   if ! compgen -G "$TMP_CWD/tasks/*-paused.md" >/dev/null \
      && [[ "$ERR30" != *"paused.md →"* && "$ERR30" != *"Permission denied"* ]] \
-     && [[ "$ERR30" == *"mid-SPINE session-exit: 1 unvalidated change(s)"* && "$ERR30" == *"could not write"* ]] \
+     && [[ "$ERR30" == *"session-exit checkpoint: 1 unvalidated change(s)"* && "$ERR30" == *"could not write"* ]] \
      && jq -e '.extra.paused == null and .extra.open == 1' <<<"$ROW30" >/dev/null 2>&1; then
     ok "Case 30: an unwritable tasks/ is reported as unwritten, not as a checkpoint"
   else
@@ -938,7 +943,7 @@ rm -f "$TMP_HOME/mode-ref"
 ( umask 022; run_hook "$T"; : > "$TMP_HOME/mode-ref" )
 MODE31=$(ls -l "$P31" | cut -c1-10)
 MODE_REF=$(ls -l "$TMP_HOME/mode-ref" | cut -c1-10)
-if grep -q '^# Paused — mid-SPINE session exit detected' "$P31" \
+if grep -q '^# Paused — session ended with unverified changes' "$P31" \
    && [[ "$(ls -A "$TMP_CWD/tasks")" == "session-end-x-paused.md" ]] \
    && [[ "$(cat "$TMP_HOME/stderr")" == *"paused.md → $P31"* ]] \
    && [[ "$MODE31" == "$MODE_REF" ]]; then
@@ -980,7 +985,7 @@ for L31 in dangling writable; do
   if [[ "$L31" == dangling ]]; then TGT31=$([[ -e "$TMP_CWD/link-target" ]] && echo written || echo absent)
   else TGT31=$(cat "$TMP_CWD/link-target"); fi
   if [[ -f "$P31" && ! -L "$P31" ]] \
-     && grep -q '^# Paused — mid-SPINE session exit detected' "$P31" \
+     && grep -q '^# Paused — session ended with unverified changes' "$P31" \
      && [[ "$TGT31" == "$([[ "$L31" == dangling ]] && echo absent || echo KEEP)" ]] \
      && [[ "$(cat "$TMP_HOME/stderr")" == *"paused.md → $P31"* ]]; then
     ok "Case 31e: a $L31 symlink at the path becomes a regular checkpoint; its target is untouched"
@@ -1044,7 +1049,7 @@ make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt")"
 # removed, still counts: an absent file git does not know cannot be told from
 # a deleted untracked or ignored file, or one in a submodule or under .git.
 run_hook32 "$T"
-A1=$([[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]] && echo none || echo "$(opens32)")
+A1=$([[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"session-exit checkpoint"* ]] && echo none || echo "$(opens32)")
 T="$TMP_HOME/case32.jsonl"
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$G32/a.txt" "$G32/f.txt")"
 run_hook32 "$T"
@@ -1157,7 +1162,7 @@ ln -s "$G32" "$L32"
 T="$TMP_HOME/case32h.jsonl"
 make_transcript "$T" "$USER_MSG" "$checkout_call" "$(bash_result "$L32/a.txt")"
 run_hook32 "$T" "$L32"
-if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"mid-SPINE"* ]]; then
+if [[ ! -e "$P32" && "$(cat "$TMP_HOME/stderr")" != *"session-exit checkpoint"* ]]; then
   ok "Case 32h: a symlinked cwd maps onto git's top level"
 else
   ng "Case 32h: (stderr=$(cat "$TMP_HOME/stderr"))"

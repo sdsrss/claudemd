@@ -241,7 +241,7 @@ if [[ -n "$TRANSCRIPT" ]] && hook_memfile_was_read "$TRANSCRIPT" "$MODULE"; then
   exit 0
 fi
 
-MSG="[claudemd] system-injected: this is a release command and the ship spec module has not been read this session. Read ~/.claude/spec-modules/ship.md (core §2.2) before tagging, releasing or publishing"
+MSG="[claudemd] system-injected: this is a release command and the ship spec module has not been read this session. Read ~/.claude/spec-modules/ship.md (core §12 Ship) before tagging, releasing or publishing"
 # Verdict first, telemetry second: a fatal inside hook_record must not be able
 # to swallow the deny (the §8 gate's lesson, memory #106).
 case "$MODE" in

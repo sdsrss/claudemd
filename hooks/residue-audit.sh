@@ -83,7 +83,7 @@ THRESHOLD="${SPEC_RESIDUE_THRESHOLD:-20}"
 [[ "$THRESHOLD" =~ ^[0-9]+$ ]] || THRESHOLD=20
 
 if (( DELTA > THRESHOLD )); then
-  echo "[claudemd] §7 residue audit: ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2
+  echo "[claudemd] residue audit (core §8, temporary files): ~/.claude/tmp grew by $DELTA entries (current: $CURRENT, baseline: $BASELINE, threshold: $THRESHOLD)." >&2
   # The remedy names the new entries, files included (`ls -A`, as CURRENT counts
   # them). The former `find … -mtime +7` matched none of them: what this flags
   # appeared since this session's last Stop.

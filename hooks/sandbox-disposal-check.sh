@@ -211,7 +211,7 @@ if [[ -n "$FOUND" ]]; then
   # so that Stop re-scans: a dir still there is reported, not forgotten.
   if [[ "${SANDBOX_DISPOSAL_BLOCK:-0}" == "1" && "$STOP_HOOK_ACTIVE" != "true" ]] \
      && command -v jq >/dev/null 2>&1; then
-    REASON=$(printf '[claudemd] §8.V4 sandbox disposal: %s temp directories %s (up to 5 listed). Some may belong to another session or process — remove only the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$WHEN" "$LIST")
+    REASON=$(printf '[claudemd] sandbox disposal (core §8, temporary files): %s temp directories %s (up to 5 listed). Some may belong to another session or process — remove only the ones this task created (guard the path: rm -rf "${D:?}"), keep any the user asked to keep, then finish.\n%s' "$COUNT" "$WHEN" "$LIST")
     if jq -nc --arg r "$REASON" '{decision:"block", reason:$r}' 2>/dev/null; then
       # Only the CONFIRMED dirs stay pending: the window is not advanced on a
       # block, so this Stop's first-sight candidates are re-found by the next
@@ -221,7 +221,7 @@ if [[ -n "$FOUND" ]]; then
       exit 0
     fi
   fi
-  echo "[claudemd] §8.V4 sandbox disposal: $COUNT temp directories $WHEN (up to 5 listed; some may belong to another session)." >&2
+  echo "[claudemd] sandbox disposal (core §8, temporary files): $COUNT temp directories $WHEN (up to 5 listed; some may belong to another session)." >&2
   printf '%s\n' "$LIST" >&2
   hook_record sandbox-disposal warn "$EXTRA" '§8.V4' "$SESSION_ID"
 fi

@@ -138,7 +138,7 @@ if ((HAVE_JQ)) && [[ "$PCT" =~ ^[0-9]+$ ]] && ((PCT >= THRESHOLD)); then
   # The `du` line is for pasting into a shell: quoted, or a root with a space
   # splits into two arguments and lists nothing.
   printf -v Q_ROOT '%q' "$TMP_ROOT"
-  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} ${SWEEP_NOTE}; anything else there is not attributable, so list the largest entries (\`du -sh $Q_ROOT/* | sort -rh | head\`); what this session created is yours to clean up; anything an earlier session left, an agent-tmp-* dir or an ended session's scratchpad included, is the user's call: ask first, one report line each. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
+  MSG="[claudemd] temp root $TMP_ROOT is ${PCT}% full.${NOTE} ${SWEEP_NOTE}; anything else there is not attributable, so list the largest entries (\`du -sh $Q_ROOT/* | sort -rh | head\`); what this task created is yours to clean up; anything else, an earlier task's or session's leftovers, an agent-tmp-* dir or an ended session's scratchpad included, is the user's call: ask first, one report line each. The user can turn this off with DISABLE_TMP_SWEEP_HOOK=1."
   hook_record tmp-sweep tmp-pressure-advisory "{\"pct\":$PCT,\"threshold\":$THRESHOLD}" '§8.V4' "$SESSION_ID"
   jq -cn --arg m "$MSG" '{suppressOutput: true, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}' 2>/dev/null
 fi

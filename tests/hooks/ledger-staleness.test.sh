@@ -99,6 +99,12 @@ if [[ "$OUT" == *"1 code-file edit(s)"* \
    && "$OUT" == *"Verified-done"* && "$OUT" == *"exit code"* \
    && "$OUT" == *"re-injects"* && "$OUT" == *"DISABLE_LEDGER_STALENESS_HOOK=1"* ]]; then
   ok "1d: the message carries the real edit count, what to do, why, and how to disable"
+  # v9.0.0 has no §11; the first line names the hook instead.
+  if [[ "$OUT" == "[claudemd] ledger-staleness (G7): this session edited code and did not write to its ledger"* && "$OUT" != *"§11"* ]]; then
+    ok "1e: the first line names the hook, not the removed §11"
+  else
+    ng "1e: first line: ${OUT%%$'\n'*}"
+  fi
 else
   ng "1d: the advisory text lost content or reports the wrong count: $OUT"
 fi

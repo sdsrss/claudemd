@@ -221,7 +221,7 @@ EXTRA=$(jq -cn --arg l "$LS_BASE" --argjson n "$LS_EDITS" --argjson w "$LS_WINDO
   '{ledger:$l, edits:$n, window:$w, ledgers:$c}' 2>/dev/null) || EXTRA='null'
 hook_record ledger-staleness ledger-stale-advisory "$EXTRA" '§11-ledger' "$SESSION_ID"
 
-printf '[claudemd] §11 / G7 — this session edited code and did not write to its ledger in the last %s transcript rows.\n' "$LS_WINDOW" >&2
+printf '[claudemd] ledger-staleness (G7): this session edited code and did not write to its ledger in the last %s transcript rows.\n' "$LS_WINDOW" >&2
 # Control characters in the name print as `?`: this line reaches the user's
 # terminal, and a ledger name is repo text. [[:cntrl:]] follows the locale: C0
 # controls and DEL always (what session-start's jq replaces), C1 controls too

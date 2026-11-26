@@ -249,7 +249,7 @@ export DISABLE_LEDGER_STALENESS_HOOK=1           # v0.91.0+ — Stop G7 long-tas
 export DISABLE_REPLY_LANGUAGE_HOOK=1            # v0.96.0+ — Stop 中文 restatement of an English reply (§1 language; opt-in REPLY_LANGUAGE_CHECK=1|log)
 export DISABLE_TRANSCRIPT_STRUCTURE_SCAN_HOOK=1  # v0.9.10+ — Stop §10 report-shape advisory
 export DISABLE_MEM_AUDIT_HOOK=1                  # v0.9.4+ — Stop Why:-less citation advisory
-export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd §11-session-exit mid-SPINE check
+export DISABLE_SESSION_END_CHECK_HOOK=1          # v0.9.27+ — SessionEnd session-exit checkpoint
 export DISABLE_SESSION_EXTENDED_READ_HOOK=1      # v0.10.1+ — PreToolUse:Read §13.1-extended-read denominator signal
 ```
 

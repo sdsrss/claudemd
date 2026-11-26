@@ -97,7 +97,7 @@ const SUB_FEATURE_TOGGLES = [
   {
     envVar: 'DISABLE_BATCH_CADENCE_ADVISORY',
     partOf: 'session-end-check.sh',
-    disables: 'the §13.2 batch-review cadence advisory only',
+    disables: 'the batch-review cadence advisory only',
   },
   {
     envVar: 'DISABLE_RULE_HITS_LOG',

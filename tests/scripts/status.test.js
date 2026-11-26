@@ -413,6 +413,12 @@ test('status.features.batchCadenceAdvisory honors DISABLE_BATCH_CADENCE_ADVISORY
   }
 });
 
+test('status names the batch-cadence toggle without the removed OPERATOR §13.2', async () => {
+  const r = await status({ verbose: true });
+  const t = r.verbose.killSwitches.subFeature.find(s => s.envVar === 'DISABLE_BATCH_CADENCE_ADVISORY');
+  assert.equal(t.disables, 'the batch-review cadence advisory only');
+});
+
 test('status.features.batchCadenceThreshold defaults to 20 when env unset (v0.20.1)', async () => {
   const saved = process.env.CLAUDEMD_BATCH_THRESHOLD;
   try {

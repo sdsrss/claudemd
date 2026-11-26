@@ -131,6 +131,12 @@ if [[ "$RC" -eq 0 && -z "$OUT" ]] && echo "$ERR" | grep -q "mem-audit:"; then
 else
   echo "FAIL: 5 (rc=$RC, stdout='$OUT', stderr='$ERR')"; FAIL=$((FAIL+1))
 fi
+# Case 5b (v9.0.0): no §11-EXT in v9, so the line names only the hook.
+if echo "$ERR" | grep -q '^\[claudemd\] mem-audit: 1 feedback memories missing' && ! echo "$ERR" | grep -q '§11'; then
+  echo "PASS: 5b warn names the hook, not the removed §11-EXT"
+else
+  echo "FAIL: 5b (stderr='$ERR')"; FAIL=$((FAIL+1))
+fi
 
 # --------------------------------------------------------------------------
 # Case 5b: the stub threshold is BYTES, and it is measured by find, not by

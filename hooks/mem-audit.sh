@@ -248,7 +248,7 @@ if [[ "$MISSING" -gt 0 ]]; then
   joined=$(IFS=, ; echo "${SAMPLE[*]}")
   extra=""
   [[ "$MISSING" -gt "$SAMPLE_LIMIT" ]] && extra=" (+$((MISSING - SAMPLE_LIMIT)) more)"
-  echo "[claudemd] §11-EXT mem-audit: $MISSING feedback memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1" >&2
+  echo "[claudemd] mem-audit: $MISSING feedback memories missing **Why:** / **How to apply:** body-structure: ${joined}${extra}. Disable: DISABLE_MEM_AUDIT_HOOK=1" >&2
 fi
 
 if [[ "$DRIFT" -gt 0 ]]; then
@@ -258,7 +258,7 @@ if [[ "$DRIFT" -gt 0 ]]; then
   # every line except the first (which got its bullet from the echo prefix).
   drift_extra=""
   [[ "$DRIFT" -gt "$DRIFT_SAMPLE_LIMIT" ]] && drift_extra=" (+$((DRIFT - DRIFT_SAMPLE_LIMIT)) more)"
-  echo "[claudemd] §11-EXT mem-audit: $DRIFT MEMORY.md drift entries${drift_extra}:" >&2
+  echo "[claudemd] mem-audit: $DRIFT MEMORY.md drift entries${drift_extra}:" >&2
   printf '  - %s\n' "${DRIFT_SAMPLE[@]}" >&2
 fi
 

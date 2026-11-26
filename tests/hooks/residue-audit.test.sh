@@ -133,6 +133,9 @@ printf 'v2:4' > "$HOME/.claude/.claudemd-state/tmp-baseline-rsD.txt"
 for i in 1 2 3; do : > "$HOME/.claude/tmp/new$i"; done
 STDERR=$(SPEC_RESIDUE_THRESHOLD=2 bash "$HOOK" <<<'{"session_id":"rsD"}' 2>&1 >/dev/null)
 LINE14=$(echo "$STDERR" | sed -n 2p)
+# v9.0.0: the residue line is core §8's temporary-files rule; §7 is Commit and verify now.
+[[ "$(echo "$STDERR" | sed -n 1p)" == '[claudemd] residue audit (core §8, temporary files): ~/.claude/tmp grew by 3 entries (current: 7, baseline: 4, threshold: 2).' ]] \
+  && ok "14b the first line cites core §8, not §7" || { echo "FAIL: 14b ($(echo "$STDERR" | sed -n 1p))"; FAIL=$((FAIL+1)); }
 # Run only once it equals the pinned line: never execute whatever the hook printed.
 LISTED14=""
 [[ "$LINE14" == '[claudemd] The 3 newest entries: ls -At ~/.claude/tmp | head -n 3' ]] \
