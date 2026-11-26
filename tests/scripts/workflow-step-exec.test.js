@@ -418,3 +418,19 @@ test('ci.yml runs on main pushes and pull requests, not on tag pushes', () => {
     'ci.yml runs on tag pushes again: the tag names the commit main just tested, so the run repeats it'
   );
 });
+
+test('0.123.0 review M1: the spec-bump gate sits in a job that also runs on a push to main', () => {
+  // The test matrix runs on pull requests only, so the gate lives in `static`,
+  // which has no `if:`. In the PR-only job a spec edit pushed straight to main
+  // reached users with no CI check, which is what the gate exists for.
+  const src = fs.readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const jobs = src.slice(src.indexOf('\njobs:\n'));
+  const starts = [...jobs.matchAll(/^ {2}([a-z][\w-]*):\s*$/gm)].map(m => ({ name: m[1], at: m.index }));
+  const owner = starts.filter(j => j.at < jobs.indexOf('- name: Spec edits require a version bump')).pop();
+  assert.ok(owner, 'the spec-bump step was not found in ci.yml');
+  const next = starts.find(j => j.at > owner.at);
+  const body = jobs.slice(owner.at, next ? next.at : undefined);
+  assert.equal(owner.name, 'static', `the spec-bump step moved to job ${owner.name}`);
+  assert.doesNotMatch(body, /^ {4}if:/m, 'the job holding the spec-bump step is conditional again');
+  assert.match(body, /fetch-depth: 0/, 'the spec-bump step needs full history for git describe');
+});

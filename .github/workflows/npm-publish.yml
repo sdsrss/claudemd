@@ -33,7 +33,8 @@ name: npm-publish
 #
 # Pre-publish gate (0.123.0): the tagged commit must already carry a green
 # `ci` run triggered by a pull request. The release flow builds every release
-# as a pull request from `next-release`, and `ci.yml` runs the full gate there
+# as a pull request from a `release/vX.Y.Z` branch cut from `next-release`, and
+# `ci.yml` runs the full gate there
 # (static + three test legs: ubuntu node 20 with the real bash 3.2 checks,
 # ubuntu node 24, macOS node 24); GitHub attaches that run to the PR's head
 # commit, which is the commit `main` fast-forwards to and the tag names. Until
@@ -151,7 +152,7 @@ jobs:
           if [ "${n:-0}" -ge 1 ]; then
             echo "OK: $GITHUB_SHA has a green ci run from a pull request"
           else
-            echo "::error::no green pull_request ci run on $GITHUB_SHA — release it through a pull request from next-release, or re-run that pull request's ci"
+            echo "::error::no green pull_request ci run on $GITHUB_SHA — release it through a release/vX.Y.Z pull request, or re-run that pull request's ci"
             exit 1
           fi
 

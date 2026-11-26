@@ -27,7 +27,7 @@
       "added_version": "v6.7",
       "confidence": "medium",
       "last_demote_review": "2026-10-24",
-      "note": "Enforced mechanically for spec edits: spec-coherence-audit CHECK 4 (headroom) and version-cascade-check (Sizing drift). Lives in §EXT §13 META since v6.36.0 (spec-editing only)."
+      "note": "Enforced mechanically for spec edits: tests/scripts/spec-structure.test.js fails past either byte cap. Lives in §EXT §13 META since v6.36.0 (spec-editing only)."
     },
     {
       "id": "§iron-law-2",
@@ -116,7 +116,7 @@
       "added_version": "v6.7",
       "confidence": "high",
       "last_demote_review": "2026-10-24",
-      "note": "Hook enforces the banned-vocab subset on two paths, not one: Path 1 scans the git-commit message against the whole pattern file; Path 2 (BANNED_VOCAB_PROSE_SCAN, default ON since v0.21.0) scans the prior assistant turn's prose when the command is a ship verb and denies on it, but only against the high-fire region of the pattern file — prophylactic patterns stay advisory via transcript-vocab-scan.sh. Agent self-enforces on all other text"
+      "note": "Hook enforces the banned-vocab subset on two paths, not one: Path 1 scans the git-commit message against the whole pattern file; Path 2 (BANNED_VOCAB_PROSE_SCAN, default ON since v0.21.0) scans the prior assistant turn's prose when the command is a ship verb and denies on it, but only against the high-fire region of the pattern file; the prophylactic patterns are not scanned by any hook since 0.123.0 removed transcript-vocab-scan. Agent self-enforces on all other text"
     },
     {
       "id": "§11-memory-read",

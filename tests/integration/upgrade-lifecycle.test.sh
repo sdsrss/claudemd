@@ -89,7 +89,7 @@ if ! git -C "$REPO" rev-parse --verify --quiet "refs/tags/$OLD_TAG" >/dev/null; 
   echo "upgrade-lifecycle: SKIP (tag $OLD_TAG not reachable; shallow checkout without --tags)"
   echo "upgrade-lifecycle: to exercise this test in CI, ensure workflow uses fetch-depth: 0 and fetch-tags: true"
   # Under CI a skip is the defect, not an accommodation. THIS skip once let
-  # the publish gate run a silently smaller suite (0.81.0), and every other SKIP branch in this repo — run-all's
+  # the publish gate run a silently smaller suite (fixed in 0.58.0), and every other SKIP branch in this repo — run-all's
   # four, memory-tags-parity:313 — already carries this guard. These two were
   # the leftovers (2026-08-29 audit R10-10).
   [[ -n "${CI:-}" ]] && { echo "FAIL: that SKIP is not acceptable under CI — the workflow must fetch tags"; exit 1; }

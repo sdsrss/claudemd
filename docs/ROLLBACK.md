@@ -1,7 +1,7 @@
 # Release rollback runbook
 
-The atomic ship pipeline (commit → push → tag → push tag → `gh release create` → CI watch)
-can fail at any step, and the two distribution channels are asymmetric: npm publish is
+The ship pipeline (release PR → its `ci` run → fast-forward `main` → push → tag → push tag →
+`gh release create` → npm-publish) can fail at any step, and the two distribution channels are asymmetric: npm publish is
 gated in `npm-publish.yml` by three steps that run before `npm publish` — "Verify the tagged
 commit is on main", "Verify package.json version matches the tag" and "Verify the commit
 passed ci as a pull request" (the release PR's `ci` run: eslint/prettier/metrics and the full

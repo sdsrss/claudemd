@@ -162,13 +162,6 @@ test('R11-22: an unknown CLAUDEMD_SPEC_ACTION is refused, not silently downgrade
   }
 });
 
-// --- R11-13b ------------------------------------------------------------------
-// sparkline.js enumerated the trend's event set as a literal six-name Set, while
-// the deny half of that set is a PREFIX RULE in rule-hits-parse.js. One side a
-// rule, the other a list, no join: a new `deny-*` event would be counted as a
-// real block by isBlockingDeny and silently dropped from the release-header
-// trend.
-
 // --- R11-13d ------------------------------------------------------------------
 // paths.js#projectsRoot exists, and its own comment recorded that the
 // `.claude/projects` literal was "still rebuilt in five call sites". Four more

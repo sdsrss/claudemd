@@ -223,7 +223,7 @@ const PINS = [
     what: '§EXT §0.1 caps — core 4,000 / extended 12,000 bytes, and an outcome run before a new rule (v9.0.0)',
     file: EXT,
     anchor: 'Core ≤ 4,000 bytes, extended ≤ 12,000 bytes.',
-    why: "The guard against regrowth: v8 reached 24 KB of core with no outcome evidence for its rules. the cap test at the end of this file enforces the caps; the outcome-run clause is the operator's gate (OPERATOR.md §13.1).",
+    why: "The guard against regrowth: v8 reached 24 KB of core with no outcome evidence for its rules. The cap test at the end of this file enforces the caps; the outcome-run clause is the operator's gate (OPERATOR.md §13.1).",
     line: 'Core ≤ 4,000 bytes, extended ≤ 12,000 bytes. A new or stricter rule ships only after an outcome run (hidden tests, vanilla arm included; `OPERATOR.md` §13.1) shows it changes results enough to pay for its cost; "the spec is more complete" is not a reason. Removing a rule needs the same evidence or none.',
   },
 ];

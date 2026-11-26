@@ -18,10 +18,10 @@ name: ci
 # "this repo uses lightweight tags" is not a fact you can carry from one tag to
 # the next. Two sources, every time.
 #
-# One full run per release (0.123.0). A release is a pull request from
-# `next-release`; the pull_request run is the whole gate (static + the three
-# test legs), and npm-publish.yml publishes a tag only when its commit carries
-# that green run. A push to main is the fast-forward to a commit that run
+# One full run per release (0.123.0). A release is a pull request from a
+# `release/vX.Y.Z` branch cut from `next-release`; the pull_request run is the
+# whole gate (static + the three test legs), and npm-publish.yml publishes a tag
+# only when its commit carries that green run. A push to main is the fast-forward to a commit that run
 # already tested, so it gets `static` alone: lint, metrics, and the check that
 # a spec/ edit since the last tag bumped the version. No tag trigger (removed
 # 2026-11-10). tests/scripts/workflow-step-exec.test.js pins this block.
@@ -75,6 +75,29 @@ jobs:
         with:
           # 24 = the maintainer's runtime.
           node-version: 24
+      # `npm install`, not `npm ci`, and no `cache: npm`: the repo tracks no
+      # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
+      # devDependencies from one), and setup-node's npm cache keys on it.
+      # package.json pins every devDependency to an exact version; their own
+      # dependencies resolve fresh on each run, with no integrity pin, so
+      # `--ignore-scripts` keeps their install scripts from running (0.117.2
+      # pre-tag review M1; none of the 120 packages the last lockfile held had
+      # one).
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: eslint (blocking)
+        run: npm run lint:js
+      - name: prettier (blocking)
+        run: npm run format:check
+      - name: Real-tree metrics assertions (the half CI could never reach)
+        # tests/scripts/baseline-metrics.test.js gates its JS import-graph and
+        # long-function assertions behind `if (acorn)`. acorn is a
+        # devDependency, so on the no-install matrix legs that branch printed
+        # SKIP and asserted nothing — including `cycles.count === 0`, which
+        # docs/ARCHITECTURE.md cites. This is the one job where acorn IS
+        # present, so here the SKIP is a failure rather than a degradation.
+        env:
+          CLAUDEMD_DEVDEPS_REQUIRED: '1'
+        run: node --test tests/scripts/baseline-metrics.test.js
       - name: Spec edits require a version bump (post-tag drift gate)
         run: |
           # 2026-08-16 audit F2/PROC-2: commit 34f73e4 edited spec/*.md AFTER
@@ -104,29 +127,6 @@ jobs:
             exit 1
           fi
           echo "OK: spec/ changed and version bumped ($LAST_TAG -> $PKG_VER)"
-      # `npm install`, not `npm ci`, and no `cache: npm`: the repo tracks no
-      # lockfile (D#612, 0.117.2 — Claude Code installs a plugin's
-      # devDependencies from one), and setup-node's npm cache keys on it.
-      # package.json pins every devDependency to an exact version; their own
-      # dependencies resolve fresh on each run, with no integrity pin, so
-      # `--ignore-scripts` keeps their install scripts from running (0.117.2
-      # pre-tag review M1; none of the 120 packages the last lockfile held had
-      # one).
-      - run: npm install --ignore-scripts --no-audit --no-fund
-      - name: eslint (blocking)
-        run: npm run lint:js
-      - name: prettier (blocking)
-        run: npm run format:check
-      - name: Real-tree metrics assertions (the half CI could never reach)
-        # tests/scripts/baseline-metrics.test.js gates its JS import-graph and
-        # long-function assertions behind `if (acorn)`. acorn is a
-        # devDependency, so on the no-install matrix legs that branch printed
-        # SKIP and asserted nothing — including `cycles.count === 0`, which
-        # docs/ARCHITECTURE.md cites. This is the one job where acorn IS
-        # present, so here the SKIP is a failure rather than a degradation.
-        env:
-          CLAUDEMD_DEVDEPS_REQUIRED: '1'
-        run: node --test tests/scripts/baseline-metrics.test.js
 
   test:
     # Pull requests only: see the header.

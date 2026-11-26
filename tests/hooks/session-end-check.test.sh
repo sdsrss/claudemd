@@ -457,8 +457,7 @@ done
 
 # --- Case 23b (D#96, 0.99.0 second review M3): the turn's own prompt is a text
 # block whose `text` is not a string. is_user_turn's join() threw on it, so the
-# hook wrote no checkpoint; 0 of 21,620 real text blocks have this shape, and the
-# JS twin (transcript-user-turn.js) already reads it as ''.
+# hook wrote no checkpoint; 0 of 21,620 real text blocks have this shape.
 SHAPE_I=0
 for SHAPE in \
   '{"type":"user","message":{"content":[{"type":"text","text":{"a":1}}]}}' \

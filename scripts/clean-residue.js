@@ -728,7 +728,8 @@ function deleteBlocker(dir) {
 // Deletion is ALLOWLIST-by-pattern, not "everything old". The dir also holds
 // singleton state (session-start.ref, bootstrap-failed.json, …) whose age says
 // nothing about whether it is still in use; tmp-baseline.txt, l2-task-counter
-// and last-session-summary.json are singletons of hooks 0.123.0 removed, left
+// and last-session-summary.json are singletons of hooks or hook sections 0.123.0
+// removed, left
 // for a CLAUDEMD_PURGE=1 uninstall rather than added to this list. A pattern this list does not name is never
 // touched, so a future state file is safe by default rather than by memory.
 const STATE_EPHEMERAL = [
