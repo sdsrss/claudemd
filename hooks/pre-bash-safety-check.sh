@@ -131,11 +131,14 @@ fi
 # hide a word: the command as written and, only when that finds nothing, the
 # same text with every quote and backslash deleted (`r''m`, `\rm`, `"cu"rl`). A
 # word bash runs after its quote removal has the same neighbours in that view.
-# The two other ways bash joins text, a backslash-newline and an IFS expansion,
-# are not rewritten here: a command holding either goes to the full pass (0.2%
-# of calls). A `${x//p/}` rewrite costs time superlinear in the command's length.
-# Not modelled: text only the full pass deletes, a `#` inside a `$`-bearing or
-# unterminated quote and a here-doc operator. Joining across it builds a word
+# The two other joins the full pass rewrites, a backslash-newline and an IFS
+# expansion, are not rewritten here: a command holding either goes to the full
+# pass (0.17% of calls). A `${x//p/}` rewrite costs time superlinear in the
+# command's length. Joins neither pass models (an empty expansion as in
+# `r${Z}m`, brace expansion, a glob) are allowed by both.
+# Not modelled: text only the full pass deletes, a `#` inside a double-quoted
+# body holding `$` or a backtick or inside a quote it reads as unterminated,
+# and a here-doc operator. Joining across it can build any trigger word, one
 # bash never runs (`echo "$(r#m -rf $X)"`); 0.123.0 denied such a command and
 # this allows it. None of the replayed commands below was one.
 # Measured 2026-11-28 on 66,220 distinct real non-read-only commands: 76% of

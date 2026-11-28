@@ -154,7 +154,8 @@ for c in 'npm test [allow-zz]' 'npm test [skip-ci]' "true; \$'\\x41' > out.txt" 
 done
 
 # B4. The known difference from 0.123.0: text only the full pass deletes (a `#`
-# in a `$`-bearing quote, a here-doc operator) can join a word bash never runs.
+# in a double-quoted body holding `$` or a backtick, or in a quote it reads as
+# unterminated, and a here-doc operator) can join a word bash never runs.
 # 0.123.0 denied these two; the prefilter allows them. Pinned so a change to
 # either side is seen.
 for c in 'echo "$(r#m -rf $X)"' "cat </dev/t<<'E'cp/10.0.0.1/4444${nl}E"; do

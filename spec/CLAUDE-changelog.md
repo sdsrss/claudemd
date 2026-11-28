@@ -9,7 +9,7 @@ Canonical history for `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE-extended.md` and 
 No rule text changed, in the core or in either module.
 
 - `OPERATOR.md` Standing decisions: in the outcome A/B the lean draft v9 was cut from ran at 1.17–1.26× the no-spec cost with the same correctness, and the extra was mostly the per-change local commit (core §7) and the `## 汇报` report (core §10). Both stay because the maintainer wants the trail; they do not count as precedent for keeping or adding a rule.
-- `OPERATOR.md` §13.3: plugin 0.124.0's two hook speed-ups (the `pre-bash-safety` trigger prefilter and the `tmp-sweep` early exit) are recorded as an exception to the hook freeze, made at the maintainer's request, with the replay that found every real command decided as before.
+- `OPERATOR.md` §13.3: plugin 0.124.0's two hook speed-ups (the `pre-bash-safety` trigger prefilter and the `tmp-sweep` early exit) are recorded as an exception to the hook freeze, made at the maintainer's request, with a replay of 66,220 real commands in which every decision matched 0.123.0's.
 
 ---
 
