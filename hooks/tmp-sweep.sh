@@ -19,17 +19,31 @@
 # filesystem, in which no mtime or ctime is within 72 h, read without following
 # symlinks. See its USAGE.
 #
-# Cost: every Bash call pays the hook preamble (sourcing two libs) plus a
-# `mkdir -p`, a noclobber open, an `rm`, two stats and a `date` — tens of milliseconds, measured at
-# 23 and 43 ms per call on this machine on 2026-09-22 depending on load. At most once per
-# CLAUDEMD_TMP_SWEEP_INTERVAL_MIN (default 10) it spawns the sweep DETACHED and
-# runs one `df`. The hook itself never waits on the sweep.
+# Cost: inside the interval a Bash call pays bash's start and one `find`
+# (p50 1.7 ms, against 11.7 ms for the library preamble it skips; 2026-11-28).
+# At most once per CLAUDEMD_TMP_SWEEP_INTERVAL_MIN (default 10) it runs the
+# preamble, spawns the sweep DETACHED and runs one `df`. The hook itself never
+# waits on the sweep.
 #
 # Kill-switches:
 #   DISABLE_TMP_SWEEP_HOOK=1 — this hook
 #   DISABLE_CLAUDEMD_HOOKS=1 — global
 
 set -uo pipefail
+
+# Inside the interval this hook does nothing, and the preamble below (two
+# libraries, a mkdir, the lock, two stats) was nearly all of its cost on every
+# Bash call. A stamp younger than the interval exits here first; `find -mmin`
+# reads its age the same way on GNU and BSD. This only skips the plain case:
+# the check under the lock below still decides, so a stale or missing stamp,
+# and interval 0, go on as before.
+_ts_min="${CLAUDEMD_TMP_SWEEP_INTERVAL_MIN:-10}"
+[[ "$_ts_min" =~ ^[0-9]+$ ]] || _ts_min=10
+_ts_stamp="${HOME:-}/.claude/.claudemd-state/tmp-sweep.stamp"
+if [[ -n "${HOME:-}" && "$_ts_min" != 0 && -f "$_ts_stamp" ]] \
+  && [[ -n "$(find "$_ts_stamp" -mmin "-$_ts_min" 2>/dev/null)" ]]; then
+  exit 0
+fi
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=/dev/null

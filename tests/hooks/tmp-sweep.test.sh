@@ -215,6 +215,9 @@ chmod +x "$ST/stat"
 LOCK="$HOME/.claude/.claudemd-state/tmp-sweep.lock"
 rm -rf "${LOCK:?}"
 : >"$LOCK"
+# No stamp: case 8's runs left a fresh one, and a fresh stamp now exits before
+# the lock is read (case 14), which would make 9a pass without reaching it.
+rm -f "$STAMP"
 printf '%s' "$EVT" | PATH="$ST:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" >/dev/null 2>"$SANDBOX/err9a"
 RC=$?
 [[ $RC -eq 0 && ! -s "$SANDBOX/err9a" ]] && ok "9a lock gone between the two stats: exit 0, nothing on stderr" ||
@@ -294,5 +297,30 @@ if [[ "$CTX" == *"agent-tmp-* dirs without a .keep (idle 72 h) are swept automat
 else
   ng "13 (ctx: $CTX)"
 fi
+
+
+# Case 14 (0.124.0): inside the interval the hook leaves before its preamble:
+# no library, no lock, no stat. A counting `stat` shim and the lock path are
+# what show it; before the change a fresh stamp still took the lock and read
+# the stamp's mtime.
+rm -rf "${LOCK:?}"
+touch "$STAMP"
+CNT="$SANDBOX/stat14.count"
+mkdir -p "$SANDBOX/statshim14"
+printf '#!/usr/bin/env bash\necho x >>"%s"\nexec "%s" "$@"\n' "$CNT" "$REAL_STAT" >"$SANDBOX/statshim14/stat"
+chmod +x "$SANDBOX/statshim14/stat"
+: >"$CNT"
+OUT=$(printf '%s' "$EVT" | PATH="$SANDBOX/statshim14:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=0 bash "$HOOK" 2>/dev/null)
+RC=$?
+N14=$(wc -l <"$CNT" | tr -d ' ')
+[[ $RC -eq 0 && -z "$OUT" && "$N14" == 0 && ! -e "$LOCK" ]] && ok "14a fresh stamp: exits before the lock and the stats" ||
+  ng "14a (rc $RC, stat calls $N14, lock $([[ -e "$LOCK" ]] && echo present || echo absent), out ${OUT:0:60})"
+# 14b, the liveness half: the same call with the stamp aged runs the preamble.
+touch -d '20 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-20M +%Y%m%d%H%M)" "$STAMP"
+: >"$CNT"
+printf '%s' "$EVT" | PATH="$SANDBOX/statshim14:$SHIM:$PATH" CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" >/dev/null 2>&1
+N14=$(wc -l <"$CNT" | tr -d ' ')
+[[ "$N14" -ge 1 ]] && ok "14b aged stamp: the preamble runs ($N14 stat calls)" || ng "14b aged stamp: no stat call, the early exit took it"
+wait_result >/dev/null 2>&1 || true
 
 claudemd_assert_summary
