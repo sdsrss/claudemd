@@ -4,7 +4,7 @@ Canonical history for `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE-extended.md` and 
 
 ---
 
-## v9.0.2 (patch, 2026-12-01) — Operator note on rules kept by preference
+## v9.0.2 (patch, 2026-11-28) — Operator note on rules kept by preference
 
 No rule text changed, in the core or in either module.
 

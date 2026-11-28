@@ -8,7 +8,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
-## [0.124.0] - 2026-12-01
+## [0.124.0] - 2026-11-28
 
 **Two hooks do less work on most Bash calls. Replayed on 66,220 real commands, every decision and log row is the same as 0.123.0's. Spec v9.0.2: no rule text changed.**
 
