@@ -4,7 +4,7 @@ Canonical history for `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE-extended.md` and 
 
 ---
 
-## v9.0.1 (patch, 2026-11-30) — Metadata follows the hooks plugin 0.123.0 removed
+## v9.0.1 (patch, 2026-11-28) — Metadata follows the hooks plugin 0.123.0 removed
 
 No rule text changed, in the core or in either module.
 

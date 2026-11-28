@@ -8,7 +8,7 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
-## [0.123.0] - 2026-11-30
+## [0.123.0] - 2026-11-28
 
 **Removes 16 hooks and 5 commands that served rules spec v9.0.0 deleted, or did nothing by default. The hooks that block (`pre-bash-safety`, `ship-baseline`, `memory-read-check`, `banned-vocab`) decide exactly as before. Spec v9.0.1: no rule text changed.**
 
