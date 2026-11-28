@@ -16,10 +16,10 @@
 #
 # Measured at the time of writing (per Bash tool call, whole 4-hook chain):
 #
-#   shape                          before R10-23   after
-#   read-only (`git log`)               8            4
-#   shell-meta, no trigger              16           5
-#   `git commit -m …`                   16           6
+#   shape                          before R10-23   after   0.124.0
+#   read-only (`git log`)               8            4        4
+#   shell-meta, no trigger              16           5        4
+#   `git commit -m …`                   16           6        5
 #
 # The "shell-meta, no trigger" shape is the one the fast-path cannot help and
 # the one ordinary agent work is full of (`… | head`, `… >/dev/null`): 条目 12
@@ -104,6 +104,11 @@ chain_spawns() {
 }
 
 READONLY_CMD="git log --oneline -1"
+# Read-only too, and carrying a pre-bash-safety trigger word (`rm`): with the
+# fast path off, this one goes past the 0.124.0 trigger prefilter, so the count
+# has something to rise by. READONLY_CMD, with no trigger, now leaves at the
+# prefilter either way and cannot show the fast path working.
+READONLY_TRIG_CMD="git log --oneline -1 --grep=rm"
 META_CMD="ls /tmp >/dev/null"
 COMMIT_CMD="git commit -m 'seed message'"
 
@@ -127,11 +132,12 @@ fi
 # the readonly fast-path and the same command has to cost more — if it does not,
 # the number is not measuring the chain.
 CASE=$((CASE + 1))
-RO_NOFP=$(chain_spawns "$HOOKS_DIR" "$READONLY_CMD" BASH_READONLY_FAST_PATH=0)
-if (( RO_NOFP > RO )); then
-  echo "PASS: $CASE counter responds to the fast-path ($RO with, $RO_NOFP without)"
+RO_T=$(chain_spawns "$HOOKS_DIR" "$READONLY_TRIG_CMD")
+RO_NOFP=$(chain_spawns "$HOOKS_DIR" "$READONLY_TRIG_CMD" BASH_READONLY_FAST_PATH=0)
+if (( RO_NOFP > RO_T )); then
+  echo "PASS: $CASE counter responds to the fast-path ($RO_T with, $RO_NOFP without)"
 else
-  echo "FAIL: $CASE control — disabling the fast-path did not raise the count ($RO vs $RO_NOFP);"
+  echo "FAIL: $CASE control — disabling the fast-path did not raise the count ($RO_T vs $RO_NOFP);"
   echo "      the instrument is not sensitive to the path it claims to measure."
   FAIL=$((FAIL + 1))
 fi
@@ -186,12 +192,12 @@ check_budget() {
 
 # One first parse per hook.
 check_budget "read-only" "$READONLY_CMD" "$SUBJECT_COUNT"
-# One per hook, plus one: pre-bash-safety-check has no trigger exit — every
-# non-read-only command is its subject — so its telemetry read cannot move
-# further down. The other three exit at their trigger having spawned once.
-check_budget "shell-meta, no trigger" "$META_CMD" $((SUBJECT_COUNT + 1))
-# banned-vocab and pre-bash-safety both go past their trigger here.
-check_budget "git commit" "$COMMIT_CMD" $((SUBJECT_COUNT + 2))
+# One per hook: since 0.124.0 pre-bash-safety-check has a trigger exit too (its
+# prefilter), so all four leave at their trigger having spawned once.
+check_budget "shell-meta, no trigger" "$META_CMD" "$SUBJECT_COUNT"
+# banned-vocab goes past its trigger here; pre-bash-safety does not (no
+# trigger word in the command).
+check_budget "git commit" "$COMMIT_CMD" $((SUBJECT_COUNT + 1))
 
 echo "Tests: $((CASE - FAIL))/$CASE passed"
 [[ $FAIL -eq 0 ]] || exit 1

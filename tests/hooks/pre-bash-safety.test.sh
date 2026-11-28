@@ -1212,9 +1212,13 @@ run_split_case() {  # TAG NOTE CMD — the hook makes exactly one sed call tagge
     FAIL=$((FAIL + 1))
   fi
 }
-run_split_case split "ordinary command (allow)" 'ls /tmp >/dev/null'
+# The allowed row carries a trigger word (`rm` on a literal path): since
+# 0.124.0 a command with none, like the `ls /tmp >/dev/null` these rows used,
+# leaves at the trigger prefilter before any split, and the row would test
+# nothing (tests/hooks/pre-bash-prefilter.test.sh covers that exit).
+run_split_case split "ordinary command with a trigger word (allow)" 'ls /tmp >/dev/null && rm -f build.log'
 run_split_case split "rm of an unvalidated variable (deny)" 'rm -rf $X/y'
-run_split_case unwrap "ordinary command (allow)" 'ls /tmp >/dev/null'
+run_split_case unwrap "ordinary command with a trigger word (allow)" 'ls /tmp >/dev/null && rm -f build.log'
 run_split_case unwrap "bash -c around an rm of an unvalidated variable (deny)" "bash -c 'rm -rf \$X/y'"
 rm -rf "${split_bin:?}"
 
