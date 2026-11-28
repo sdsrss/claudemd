@@ -476,7 +476,7 @@ P2 里的 CI、流程和测试改动不碰发布目录，可以在这两个版�
 **更正**
 - §3 合计行写"无争议 11 个"是算错了：表里标"退役"的是 14 个（spec-module-gate、cross-repo-write-check、session-extended-read、transcript-vocab-scan、rework-breaker、verify-log、test-failure-debug、deferred-notice、residue-audit、mem-audit、transcript-structure-scan、evidence-gate、ledger-staleness、session-summary）。
 - §5 P1-4 说把研究代码移出发布树能让插件缓存"−98 KB"：不成立。插件缓存是整个仓库的副本（`tests/` 3.3 MB 也在里面），换目录不换体积。改为只删已结题的两个工具（`iron-law-judge.mjs`、`wtree-verdicts.mjs`），`scripts/offline-eval/` 留在原处。
-- §5 P3-3 的"约 1.4 GB"几乎全是 `tasks/transcript-snapshot-2026-11-21/`（1.1 GB）。`preship-review-*`、`*.log`、`metrics-*.json` 合计只有 580 KB，删除不可逆、收益可以忽略，所以不删；快照等 12-01 复测用完再处理。
+- §5 P3-3 的"约 1.4 GB"几乎全是 `tasks/transcript-snapshot-2026-11-21/`（1.1 GB）。`preship-review-*`、`*.log`、`metrics-*.json` 合计只有 580 KB，删除不可逆、收益可以忽略，所以不删。快照已于 11-28 按用户要求删除（当时 1.3 GB）：12-01 的闸门复测读现存日志和转录，窗口内记录所在的转录按 30 天规则会保留到窗口结束前后。
 - §6 "每次成功的 Bash 调用 12 → 7 个 hook 进程"：branch-prune 也退役后是 12 → 6。
 
 **和建议不同的决定**
