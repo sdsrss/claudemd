@@ -33,14 +33,17 @@ set -uo pipefail
 
 # Inside the interval this hook does nothing, and the preamble below (two
 # libraries, a mkdir, the lock, two stats) was nearly all of its cost on every
-# Bash call. A stamp younger than the interval exits here first; `find -mmin`
-# reads its age the same way on GNU and BSD. This only skips the plain case:
-# the check under the lock below still decides, so a stale or missing stamp,
-# and interval 0, go on as before.
+# Bash call. A stamp younger than the interval exits here first. `find -mmin -N`
+# holds for an age under N minutes: GNU compares seconds, BSD rounds the age up
+# to whole minutes, so on BSD this exit covers the first N-1 minutes and the
+# check under the lock below takes the last one. Within a second of the
+# interval's end GNU can exit where that check would sweep; the next call
+# sweeps. Everything else goes on to that check as before: no stamp, interval
+# 0, and a value that is not a plain decimal (the check reads it as bash
+# arithmetic, where 010 is 8).
 _ts_min="${CLAUDEMD_TMP_SWEEP_INTERVAL_MIN:-10}"
-[[ "$_ts_min" =~ ^[0-9]+$ ]] || _ts_min=10
 _ts_stamp="${HOME:-}/.claude/.claudemd-state/tmp-sweep.stamp"
-if [[ -n "${HOME:-}" && "$_ts_min" != 0 && -f "$_ts_stamp" ]] \
+if [[ "$_ts_min" =~ ^[1-9][0-9]{0,5}$ && -n "${HOME:-}" && -f "$_ts_stamp" ]] \
   && [[ -n "$(find "$_ts_stamp" -mmin "-$_ts_min" 2>/dev/null)" ]]; then
   exit 0
 fi
@@ -73,8 +76,10 @@ NOW=$(date +%s)
 # is only atomic where coreutils makes it so: uutils mkdir, Ubuntu 26.04's
 # default, let more than one of 8 concurrent claims succeed in 32 of 300 trials
 # on the maintainer's host (GNU mkdir 0 of 300, noclobber 0 of 300 under bash
-# 5.3 and 3.2.57). A lock older than 60 s is a hook killed while holding it; it
-# is cleared so the next call can claim, and this call skips. `rm -rf`: anything
+# 5.3 and 3.2.57). A lock older than 60 s is a hook killed while holding it; the
+# first call to reach it clears it so the next call can claim, and skips. While
+# the stamp is fresh no call gets this far, so a lock left beside a fresh stamp
+# is cleared after the interval. `rm -rf`: anything
 # else found at the path (a directory left by a pre-0.109.1 hook, a non-empty
 # one) would otherwise never clear and switch the sweep off for good (re-review
 # F5); an older hook's `mkdir` and this claim also exclude each other, since

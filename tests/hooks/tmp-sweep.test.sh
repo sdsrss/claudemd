@@ -322,5 +322,14 @@ printf '%s' "$EVT" | PATH="$SANDBOX/statshim14:$SHIM:$PATH" CLAUDEMD_TMP_PRESSUR
 N14=$(wc -l <"$CNT" | tr -d ' ')
 [[ "$N14" -ge 1 ]] && ok "14b aged stamp: the preamble runs ($N14 stat calls)" || ng "14b aged stamp: no stat call, the early exit took it"
 wait_result >/dev/null 2>&1 || true
+# 14c: the check under the lock reads the interval as bash arithmetic, where
+# 010 is 8 minutes, so the early exit leaves any value that is not a plain
+# decimal to it: a 9-minute-old stamp is swept, and the stamp is rewritten.
+rm -rf "${LOCK:?}"
+touch -d '9 minutes ago' "$STAMP" 2>/dev/null || touch -t "$(date -v-9M +%Y%m%d%H%M)" "$STAMP"
+printf '%s' "$EVT" | PATH="$SHIM:$PATH" CLAUDEMD_TMP_SWEEP_INTERVAL_MIN=010 CLAUDEMD_TMP_PRESSURE_PCT=101 bash "$HOOK" >/dev/null 2>&1
+[[ -n "$(find "$STAMP" -mmin -1 2>/dev/null)" ]] && ok "14c interval 010: read as 8 minutes, a 9-minute-old stamp is swept" ||
+  ng "14c interval 010: the stamp was not rewritten, so the early exit read 10 minutes and skipped the sweep"
+wait_result >/dev/null 2>&1 || true
 
 claudemd_assert_summary
