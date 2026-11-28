@@ -117,38 +117,47 @@ fi
 #   - a command word: `rm` / `find` (the rm arm); `npx`, `bunx`, `exec`, `x`,
 #     `dlx` (the package runners: npm exec, npm x, pnpm/yarn dlx, bun x);
 #     `deno`, `pip`, `pip3`, `nix` (remote-run heads); every CURLSH_SRC word
-#     (Pattern 3 needs a fetch SOURCE; socat also covers 3c);
-#   - a literal: cargo's `--git`, go's `@latest`-style version, `/dev/tcp` or
-#     `/dev/udp` (3c), a language-level network primitive (3d requires one of
-#     REVSH_NET; each of its alternatives contains one of these), `[allow-`
-#     (the escape tokens are read from the raw command and always write a row),
-#     and `$'` (ANSI-C quoting, which this hook does not decode; sent to the
-#     full pass rather than reasoned about).
-# Two views are tested, so quoting cannot hide a word: the command as bash joins
-# it (backslash-newline removed, ${IFS} and $IFS read as a space) and, only when
-# that finds nothing, the same text with every quote and backslash deleted
-# (`r''m`, `\rm`, `"cu"rl`). A word matches at any boundary that is not a
-# letter, digit or `_`, so /usr/bin/rm, $(curl and |nc all match. Each rewrite
-# runs only when its text is present, and the deletion is one `tr`: a
-# `${x//p/}` over a long command can be slow on bash 3.2.
+#     (Pattern 3 needs a fetch SOURCE). Each of those rules reads its word with
+#     no letter, digit or `_` on either side, so a boundary is required here too;
+#   - a literal, matched anywhere: `socat` (3c's REVSH_SOCAT has no anchor, so
+#     it reads `./socatx64.bin` as socat), cargo's `--git`, go's `@latest`-style
+#     version, `/dev/tcp` or `/dev/udp` (3c), a language-level network primitive
+#     (3d requires one of REVSH_NET; each of its alternatives contains one of
+#     these), `[allow-` and `[skip-` (the escape tokens, and token text the full
+#     pass deletes before it matches), and `$'` (ANSI-C quoting, which this hook
+#     does not decode; sent to the full pass rather than reasoned about).
+# A word matches at any boundary that is not a letter, digit or `_`, so
+# /usr/bin/rm, $(curl and |nc all match. Two views are tested, so quoting cannot
+# hide a word: the command as written and, only when that finds nothing, the
+# same text with every quote and backslash deleted (`r''m`, `\rm`, `"cu"rl`). A
+# word bash runs after its quote removal has the same neighbours in that view.
+# The two other ways bash joins text, a backslash-newline and an IFS expansion,
+# are not rewritten here: a command holding either goes to the full pass (0.2%
+# of calls). A `${x//p/}` rewrite costs time superlinear in the command's length.
+# Not modelled: text only the full pass deletes, a `#` inside a `$`-bearing or
+# unterminated quote and a here-doc operator. Joining across it builds a word
+# bash never runs (`echo "$(r#m -rf $X)"`); 0.123.0 denied such a command and
+# this allows it. None of the replayed commands below was one.
 # Measured 2026-11-28 on 66,220 distinct real non-read-only commands: 76% of
-# calls take this exit, and on every one the full pass had printed nothing and
-# written no row (replayed with logging on). On a sample of those this hook went
-# from p50 36 to 7 ms; the other three PreToolUse:Bash hooks take 7-9 ms each.
-# tests/hooks/pre-bash-prefilter.test.sh keeps the lists in step with the
-# tables below.
-_pf_nl=$'\n'
-_pf_v=$CMD
-[[ "$_pf_v" == *\\$_pf_nl* ]] && _pf_v=${_pf_v//\\$_pf_nl/}
-[[ "$_pf_v" == *IFS* ]] && { _pf_v=${_pf_v//\$\{IFS\}/ }; _pf_v=${_pf_v//\$IFS/ }; }
+# calls take this exit, and replayed with logging on, every command's output,
+# exit code and log rows were the same as 0.123.0's. On a sample of those this
+# hook went from p50 36 to 7 ms; the other three PreToolUse:Bash hooks take
+# 7-9 ms each. tests/hooks/pre-bash-prefilter.test.sh keeps the lists in step
+# with the tables below.
 S8_PF_WORDS='rm|find|npx|bunx|exec|x|dlx|deno|pip|pip3|nix|curl|wget|aria2c|axel|httpie|http|fetch|lwp-request|lwp-download|nc|ncat|netcat|socat|telnet|openssl|scp|sftp|rsync|ftp|tftp|base64|xxd|gpg'
 S8_PF_NET='socket|Socket|SOCK_STREAM|AF_INET|urlopen|urllib|requests\.get|http\.client|sockaddr_in|inet_aton|getprotobyname|LWP|HTTP::Tiny|Net::HTTP|open-uri|fsockopen|curl_exec|file_get_contents|net\.connect|require\(|https?\.get\(|fetch\('
-S8_PF_RE="(^|[^A-Za-z0-9_])(${S8_PF_WORDS})([^A-Za-z0-9_]|\$)|--git|@(latest|master|main|HEAD|upgrade|patch)|/dev/(tcp|udp)|\\[allow-|\\\$'|${S8_PF_NET}"
-if [[ ! "$_pf_v" =~ $S8_PF_RE ]]; then
-  _pf_bare=$_pf_v
-  case "$_pf_v" in *[\'\"\\]*) _pf_bare=$(printf '%s' "$_pf_v" | tr -d "'\"\\\\") ;; esac
-  [[ "$_pf_bare" =~ $S8_PF_RE ]] || exit 0
-fi
+S8_PF_RE="(^|[^A-Za-z0-9_])(${S8_PF_WORDS})([^A-Za-z0-9_]|\$)|socat|--git|@(latest|master|main|HEAD|upgrade|patch)|/dev/(tcp|udp)|\\[(allow|skip)-|\\\$'|${S8_PF_NET}"
+_pf_nl=$'\n'
+case "$CMD" in
+  *IFS*|*\\$_pf_nl*) ;;
+  *)
+    if [[ ! "$CMD" =~ $S8_PF_RE ]]; then
+      _pf_bare=$CMD
+      case "$CMD" in *[\'\"\\]*) _pf_bare=$(printf '%s' "$CMD" | tr -d "'\"\\\\") ;; esac
+      [[ "$_pf_bare" =~ $S8_PF_RE ]] || exit 0
+    fi
+    ;;
+esac
 
 # Telemetry fields — see banned-vocab-check.sh for why these are below the
 # fast-path exit rather than above it (audit-2026-08-22 条目 12). This hook is
