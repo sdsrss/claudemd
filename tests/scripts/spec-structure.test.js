@@ -275,19 +275,19 @@ const PINS = [
 // section's exact bytes; `''` is the preamble, from the first line to the first
 // `## ` heading.
 const PINNED_BLOCKS = [
-  { file: CORE, heading: '', sha256: '8b39dabbf85ffde4' },
+  { file: CORE, heading: '', sha256: 'a58ed6edf42a06e7' },
   { file: CORE, heading: '## §1 Language', sha256: '46c8d2f548466dbb' },
   { file: CORE, heading: '## §5 Ask first', sha256: 'adfe140aa8a8f14c' },
   { file: CORE, heading: '## §7 Commit and verify', sha256: '850f3016f4bc154d' },
   { file: CORE, heading: '## §8 Safety', sha256: '270147649a41cec8' },
   { file: CORE, heading: '## §10 Report', sha256: '3ed30c588fb11d9e' },
   { file: CORE, heading: '## §12 Ship', sha256: '598ac5b7bf729032' },
-  { file: EXT, heading: '', sha256: '36c055352ada3103' },
+  { file: EXT, heading: '', sha256: 'd6e22fb6e68171d7' },
   { file: EXT, heading: '## §12 Ship', sha256: 'd486479b17aa5bd6' },
   { file: EXT, heading: '## §12-R Review', sha256: 'd4e07537d967abdc' },
   { file: EXT, heading: '## §13 META', sha256: '7c714d9c7de3fb34' },
   { file: EXT, heading: '## §10-V Banned-vocab (reference list)', sha256: 'a83549d78ed73f7f' },
-  { file: EXT, heading: '## Recent changes', sha256: '49d8d5c6312a59e8' },
+  { file: EXT, heading: '## Recent changes', sha256: '2678bd1b5fa734be' },
 ];
 
 const headingLevel = line => {
@@ -329,8 +329,8 @@ const blockHash = text => crypto.createHash('sha256').update(text).digest('hex')
 // registered, because the table keys on heading text. A heading cannot be added,
 // removed, renamed or reordered anywhere in either file without this moving.
 const HEADING_INVENTORY = [
-  { file: CORE, count: 7, sha256: '9adc183ec0a28595' },
-  { file: EXT, count: 9, sha256: 'aa6732a722219528' },
+  { file: CORE, count: 7, sha256: '7a227ae3ed735604' },
+  { file: EXT, count: 9, sha256: '49cbfff32850d057' },
 ];
 
 for (const inv of HEADING_INVENTORY) {

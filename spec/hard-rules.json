@@ -1,6 +1,6 @@
 {
   "_doc": "Machine-readable manifest of every HARD rule in spec/CLAUDE*.md (v9.0.0: 15 rules; 11 removed, see spec/CLAUDE-changelog.md). `enforcement` says how each is checked (hook / self / both / external); `rule_hits_section` names the log section a hook writes for it, or null. spec_version here is the canonical spec version (scripts/version-cascade-check.js). Maintenance: when spec adds/removes a HARD rule, update this manifest in the same commit. tests/scripts/hard-rules-drift.test.js asserts each entry's section_anchor exists in the named spec file.",
-  "spec_version": "v9.0.1",
+  "spec_version": "v9.0.2",
   "spec_files": {
     "core": "spec/CLAUDE.md",
     "extended": "spec/CLAUDE-extended.md"

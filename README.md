@@ -157,7 +157,7 @@ jobs:
           status=0
           for c in $commits; do
             echo "commit $c"
-            git log -1 --format=%B "$c" | npx --yes claudemd-cli@0.123.0 lint --stdin || status=1
+            git log -1 --format=%B "$c" | npx --yes claudemd-cli@0.124.0 lint --stdin || status=1
           done
           exit "$status"
 ```

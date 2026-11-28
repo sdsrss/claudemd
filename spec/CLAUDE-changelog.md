@@ -4,6 +4,14 @@ Canonical history for `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE-extended.md` and 
 
 ---
 
+## v9.0.2 (patch, 2026-12-01) — Operator note on rules kept by preference
+
+No rule text changed, in the core or in either module.
+
+- `OPERATOR.md` Standing decisions: in the outcome A/B the lean draft v9 was cut from ran at 1.17–1.26× the no-spec cost with the same correctness, and the extra was mostly the per-change local commit (core §7) and the `## 汇报` report (core §10). Both stay because the maintainer wants the trail; they do not count as precedent for keeping or adding a rule.
+
+---
+
 ## v9.0.1 (patch, 2026-11-28) — Metadata follows the hooks plugin 0.123.0 removed
 
 No rule text changed, in the core or in either module.

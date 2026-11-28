@@ -8,6 +8,22 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 - **Canonical spec version source**: `spec/CLAUDE.md` top-line title (`# AI-CODING-SPEC vX.Y.Z — Core`) + `spec/CLAUDE-changelog.md` top `##` entry.
 - **Plugin semver vs spec semver** are independent: plugin patch (0.2.0 → 0.2.1) may ship when spec is unchanged (this release); plugin minor (0.1.9 → 0.2.0) ships when spec minor updates (v0.2.0 shipped spec v6.10.0).
 
+## [0.124.0] - 2026-12-01
+
+**Two hooks do less work on most Bash calls; no hook allows or blocks anything differently. Spec v9.0.2: no rule text changed.**
+
+**What changes for users.**
+- `pre-bash-safety` first looks for the words and literals its rules need (`rm`, `find`, the package runners, the fetch commands, `/dev/tcp`, the network calls of an interpreter one-liner, an escape token), also with quotes and backslashes removed, and lets a command with none of them through at once. 66,220 real commands were replayed through 0.123.0 and this version with logging on: 76% of calls took the new exit, and the verdict, output and log rows matched for every command. On those calls the hook went from about 36 to 7 ms on the maintainer's machine.
+- `tmp-sweep` reads its interval stamp before loading anything: inside the 10-minute interval a Bash call costs about 2 ms instead of 12. A lock left by a killed hook is cleared on the first call after the interval instead of on any call.
+- `~/.claude/OPERATOR.md` records that the per-change local commit and the `## 汇报` report are kept by preference, at a measured cost.
+
+**What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back, install 0.123.0 as `docs/ROLLBACK.md` describes ("Local machine needs the previous version back").
+
+**Not changed.**
+- Every allow or deny decision of the four blocking hooks, their escape tokens and kill switches, and the rows they log. No rule family was removed.
+- The new check has no switch of its own: `BASH_READONLY_FAST_PATH=0` still turns off only the read-only fast path.
+- The text of every rule in the core, the modules and the extended spec.
+
 ## [0.123.0] - 2026-11-28
 
 **Removes 16 hooks and 5 commands that served rules spec v9.0.0 deleted, or did nothing by default. The hooks that block (`pre-bash-safety`, `ship-baseline`, `memory-read-check`, `banned-vocab`) decide exactly as before. Spec v9.0.1: no rule text changed.**

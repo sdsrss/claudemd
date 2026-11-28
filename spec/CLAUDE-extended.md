@@ -1,4 +1,4 @@
-# AI-CODING-SPEC v9.0.1 — Extended
+# AI-CODING-SPEC v9.0.2 — Extended
 
 Loaded on demand: core §12 points at the ship module, and the review module loads when reviewing. Version history: `~/.claude/CLAUDE-changelog.md`. Operator handbook (human-facing, not auto-loaded): `~/.claude/OPERATOR.md`.
 
@@ -52,6 +52,8 @@ The banned-vocabulary gate (hook-enforced, above) reads `hooks/banned-vocab.patt
 ## Recent changes
 
 Full version history: `~/.claude/CLAUDE-changelog.md`. Only the v9 entries live here.
+
+**v9.0.2 (patch, 2026-12-01)** — no rule text changed. `OPERATOR.md` Standing decisions records that the per-change local commit and the `## 汇报` report are kept by preference at a measured cost, not as evidence that a rule pays for itself.
 
 **v9.0.1 (patch, 2026-11-28)** — no rule text changed. `hard-rules.json`: the two self-checked rules whose telemetry came from hooks plugin 0.123.0 removed (`evidence-gate`, `transcript-structure-scan`) no longer name a log section. The `Sizing` line of this section and `OPERATOR.md`'s demote-loop note are gone with the scripts that served them; hooks are frozen to bug fixes and removals. `CLAUDE-changelog.md` keeps the v9 entries only; older ones are in git history.
 
