@@ -17,7 +17,7 @@ Companion files:
 
 ## §13.3 promotion criteria for hook-layer gates
 
-Hooks are frozen after plugin 0.122.0 (spec v9.0.0): bug fixes and removals only. That release still adds the `memory-index-lines` advisory, built before the freeze was decided. Plugin 0.123.0 removed 16 hooks that served no v9 rule or did nothing by default, with the evidence in `docs/architecture-audit-2026-11-25.md` §3. A new gate, or an opt-in gate turned on by default, needs field evidence of a real failure it would have stopped (as `ship-baseline` has: 31 of the 33 runs it denied pushes onto, 10-04..11-25, had really failed, checked with `gh run view`), then:
+Hooks are frozen after plugin 0.122.0 (spec v9.0.0): bug fixes and removals only. That release still adds the `memory-index-lines` advisory, built before the freeze was decided. Plugin 0.123.0 removed 16 hooks that served no v9 rule or did nothing by default, with the evidence in `docs/architecture-audit-2026-11-25.md` §3. Plugin 0.124.0 is an exception the maintainer asked for: two speed-ups that audit recommended, a trigger prefilter in `pre-bash-safety` and an early exit in `tmp-sweep`, replayed on 66,220 real commands with the same decisions and log rows as 0.123.0. A new gate, or an opt-in gate turned on by default, needs field evidence of a real failure it would have stopped (as `ship-baseline` has: 31 of the 33 runs it denied pushes onto, 10-04..11-25, had really failed, checked with `gh run view`), then:
 
 - **Default-OFF → default-ON advisory**: ≥30 days observed; ≥20 fires in 30 days; bypass rate < 10%; no `revert:` / `relax:` CHANGELOG entry against it; ≥2 projects.
 - **Advisory → deny**: a further ≥30 days on; the same gates; ≥3 projects; ≥1 `feedback_*.md` memory citing the rule as load-bearing.

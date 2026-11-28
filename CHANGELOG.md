@@ -10,17 +10,18 @@ All notable changes to the `claudemd` plugin. This changelog tracks plugin artif
 
 ## [0.124.0] - 2026-12-01
 
-**Two hooks do less work on most Bash calls; no hook allows or blocks anything differently. Spec v9.0.2: no rule text changed.**
+**Two hooks do less work on most Bash calls. Replayed on 66,220 real commands, every decision and log row is the same as 0.123.0's. Spec v9.0.2: no rule text changed.**
 
 **What changes for users.**
-- `pre-bash-safety` first looks for the words and literals its rules need (`rm`, `find`, the package runners, the fetch commands, `/dev/tcp`, the network calls of an interpreter one-liner, an escape token), also with quotes and backslashes removed, and lets a command with none of them through at once. 66,220 real commands were replayed through 0.123.0 and this version with logging on: 76% of calls took the new exit, and the verdict, output and log rows matched for every command. On those calls the hook went from about 36 to 7 ms on the maintainer's machine.
-- `tmp-sweep` reads its interval stamp before loading anything: inside the 10-minute interval a Bash call costs about 2 ms instead of 12. A lock left by a killed hook is cleared on the first call after the interval instead of on any call.
-- `~/.claude/OPERATOR.md` records that the per-change local commit and the `## 汇报` report are kept by preference, at a measured cost.
+- `pre-bash-safety` first looks for the words and literals its rules need (`rm`, `find`, the package runners, the fetch commands, `socat`, `/dev/tcp`, the network calls of an interpreter one-liner, an escape token), also with quotes and backslashes removed, and lets a command with none of them through at once. A command holding a backslash-newline or `IFS` gets the full check, as before. 66,220 real commands were replayed through 0.123.0 and this version, with logging on and from the same directory: 76% of calls took the new exit, and the output, exit code and log rows matched for every command. On those calls the hook went from about 36 to 7 ms on the maintainer's machine.
+- One difference, found by construction and in none of those commands: the full check deletes some text that bash keeps (a `#` inside `"$(…)"` or an unterminated quote, a here-doc operator), so it could join two halves into `rm` or `/dev/tcp`, a word bash never runs. 0.123.0 denied such a command; this version allows it.
+- `tmp-sweep` reads its interval stamp before loading anything: inside the 10-minute interval a Bash call costs about 2 ms instead of 12. A lock a killed hook leaves beside a fresh stamp is now cleared by the first call after the interval, and the sweep runs on the call after that.
+- `~/.claude/OPERATOR.md` records that the per-change local commit and the `## 汇报` report are kept by preference, at a measured cost, and that these two hook changes are an exception to the hook freeze.
 
 **What to do.** Run `/claudemd-refresh` and restart Claude Code. To go back, install 0.123.0 as `docs/ROLLBACK.md` describes ("Local machine needs the previous version back").
 
 **Not changed.**
-- Every allow or deny decision of the four blocking hooks, their escape tokens and kill switches, and the rows they log. No rule family was removed.
+- The rules of the four blocking hooks, their escape tokens and kill switches. No rule family was removed, and `ship-baseline`, `memory-read-check` and `banned-vocab` were not touched.
 - The new check has no switch of its own: `BASH_READONLY_FAST_PATH=0` still turns off only the read-only fast path.
 - The text of every rule in the core, the modules and the extended spec.
 
