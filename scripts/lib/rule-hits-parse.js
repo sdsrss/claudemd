@@ -420,7 +420,7 @@ export function excludeTestSessions(hits) {
   });
 }
 
-// v0.7.0 — R1 §0.1/§13.1/§13.2 instrumentation. Group rule-hits by spec
+// Group rule-hits by spec
 // section so /claudemd-audit can answer "which spec rule is firing", not
 // just "which hook is firing". `spec_section` is populated on rows written
 // by v0.7.0+; legacy rows surface under the `(unset)` bucket so the operator

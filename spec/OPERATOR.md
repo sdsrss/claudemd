@@ -25,6 +25,7 @@ Hooks are frozen after plugin 0.122.0 (spec v9.0.0): bug fixes and removals only
 ## Standing decisions
 
 - **2026-11-25, v9.0.0**: the v8 core (24 KB, nine modules, 26 HARD rules) was cut to a 2.8 KB core and two modules after the outcome A/B (`docs/claudemd-value-assessment-2026-11-25.md`): v8 gave the same or lower correctness than no spec at 1.8–2.4× the cost. Do not restore removed rules without a new outcome run.
+- **Kept by preference, at a known cost** (2026-11-25, v9.0.0): in the outcome A/B the lean draft v9 was cut from ran at 1.17–1.26× the no-spec cost per task with the same correctness (66/72 against 65/72), and the extra was mostly its per-change local commit (core §7) and `## 汇报` report (core §10). Both stay because the maintainer wants the trail. They are not evidence that a rule pays for itself, and do not count as precedent for keeping or adding one.
 - **Banned-vocab deny gate**: kept as a hook (frozen) though its spec text is gone; 13 non-probe denies in 30 days had 0 true positives (2026-11-03). Taking it off is a gate change that needs its own decision.
 - **The size cap stays in bytes** (2026-09-26): core and extended measured within 3% of each other in bytes per token, so bytes track tokens.
 

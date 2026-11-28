@@ -19,10 +19,11 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
   (`scripts/baseline-metrics.js` — files/lines, functions over 50 lines, jscpd duplication,
   import cycles, and the lint results as one report; `--skip-coverage` for a ~10 s run).
   `npm run check` is `lint` then `test`.
-  Most of `docs/` is ignore-by-default, with a tracked allowlist in `.gitignore`; the audit
-  round reports under `docs/audit/*.md` are tracked, the metrics JSON beside them is not.
-  So for a code-health comparison, re-run the tool on the commit you want to compare
-  against rather than looking for a checked-in number.
+  `docs/` and `tasks/` are ignore-by-default, with a tracked allowlist in `.gitignore`: a
+  file is tracked only when shipped text, a script or a test reads it (under `docs/audit/`,
+  the two round reports the code cites), and no metrics output is. So for a code-health
+  comparison, re-run the tool on the commit you want to compare against rather than
+  looking for a checked-in number.
 - **Dev docs**: `docs/ARCHITECTURE.md` (component map + state locations),
   `docs/ADDING-NEW-HOOK.md` (step-by-step, names its drift gates),
   `docs/HOOK-PROTOCOL.md`, `docs/RULE-HITS-SCHEMA.md` (telemetry schema),
@@ -30,7 +31,9 @@ fork-and-adapt is the expected mode, but issues and PRs are welcome.
 - **Conventions**: scripts parse argv via `scripts/lib/argv.js#parseStrict`
   (`node scripts/lint-argv.js` gates it); hooks source `hooks/lib/hook-common.sh`; spec
   edits go through `spec/` WITH a version bump in the same change (CI gates this against
-  the last tag).
+  the last tag). Comments give one line of why per decision; the history behind it
+  (versions, dates, review rounds) goes in the commit message. Trim a file's history
+  comments when you next change that file, not in a sweep.
 - **Editing `CHANGELOG.md` with a script**: splice by SLICING, never through
   `String.replace(pattern, replacementString)`. In a replacement *string* `$` followed by
   a backtick means "the input before the match" and `$` followed by `'` means "the input
